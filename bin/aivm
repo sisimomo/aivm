@@ -13,6 +13,10 @@
 #   aivm help              Show this help
 set -euo pipefail
 
+# When launched from a GUI app (e.g. Tabby), PATH may omit Homebrew locations.
+# Prepend common macOS/Homebrew paths so tools like colima and docker are found.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 # Resolve symlink chain so REPO_ROOT points to the real repo,
 # not the directory containing the symlink (e.g. /usr/local/bin).
 _s="${BASH_SOURCE[0]}"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# vm-stop.sh — Stop the aivm Colima VM gracefully.
+# vm-stop.sh — Stop and delete the aivm Colima VM (ephemeral: disk wiped on every stop).
+# The next 'aivm start' creates a fresh VM and re-runs bootstrap from scratch.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +17,11 @@ LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
 is_vm_running() {
   colima list 2>/dev/null | awk 'NR>1 {print $1, $2}' \
     | grep -q "^${COLIMA_PROFILE} Running"
+}
+
+is_vm_profile_exists() {
+  colima list 2>/dev/null | awk 'NR>1 {print $1}' \
+    | grep -q "^${COLIMA_PROFILE}$"
 }
 
 acquire_lifecycle_lock() {
@@ -43,26 +49,31 @@ main() {
   acquire_lifecycle_lock
   trap 'release_lifecycle_lock' EXIT INT TERM
 
-  if ! is_vm_running; then
-    log_info "VM '${COLIMA_PROFILE}' is not running"
-    return 0
+  # Gracefully stop Docker workloads and the VM only if it is currently running.
+  if is_vm_running; then
+    log_info "Stopping Docker containers inside VM..."
+    colima ssh --profile "$COLIMA_PROFILE" -- \
+      bash -lc "docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true" \
+      2>/dev/null || true
+
+    log_step "Stopping Colima VM '${COLIMA_PROFILE}'"
+    colima stop "$COLIMA_PROFILE" 2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" || {
+      log_warn "Graceful stop failed; forcing..."
+      colima stop "$COLIMA_PROFILE" --force 2>/dev/null || true
+    }
   fi
 
-  log_step "Stopping Colima VM '${COLIMA_PROFILE}'"
-
-  # Stop Docker workloads inside VM
-  log_info "Stopping Docker containers inside VM..."
-  colima ssh --profile "$COLIMA_PROFILE" -- \
-    bash -lc "docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true" \
-    2>/dev/null || true
-
-  # Stop Colima VM
-  colima stop "$COLIMA_PROFILE" 2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" || {
-    log_warn "Graceful stop failed; forcing..."
-    colima stop "$COLIMA_PROFILE" --force 2>/dev/null || true
-  }
-
-  log_success "VM '${COLIMA_PROFILE}' stopped"
+  # Always delete the profile so the next start gets a clean VM (ephemeral behaviour).
+  # --data also wipes container runtime data; --force skips the confirmation prompt.
+  if is_vm_profile_exists; then
+    log_step "Deleting VM profile '${COLIMA_PROFILE}' (ephemeral — clean slate on next start)"
+    colima delete "$COLIMA_PROFILE" --force --data \
+      2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" \
+      || log_fatal "Failed to delete VM profile '${COLIMA_PROFILE}' — manual cleanup may be needed"
+    log_success "VM '${COLIMA_PROFILE}' deleted"
+  else
+    log_info "VM profile '${COLIMA_PROFILE}' does not exist — nothing to delete"
+  fi
 }
 
 main "$@"
