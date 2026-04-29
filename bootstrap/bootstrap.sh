@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2025-04-28-v9"
+BOOTSTRAP_VERSION="2026-04-28-v1"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -152,7 +152,21 @@ info "uv: $UV_ACTUAL"
 info "Python: $PYTHON_ACTUAL"
 success "uv + Python installed: $UV_ACTUAL"
 
-# ── 6. GitHub Copilot CLI ─────────────────────────────────────────────────────
+# ── 6. rtk (Rust Token Killer) ──────────────────────────────────────────────
+step "Installing rtk"
+
+if ! command -v rtk >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
+    2>&1 | tee -a "$LOG_FILE"
+else
+  info "rtk already installed"
+fi
+
+RTK_ACTUAL=$(rtk --version 2>/dev/null || echo "unknown")
+info "rtk: $RTK_ACTUAL"
+success "rtk installed: $RTK_ACTUAL"
+
+# ── 7. GitHub Copilot CLI ─────────────────────────────────────────────────────
 step "Installing GitHub Copilot CLI"
 
 # Install to ~/.local/bin (default non-root prefix).
@@ -171,7 +185,7 @@ COPILOT_ACTUAL=$(copilot --version 2>/dev/null || echo "unknown")
 info "Copilot CLI: $COPILOT_ACTUAL"
 success "Copilot CLI installed: $COPILOT_ACTUAL"
 
-# ── 7. Shell profile setup ────────────────────────────────────────────────────
+# ── 8. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
 
 PROFILE_BLOCK_START="# >>> aivm bootstrap >>>"
@@ -208,7 +222,7 @@ write_profile_block "$HOME/.bashrc"
 
 success "Shell profile configured"
 
-# ── 8. /home/<user>/dev symlink (convenience alias) ──────────────────────────
+# ── 9. /home/<user>/dev symlink (convenience alias) ──────────────────────────
 step "Setting up home dev symlink"
 
 # Lima mounts the host at the exact same absolute path (e.g. /Users/simon/dev).
@@ -231,7 +245,7 @@ fi
 
 success "Home dev symlink configured"
 
-# ── 9. MCP client config for Copilot CLI ─────────────────────────────────────
+# ── 10. MCP client config for Copilot CLI ─────────────────────────────────────
 step "Configuring MCP client for Copilot CLI"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
@@ -261,7 +275,7 @@ PYEOF
 
 success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
 
-# ── 10. Verify all tools ──────────────────────────────────────────────────────
+# ── 11. Verify all tools ──────────────────────────────────────────────────────
 step "Verifying tool installations"
 
 export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
@@ -287,6 +301,7 @@ check_tool "Node.js" node
 check_tool "npm"     npm
 check_tool "uv"      uv
 check_tool "Copilot CLI" copilot
+check_tool "rtk"     rtk
 
 # Java uses -version (stderr)
 if command -v java >/dev/null 2>&1; then
@@ -310,7 +325,7 @@ echo ""
 echo "  Java:        $(java -version 2>&1 | head -1)"
 echo "  Maven:       $(mvn --version 2>&1 | head -1)"
 echo "  Node.js:     $(node --version)"
+echo "  rtk:         $(rtk --version 2>/dev/null || echo 'installed')"
+echo "  python:      $(python --version 2>/dev/null || echo 'installed')"
 echo "  Copilot CLI: $(copilot --version 2>/dev/null || echo 'installed')"
 echo ""
-
-
