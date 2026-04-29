@@ -67,7 +67,7 @@ mcpjungle register --name context7 \
 |---|---|
 | [Colima](https://github.com/abiosoft/colima) | `brew install colima` |
 | Docker runtime | Docker Desktop, OrbStack, or `colima start` (default profile) |
-| `curl`, `python3` | `brew install curl python3` |
+| `curl`| `brew install curl` |
 
 > **Note:** MCPJungle needs a Docker runtime that is *separate* from the `aivm` Colima VM. If you only have Colima, run `colima start` (default profile) before `aivm`.
 

@@ -26,8 +26,7 @@ find_host_docker_socket() {
   current_ctx=$(docker context show 2>/dev/null || echo "default")
   if [[ "$current_ctx" != "colima-${COLIMA_PROFILE}" ]]; then
     local ctx_sock
-    ctx_sock=$(docker context inspect "$current_ctx" 2>/dev/null \
-      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['Endpoints']['docker']['Host'])" 2>/dev/null || true)
+    ctx_sock=$(docker context inspect "$current_ctx" --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)
     if [[ -n "$ctx_sock" ]]; then
       local raw_path="${ctx_sock#unix://}"
       if [[ -S "$raw_path" ]] && [[ "$raw_path" != "${aivm_sock}" ]]; then
