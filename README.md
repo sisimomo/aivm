@@ -115,7 +115,7 @@ aivm stop
 # Restart VM and services
 aivm restart
 
-# Force re-run bootstrap (e.g. after upgrading)
+# Re-run bootstrap (escape hatch — normally runs once on VM creation)
 aivm bootstrap
 
 # View logs

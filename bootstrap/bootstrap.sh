@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# bootstrap.sh — Idempotent VM environment setup.
-# Runs INSIDE the VM (via colima ssh).
+# bootstrap.sh — VM environment setup. Runs INSIDE the VM (via colima ssh).
 # Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, GitHub Copilot CLI.
-# Writes ~/.aivm-bootstrap-version ONLY after all tools are verified.
+#
+# Designed to run EXACTLY ONCE, when the VM is first created. 'aivm stop'
+# deletes the VM, so any next start either resumes an already-provisioned VM
+# (no bootstrap) or creates a new VM (bootstrap runs again from scratch).
+# Therefore this script is intentionally NOT idempotent — it assumes a clean,
+# freshly-installed Ubuntu environment.
 set -euo pipefail
-
-# ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2026-04-29-v2"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -20,17 +21,18 @@ fatal()   { echo "[$(ts)] FATAL $*" | tee -a "$LOG_FILE" >&2; exit 1; }
 step()    { echo "" && echo "[$(ts)] ──── $* ────" | tee -a "$LOG_FILE"; }
 
 # ── Idempotency check ─────────────────────────────────────────────────────────
+# Bootstrap is invoked at VM creation time only. If the marker exists, the VM
+# was already provisioned in a previous run of this script — bail out to avoid
+# re-running expensive installers. Caller (vm-start.sh) shouldn't trigger us
+# in that case, but we guard against accidental manual invocation.
 if [[ -f "$MARKER_FILE" ]]; then
-  installed=$(cat "$MARKER_FILE")
-  if [[ "$installed" == "$BOOTSTRAP_VERSION" ]]; then
-    echo "[bootstrap] Already at version ${BOOTSTRAP_VERSION} — nothing to do."
-    exit 0
-  fi
-  info "Upgrading bootstrap from ${installed} to ${BOOTSTRAP_VERSION}"
+  echo "[bootstrap] Marker $MARKER_FILE exists — VM already bootstrapped. Aborting."
+  echo "[bootstrap] To re-bootstrap, destroy the VM first: aivm stop && aivm start"
+  exit 0
 fi
 
 mkdir -p "$HOME/.aivm"
-echo "[$(ts)] Bootstrap started (version=${BOOTSTRAP_VERSION})" > "$LOG_FILE"
+echo "[$(ts)] Bootstrap started" > "$LOG_FILE"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -58,22 +60,18 @@ success "System packages installed"
 # ── 2. Java 25 (Temurin via Adoptium apt repo) ───────────────────────────────
 step "Installing Java 25 (Temurin)"
 
-if ! java -version 2>&1 | grep -qE 'version "2[5-9]|version "3[0-9]' 2>/dev/null; then
-  # Add Adoptium GPG key and apt repository
-  sudo mkdir -p /etc/apt/keyrings
-  wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
+# Add Adoptium GPG key and apt repository
+sudo mkdir -p /etc/apt/keyrings
+wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
 
-  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] \
+echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] \
 https://packages.adoptium.net/artifactory/deb \
 $(lsb_release -sc) main" \
-    | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
+  | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
 
-  sudo apt-get update -qq
-  sudo apt-get install -y temurin-25-jdk 2>&1 | tee -a "$LOG_FILE"
-else
-  info "Java 25+ already installed"
-fi
+sudo apt-get update -qq
+sudo apt-get install -y temurin-25-jdk 2>&1 | tee -a "$LOG_FILE"
 
 JAVA_ACTUAL=$(java -version 2>&1 | head -1)
 info "Java: $JAVA_ACTUAL"
@@ -86,27 +84,23 @@ success "Java installed: $JAVA_ACTUAL"
 step "Installing Maven"
 
 MAVEN_INSTALL_DIR="/opt/maven"
-if ! command -v mvn >/dev/null 2>&1; then
-  # Resolve latest 3.x version from Apache dist index
-  MAVEN_VERSION=$(curl -s "https://dlcdn.apache.org/maven/maven-3/" \
-    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' \
-    | sort -V | tail -1 | tr -d '/')
+# Resolve latest 3.x version from Apache dist index
+MAVEN_VERSION=$(curl -s "https://dlcdn.apache.org/maven/maven-3/" \
+  | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' \
+  | sort -V | tail -1 | tr -d '/')
 
-  if [[ -z "$MAVEN_VERSION" ]]; then
-    fatal "Could not resolve latest Maven 3.x version from Apache"
-  fi
-
-  info "Downloading Maven ${MAVEN_VERSION}"
-  MAVEN_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
-  MAVEN_TMP=$(mktemp -d)
-  curl -fsSL "$MAVEN_URL" -o "$MAVEN_TMP/maven.tar.gz" 2>&1 | tee -a "$LOG_FILE"
-  sudo mkdir -p "$MAVEN_INSTALL_DIR"
-  sudo tar -xzf "$MAVEN_TMP/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
-  sudo ln -sf "$MAVEN_INSTALL_DIR/bin/mvn" /usr/local/bin/mvn
-  rm -rf "$MAVEN_TMP"
-else
-  info "Maven already installed"
+if [[ -z "$MAVEN_VERSION" ]]; then
+  fatal "Could not resolve latest Maven 3.x version from Apache"
 fi
+
+info "Downloading Maven ${MAVEN_VERSION}"
+MAVEN_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+MAVEN_TMP=$(mktemp -d)
+curl -fsSL "$MAVEN_URL" -o "$MAVEN_TMP/maven.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+sudo mkdir -p "$MAVEN_INSTALL_DIR"
+sudo tar -xzf "$MAVEN_TMP/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
+sudo ln -sf "$MAVEN_INSTALL_DIR/bin/mvn" /usr/local/bin/mvn
+rm -rf "$MAVEN_TMP"
 
 MVN_ACTUAL=$(mvn --version 2>&1 | head -1)
 info "Maven: $MVN_ACTUAL"
@@ -115,13 +109,9 @@ success "Maven installed: $MVN_ACTUAL"
 # ── 4. Node.js LTS (via NodeSource apt repo) ─────────────────────────────────
 step "Installing Node.js LTS"
 
-if ! command -v node >/dev/null 2>&1; then
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - \
-    2>&1 | tee -a "$LOG_FILE"
-  sudo apt-get install -y nodejs 2>&1 | tee -a "$LOG_FILE"
-else
-  info "Node.js already installed"
-fi
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - \
+  2>&1 | tee -a "$LOG_FILE"
+sudo apt-get install -y nodejs 2>&1 | tee -a "$LOG_FILE"
 
 NODE_ACTUAL=$(node --version 2>/dev/null)
 NPM_ACTUAL=$(npm --version 2>/dev/null)
@@ -131,15 +121,10 @@ success "Node.js installed: $NODE_ACTUAL"
 # ── 5. Python (via uv) ────────────────────────────────────────────────────────
 step "Installing uv and Python"
 
-if ! command -v uv >/dev/null 2>&1; then
-  # INSTALLER_NO_MODIFY_PATH=1 skips the interactive profile-edit prompt
-  INSTALLER_NO_MODIFY_PATH=1 \
-    curl -LsSf https://astral.sh/uv/install.sh | sh \
-    2>&1 | tee -a "$LOG_FILE"
-else
-  info "uv already installed — updating"
-  uv self update 2>&1 | tee -a "$LOG_FILE" || true
-fi
+# INSTALLER_NO_MODIFY_PATH=1 skips the interactive profile-edit prompt
+INSTALLER_NO_MODIFY_PATH=1 \
+  curl -LsSf https://astral.sh/uv/install.sh | sh \
+  2>&1 | tee -a "$LOG_FILE"
 
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -155,12 +140,8 @@ success "uv + Python installed: $UV_ACTUAL"
 # ── 6. rtk (Rust Token Killer) ──────────────────────────────────────────────
 step "Installing rtk"
 
-if ! command -v rtk >/dev/null 2>&1; then
-  curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
-    2>&1 | tee -a "$LOG_FILE"
-else
-  info "rtk already installed"
-fi
+curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
+  2>&1 | tee -a "$LOG_FILE"
 
 RTK_ACTUAL=$(rtk --version 2>/dev/null || echo "unknown")
 info "rtk: $RTK_ACTUAL"
@@ -188,39 +169,14 @@ success "Copilot CLI installed: $COPILOT_ACTUAL"
 # ── 8. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
 
-PROFILE_BLOCK_START="# >>> aivm bootstrap >>>"
-PROFILE_BLOCK_END="# <<< aivm bootstrap <<<"
-
-write_profile_block() {
-  local profile_file="$1"
-  if grep -q "$PROFILE_BLOCK_START" "$profile_file" 2>/dev/null; then
-    python3 - <<PYEOF
-import re, pathlib
-p = pathlib.Path("$profile_file")
-content = p.read_text()
-content = re.sub(
-  r'# >>> aivm bootstrap >>>.*?# <<< aivm bootstrap <<<\n?',
-  '',
-  content,
-  flags=re.DOTALL
-)
-p.write_text(content)
-PYEOF
-  fi
-
-  cat >> "$profile_file" <<EOF
-
-${PROFILE_BLOCK_START}
-export PATH="/opt/maven/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH"
-${PROFILE_BLOCK_END}
+# Drop a single profile.d snippet — applies to all login shells.
+# (Bootstrap runs on a fresh VM, so we don't need to scrub previous blocks.)
+sudo tee /etc/profile.d/aivm.sh > /dev/null <<'EOF'
+export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 EOF
-}
+sudo chmod 0644 /etc/profile.d/aivm.sh
 
-write_profile_block "$HOME/.bashrc"
-[[ -f "$HOME/.bash_profile" ]] && write_profile_block "$HOME/.bash_profile" || true
-[[ -f "$HOME/.profile" ]] && write_profile_block "$HOME/.profile" || true
-
-success "Shell profile configured"
+success "Shell profile configured (/etc/profile.d/aivm.sh)"
 
 # ── 9. MCP client config for Copilot CLI ──────────────────────────────────────
 step "Configuring MCP client for Copilot CLI"
@@ -230,14 +186,16 @@ COPILOT_CONFIG_DIR="$HOME/.copilot"
 MCP_CONFIG="$COPILOT_CONFIG_DIR/mcp-config.json"
 mkdir -p "$COPILOT_CONFIG_DIR"
 
-# Seed empty config if missing or invalid
-if ! jq -e . "$MCP_CONFIG" >/dev/null 2>&1; then
-  echo '{"mcpServers":{}}' > "$MCP_CONFIG"
-fi
-
-jq --arg url "http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp" \
-  '.mcpServers.mcpjungle = {"url": $url, "transport": "http"}' \
-  "$MCP_CONFIG" > "${MCP_CONFIG}.tmp" && mv "${MCP_CONFIG}.tmp" "$MCP_CONFIG"
+cat > "$MCP_CONFIG" <<EOF
+{
+  "mcpServers": {
+    "mcpjungle": {
+      "url": "http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp",
+      "transport": "http"
+    }
+  }
+}
+EOF
 
 info "MCP config written to $MCP_CONFIG"
 
@@ -286,9 +244,11 @@ fi
 
 success "All tools verified"
 
-# ── Write version marker (LAST step) ─────────────────────────────────────────
-echo "$BOOTSTRAP_VERSION" > "$MARKER_FILE"
-success "Bootstrap complete! Version: ${BOOTSTRAP_VERSION}"
+# ── Write marker (LAST step) ─────────────────────────────────────────────────
+# Records that bootstrap has completed in this VM. Presence of this file
+# prevents accidental re-runs (see guard at top of this script).
+date '+%Y-%m-%d %H:%M:%S' > "$MARKER_FILE"
+success "Bootstrap complete!"
 echo ""
 echo "  Java:        $(java -version 2>&1 | head -1)"
 echo "  Maven:       $(mvn --version 2>&1 | head -1)"

@@ -18,7 +18,6 @@ VM_TYPE="${AIVM_VM_TYPE:-vz}"
 DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
 DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
 AIVM_STATE_DIR="$HOME/.aivm"
-BOOTSTRAP_MARKER="$AIVM_STATE_DIR/.bootstrap-version"
 LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
 BOOTSTRAP_SCRIPT="$REPO_ROOT/bootstrap/bootstrap.sh"
 
@@ -52,6 +51,11 @@ is_vm_running() {
     | grep -q "^${COLIMA_PROFILE} Running" 2>/dev/null
 }
 
+vm_profile_exists() {
+  colima list 2>/dev/null | awk 'NR>1 {print $1}' \
+    | grep -q "^${COLIMA_PROFILE}$"
+}
+
 colima_vm_type_flag() {
   # vz requires macOS 13+ and Apple Silicon; fall back to qemu if vz not supported
   if [[ "$VM_TYPE" == "vz" ]]; then
@@ -68,23 +72,6 @@ colima_vm_type_flag() {
   echo "--vm-type qemu"
 }
 
-# ── Bootstrap detection ───────────────────────────────────────────────────────
-bootstrap_version_in_script() {
-  grep -m1 '^BOOTSTRAP_VERSION=' "$BOOTSTRAP_SCRIPT" | cut -d= -f2 | tr -d '"'
-}
-
-bootstrap_needed() {
-  if ! is_vm_running; then
-    return 0  # VM not running yet, check after start
-  fi
-  local current_version
-  current_version=$(colima ssh --profile "$COLIMA_PROFILE" -- \
-    bash -lc "cat ~/.aivm-bootstrap-version 2>/dev/null || echo ''" 2>/dev/null || echo "")
-  local required_version
-  required_version=$(bootstrap_version_in_script)
-  [[ "$current_version" != "$required_version" ]]
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   mkdir -p "$AIVM_STATE_DIR/logs"
@@ -92,9 +79,18 @@ main() {
   acquire_lifecycle_lock
   trap 'release_lifecycle_lock' EXIT INT TERM
 
+  # Track whether the VM existed before this run; bootstrap only runs when we
+  # just created it (since 'aivm stop' deletes the VM, the next start that
+  # doesn't find the profile is, by definition, a fresh creation).
+  local vm_was_created=0
+
   if is_vm_running; then
     log_info "VM '${COLIMA_PROFILE}' is already running"
   else
+    if ! vm_profile_exists; then
+      vm_was_created=1
+    fi
+
     log_step "Starting Colima VM '${COLIMA_PROFILE}'"
 
     # Ensure dev root exists on host
@@ -132,19 +128,19 @@ main() {
     log_success "VM '${COLIMA_PROFILE}' is running"
   fi
 
-  # Bootstrap if needed
-  if bootstrap_needed; then
-    log_step "Running VM bootstrap (this may take several minutes on first run)"
+  # Run bootstrap only on a freshly created VM. A resumed (stopped→running)
+  # VM keeps its disk and is already provisioned.
+  if (( vm_was_created )); then
+    log_step "Running VM bootstrap (one-time, on fresh VM)"
     local vm_bootstrap_path
     vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
     # Inject only the specific vars bootstrap needs — never pass secrets or the full .env.
-    # Add new vars here as bootstrap.sh gains new configuration knobs.
     colima ssh --profile "$COLIMA_PROFILE" -- \
       bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' bash '${vm_bootstrap_path}'" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
     log_success "Bootstrap complete"
   else
-    log_debug "Bootstrap up to date — skipping"
+    log_debug "VM was already provisioned — skipping bootstrap"
   fi
 }
 

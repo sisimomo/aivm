@@ -275,15 +275,18 @@ do_logs() {
 }
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
+# Bootstrap normally runs once, automatically, when a fresh VM is created.
+# This command is an escape hatch to re-run it manually (e.g. if the first
+# run failed mid-way). It removes the marker file so bootstrap.sh proceeds.
 do_bootstrap() {
   if ! is_vm_running; then
     log_fatal "VM is not running. Run 'aivm start' first."
   fi
 
   local vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
-  log_step "Running bootstrap in VM"
+  log_step "Re-running bootstrap in VM"
   colima ssh --profile "$COLIMA_PROFILE" -- \
-    bash -lc "BOOTSTRAP_FORCE=1 bash '${vm_bootstrap_path}'" \
+    bash -lc "rm -f ~/.aivm-bootstrap-version && bash '${vm_bootstrap_path}'" \
     2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
 }
 
@@ -369,7 +372,8 @@ do_help() {
     restart                Restart VM and services
     status                 Show VM, MCPJungle, and session status
     ssh                    Open interactive shell in the VM
-    bootstrap              Force re-run of VM bootstrap
+    bootstrap              Re-run VM bootstrap (escape hatch; bootstrap
+                           normally runs once, automatically, on VM creation)
     logs [service]         Show service logs (mcpjungle|monitor|bootstrap|colima)
     help                   Show this help
 
