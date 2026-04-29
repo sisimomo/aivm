@@ -134,7 +134,7 @@ main() {
       return 0
     fi
     sleep 2
-    (( i++ ))
+    (( ++i ))
   done
 
   log_fatal "MCPJungle failed to become healthy after $((retries * 2))s. Check logs: aivm logs"

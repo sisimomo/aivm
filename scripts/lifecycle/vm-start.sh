@@ -123,7 +123,7 @@ main() {
         break
       fi
       sleep 2
-      (( i++ ))
+      (( ++i ))
     done
     if (( i >= retries )); then
       log_fatal "VM did not become reachable after $((retries * 2))s"
