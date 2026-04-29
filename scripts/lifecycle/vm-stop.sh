@@ -11,22 +11,40 @@ source "$REPO_ROOT/scripts/utils/logging.sh"
 
 COLIMA_PROFILE="${AIVM_COLIMA_PROFILE:-aivm}"
 AIVM_STATE_DIR="$HOME/.aivm"
-LIFECYCLE_LOCK="$AIVM_STATE_DIR/lifecycle.lock"
+LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
 
 is_vm_running() {
   colima list 2>/dev/null | awk 'NR>1 {print $1, $2}' \
     | grep -q "^${COLIMA_PROFILE} Running"
 }
 
+acquire_lifecycle_lock() {
+  local deadline=$(( $(date +%s) + 30 ))
+  while ! mkdir "$LIFECYCLE_LOCK_DIR" 2>/dev/null; do
+    local lock_pid
+    lock_pid=$(cat "$LIFECYCLE_LOCK_DIR/pid" 2>/dev/null || echo "")
+    if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+      rm -rf "$LIFECYCLE_LOCK_DIR"
+      continue
+    fi
+    (( $(date +%s) >= deadline )) && log_fatal "Could not acquire lifecycle lock within 30s"
+    sleep 1
+  done
+  echo $$ > "$LIFECYCLE_LOCK_DIR/pid"
+}
+
+release_lifecycle_lock() {
+  rm -rf "$LIFECYCLE_LOCK_DIR" 2>/dev/null || true
+}
+
 main() {
   mkdir -p "$AIVM_STATE_DIR"
 
-  exec 200>"$LIFECYCLE_LOCK"
-  flock -w 30 200 || log_fatal "Could not acquire lifecycle lock within 30s"
+  acquire_lifecycle_lock
+  trap 'release_lifecycle_lock' EXIT INT TERM
 
   if ! is_vm_running; then
     log_info "VM '${COLIMA_PROFILE}' is not running"
-    flock -u 200
     return 0
   fi
 
@@ -45,8 +63,6 @@ main() {
   }
 
   log_success "VM '${COLIMA_PROFILE}' stopped"
-
-  flock -u 200
 }
 
 main "$@"

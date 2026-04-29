@@ -19,8 +19,29 @@ DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
 DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
 AIVM_STATE_DIR="$HOME/.aivm"
 BOOTSTRAP_MARKER="$AIVM_STATE_DIR/.bootstrap-version"
-LIFECYCLE_LOCK="$AIVM_STATE_DIR/lifecycle.lock"
+LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
 BOOTSTRAP_SCRIPT="$REPO_ROOT/bootstrap/bootstrap.sh"
+
+# ── Lifecycle lock (mkdir is atomic on APFS/HFS+) ────────────────────────────
+acquire_lifecycle_lock() {
+  local deadline=$(( $(date +%s) + 30 ))
+  while ! mkdir "$LIFECYCLE_LOCK_DIR" 2>/dev/null; do
+    local lock_pid
+    lock_pid=$(cat "$LIFECYCLE_LOCK_DIR/pid" 2>/dev/null || echo "")
+    if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+      log_warn "Removing stale lifecycle lock (dead pid=$lock_pid)"
+      rm -rf "$LIFECYCLE_LOCK_DIR"
+      continue
+    fi
+    (( $(date +%s) >= deadline )) && log_fatal "Could not acquire lifecycle lock within 30s"
+    sleep 1
+  done
+  echo $$ > "$LIFECYCLE_LOCK_DIR/pid"
+}
+
+release_lifecycle_lock() {
+  rm -rf "$LIFECYCLE_LOCK_DIR" 2>/dev/null || true
+}
 
 # ── Colima profile config dir ─────────────────────────────────────────────────
 COLIMA_PROFILE_DIR="$HOME/.colima/${COLIMA_PROFILE}"
@@ -74,9 +95,8 @@ host_dev_in_vm() {
 main() {
   mkdir -p "$AIVM_STATE_DIR/logs"
 
-  # Acquire lifecycle lock
-  exec 200>"$LIFECYCLE_LOCK"
-  flock -w 30 200 || log_fatal "Could not acquire lifecycle lock within 30s"
+  acquire_lifecycle_lock
+  trap 'release_lifecycle_lock' EXIT INT TERM
 
   if is_vm_running; then
     log_info "VM '${COLIMA_PROFILE}' is already running"
@@ -130,9 +150,6 @@ main() {
   else
     log_debug "Bootstrap up to date — skipping"
   fi
-
-  # Release lock
-  flock -u 200
 }
 
 main "$@"

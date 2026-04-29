@@ -73,16 +73,10 @@ host_to_vm_path() {
   aivm only works inside $DEV_ROOT"
   fi
 
-  # Lima mounts ~/dev at the same macOS path inside the VM (/Users/<user>/dev).
-  # bootstrap.sh creates a symlink: /home/<user>/dev → /Users/<user>/dev.
-  # We expose the /home/<user> path to the user for a clean Linux-style experience.
-  local home_path="$HOME"
-  home_path="$(realpath "$home_path" 2>/dev/null || echo "$home_path")"
-
-  # Strip macOS-style prefix, replace with Linux home
-  # e.g.  /Users/simon/dev/project  →  /home/simon/dev/project
-  local suffix="${real_path#$home_path}"
-  echo "/home/${VM_USER}${suffix}"
+  # Lima/Colima mounts the host filesystem at the exact same absolute path inside
+  # the VM (e.g. /Users/simon/dev is /Users/simon/dev in the VM too).
+  # No translation required.
+  echo "$real_path"
 }
 
 # ── VM status ─────────────────────────────────────────────────────────────────

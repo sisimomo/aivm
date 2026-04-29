@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # bootstrap.sh — Idempotent VM environment setup.
 # Runs INSIDE the VM (via colima ssh).
-# Installs: Java 25, Maven (latest 3.x), Node.js, Claude Code, Docker validation.
+# Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, Claude Code.
 # Writes ~/.aivm-bootstrap-version ONLY after all tools are verified.
 set -euo pipefail
 
 # ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2025-04-28-v1"
+BOOTSTRAP_VERSION="2025-04-28-v6"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -32,10 +32,11 @@ fi
 mkdir -p "$HOME/.aivm"
 echo "[$(ts)] Bootstrap started (version=${BOOTSTRAP_VERSION})" > "$LOG_FILE"
 
-# ── 1. System packages ────────────────────────────────────────────────────────
+export DEBIAN_FRONTEND=noninteractive
+
+# ── 1. System packages (apt) ──────────────────────────────────────────────────
 step "Installing system packages"
 
-export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   git \
@@ -49,6 +50,7 @@ sudo apt-get install -y --no-install-recommends \
   bash-completion \
   jq \
   htop \
+  python3 \
   2>&1 | tee -a "$LOG_FILE"
 
 success "System packages installed"
@@ -57,11 +59,9 @@ success "System packages installed"
 step "Validating Docker"
 
 # Docker is pre-installed by Colima/Lima in the VM.
-# Ensure daemon is running and the current user can use it.
 if ! docker info >/dev/null 2>&1; then
   warn "Docker daemon not yet accessible — adding user to docker group"
   sudo usermod -aG docker "$USER" 2>/dev/null || true
-  # Try again via newgrp context
   if ! sg docker -c "docker info" >/dev/null 2>&1; then
     fatal "Docker is not functional in this VM. Check Colima configuration."
   fi
@@ -73,56 +73,25 @@ docker run --rm hello-world 2>&1 | tee -a "$LOG_FILE" \
 
 success "Docker is operational"
 
-# ── 3. SDKMAN ─────────────────────────────────────────────────────────────────
-step "Installing SDKMAN"
+# ── 3. Java 25 (Temurin via Adoptium apt repo) ───────────────────────────────
+step "Installing Java 25 (Temurin)"
 
-export SDKMAN_DIR="$HOME/.sdkman"
-if [[ ! -d "$SDKMAN_DIR" ]]; then
-  curl -s "https://get.sdkman.io" | bash 2>&1 | tee -a "$LOG_FILE"
+if ! java -version 2>&1 | grep -qE 'version "2[5-9]|version "3[0-9]' 2>/dev/null; then
+  # Add Adoptium GPG key and apt repository
+  sudo mkdir -p /etc/apt/keyrings
+  wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
+
+  echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] \
+https://packages.adoptium.net/artifactory/deb \
+$(lsb_release -sc) main" \
+    | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
+
+  sudo apt-get update -qq
+  sudo apt-get install -y temurin-25-jdk 2>&1 | tee -a "$LOG_FILE"
 else
-  info "SDKMAN already installed"
+  info "Java 25+ already installed"
 fi
-
-# Source SDKMAN
-set +u
-# shellcheck source=/dev/null
-source "$SDKMAN_DIR/bin/sdkman-init.sh"
-set -u
-
-success "SDKMAN $(sdk version 2>/dev/null | head -1)"
-
-# ── 4. Java 25 ────────────────────────────────────────────────────────────────
-step "Installing Java 25"
-
-# Find the latest available Java 25 build from OpenJDK (open/tem vendor)
-JAVA_VERSION=$(sdk list java 2>/dev/null \
-  | grep -E '^\s*(25\.[0-9]|25-)[^|]+\|\s*(open|tem)' \
-  | awk '{print $NF}' \
-  | head -1)
-
-if [[ -z "$JAVA_VERSION" ]]; then
-  # Fallback: try 25.0.1-open or similar pattern
-  JAVA_VERSION=$(sdk list java 2>/dev/null \
-    | grep -oP '25\.[0-9]+\.[0-9]+-open' \
-    | head -1)
-fi
-
-if [[ -z "$JAVA_VERSION" ]]; then
-  # Last resort: any 25.x
-  JAVA_VERSION=$(sdk list java 2>/dev/null \
-    | grep -oP '25[^ ]+' \
-    | grep -v 'ea\|rc\|beta' \
-    | head -1)
-fi
-
-if [[ -z "$JAVA_VERSION" ]]; then
-  fatal "Could not find Java 25 in SDKMAN. Try: sdk list java | grep 25"
-fi
-
-info "Installing Java ${JAVA_VERSION}"
-sdk install java "$JAVA_VERSION" < /dev/null 2>&1 | tee -a "$LOG_FILE" || true
-sdk use java "$JAVA_VERSION" 2>&1 | tee -a "$LOG_FILE" || true
-sdk default java "$JAVA_VERSION" 2>&1 | tee -a "$LOG_FILE" || true
 
 JAVA_ACTUAL=$(java -version 2>&1 | head -1)
 info "Java: $JAVA_ACTUAL"
@@ -131,45 +100,45 @@ if ! java -version 2>&1 | grep -qE 'version "2[5-9]|version "3[0-9]'; then
 fi
 success "Java installed: $JAVA_ACTUAL"
 
-# ── 5. Maven (latest 3.x) ─────────────────────────────────────────────────────
+# ── 4. Maven (latest 3.x — direct download from Apache) ──────────────────────
 step "Installing Maven"
 
-MAVEN_VERSION=$(sdk list maven 2>/dev/null \
-  | grep -oP '3\.[0-9]+\.[0-9]+' \
-  | sort -V \
-  | tail -1)
+MAVEN_INSTALL_DIR="/opt/maven"
+if ! command -v mvn >/dev/null 2>&1; then
+  # Resolve latest 3.x version from Apache dist index
+  MAVEN_VERSION=$(curl -s "https://dlcdn.apache.org/maven/maven-3/" \
+    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' \
+    | sort -V | tail -1 | tr -d '/')
 
-if [[ -z "$MAVEN_VERSION" ]]; then
-  fatal "Could not find Maven 3.x in SDKMAN"
+  if [[ -z "$MAVEN_VERSION" ]]; then
+    fatal "Could not resolve latest Maven 3.x version from Apache"
+  fi
+
+  info "Downloading Maven ${MAVEN_VERSION}"
+  MAVEN_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+  MAVEN_TMP=$(mktemp -d)
+  curl -fsSL "$MAVEN_URL" -o "$MAVEN_TMP/maven.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+  sudo mkdir -p "$MAVEN_INSTALL_DIR"
+  sudo tar -xzf "$MAVEN_TMP/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
+  sudo ln -sf "$MAVEN_INSTALL_DIR/bin/mvn" /usr/local/bin/mvn
+  rm -rf "$MAVEN_TMP"
+else
+  info "Maven already installed"
 fi
-
-info "Installing Maven ${MAVEN_VERSION}"
-sdk install maven "$MAVEN_VERSION" < /dev/null 2>&1 | tee -a "$LOG_FILE" || true
-sdk default maven "$MAVEN_VERSION" 2>&1 | tee -a "$LOG_FILE" || true
 
 MVN_ACTUAL=$(mvn --version 2>&1 | head -1)
 info "Maven: $MVN_ACTUAL"
 success "Maven installed: $MVN_ACTUAL"
 
-# ── 6. Node.js (via fnm) ──────────────────────────────────────────────────────
-step "Installing Node.js"
-
-export FNM_DIR="$HOME/.local/share/fnm"
-export PATH="$HOME/.local/share/fnm:$PATH"
-
-if ! command -v fnm >/dev/null 2>&1; then
-  curl -fsSL https://fnm.vercel.app/install | bash 2>&1 | tee -a "$LOG_FILE"
-  # Add to PATH for rest of script
-  export PATH="$HOME/.local/share/fnm:$PATH"
-  eval "$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true
-else
-  info "fnm already installed"
-  eval "$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true
-fi
+# ── 5. Node.js LTS (via NodeSource apt repo) ─────────────────────────────────
+step "Installing Node.js LTS"
 
 if ! command -v node >/dev/null 2>&1; then
-  fnm install --lts 2>&1 | tee -a "$LOG_FILE"
-  fnm use lts-latest 2>&1 | tee -a "$LOG_FILE" || fnm use "$(fnm list | tail -1 | awk '{print $2}')" 2>/dev/null || true
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - \
+    2>&1 | tee -a "$LOG_FILE"
+  sudo apt-get install -y nodejs 2>&1 | tee -a "$LOG_FILE"
+else
+  info "Node.js already installed"
 fi
 
 NODE_ACTUAL=$(node --version 2>/dev/null)
@@ -177,8 +146,14 @@ NPM_ACTUAL=$(npm --version 2>/dev/null)
 info "Node: $NODE_ACTUAL, npm: $NPM_ACTUAL"
 success "Node.js installed: $NODE_ACTUAL"
 
-# ── 7. Claude Code ────────────────────────────────────────────────────────────
+# ── 6. Claude Code ────────────────────────────────────────────────────────────
 step "Installing Claude Code"
+
+# Configure npm global prefix to a user-writable directory so sudo is not needed
+NPM_GLOBAL_DIR="$HOME/.npm-global"
+mkdir -p "$NPM_GLOBAL_DIR"
+npm config set prefix "$NPM_GLOBAL_DIR"
+export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
 
 if ! command -v claude >/dev/null 2>&1; then
   npm install -g @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE"
@@ -191,7 +166,7 @@ CLAUDE_ACTUAL=$(claude --version 2>/dev/null || echo "unknown")
 info "Claude Code: $CLAUDE_ACTUAL"
 success "Claude Code installed: $CLAUDE_ACTUAL"
 
-# ── 8. Shell profile setup ────────────────────────────────────────────────────
+# ── 7. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
 
 PROFILE_BLOCK_START="# >>> aivm bootstrap >>>"
@@ -199,9 +174,7 @@ PROFILE_BLOCK_END="# <<< aivm bootstrap <<<"
 
 write_profile_block() {
   local profile_file="$1"
-  # Remove existing block
   if grep -q "$PROFILE_BLOCK_START" "$profile_file" 2>/dev/null; then
-    # Use python3 for multi-line deletion (sed -i is not portable across macOS/Linux)
     python3 - <<PYEOF
 import re, pathlib
 p = pathlib.Path("$profile_file")
@@ -219,12 +192,7 @@ PYEOF
   cat >> "$profile_file" <<EOF
 
 ${PROFILE_BLOCK_START}
-# SDKMAN
-export SDKMAN_DIR="\$HOME/.sdkman"
-[[ -s "\$SDKMAN_DIR/bin/sdkman-init.sh" ]] && source "\$SDKMAN_DIR/bin/sdkman-init.sh"
-# fnm (Node.js)
-export PATH="\$HOME/.local/share/fnm:\$PATH"
-eval "\$(fnm env --use-on-cd 2>/dev/null)" 2>/dev/null || true
+export PATH="/opt/maven/bin:\$HOME/.npm-global/bin:\$PATH"
 ${PROFILE_BLOCK_END}
 EOF
 }
@@ -235,11 +203,11 @@ write_profile_block "$HOME/.bashrc"
 
 success "Shell profile configured"
 
-# ── 9. /home/<user>/dev symlink ───────────────────────────────────────────────
-step "Setting up path symlink"
+# ── 8. /home/<user>/dev symlink (convenience alias) ──────────────────────────
+step "Setting up home dev symlink"
 
-# Lima mounts the host ~/dev at /Users/<user>/dev (same macOS path).
-# Create /home/<user>/dev → /Users/<user>/dev so that the canonical VM path works.
+# Lima mounts the host at the exact same absolute path (e.g. /Users/simon/dev).
+# Create /home/<user>/dev as a convenience symlink pointing to that mount.
 HOST_DEV_LIMA="/Users/$(whoami)/dev"
 VM_DEV_HOME="$HOME/dev"
 
@@ -256,15 +224,13 @@ else
   warn "Host dev dir not mounted at $HOST_DEV_LIMA — check Colima mount config"
 fi
 
-success "Path symlink configured"
+success "Home dev symlink configured"
 
-# ── 10. MCP client config ─────────────────────────────────────────────────────
+# ── 9. MCP client config ──────────────────────────────────────────────────────
 step "Configuring MCP client for Claude Code"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
-CLAUDE_CONFIG="$HOME/.claude.json"
 
-# Build MCP config
 python3 - <<PYEOF
 import json, os, pathlib
 
@@ -288,14 +254,10 @@ PYEOF
 
 success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
 
-# ── 11. Verify all tools ──────────────────────────────────────────────────────
+# ── 10. Verify all tools ──────────────────────────────────────────────────────
 step "Verifying tool installations"
 
-set +u
-source "$SDKMAN_DIR/bin/sdkman-init.sh" 2>/dev/null || true
-export PATH="$HOME/.local/share/fnm:$PATH"
-eval "$(fnm env 2>/dev/null)" 2>/dev/null || true
-set -u
+export PATH="/opt/maven/bin:$HOME/.npm-global/bin:$PATH"
 
 FAILED=0
 
@@ -311,14 +273,14 @@ check_tool() {
   fi
 }
 
-check_tool "Maven"      mvn
-check_tool "Git"        git
-check_tool "Docker"     docker
-check_tool "Node.js"    node
-check_tool "npm"        npm
-check_tool "Claude"     claude
+check_tool "Maven"   mvn
+check_tool "Git"     git
+check_tool "Docker"  docker
+check_tool "Node.js" node
+check_tool "npm"     npm
+check_tool "Claude"  claude
 
-# Java uses -version
+# Java uses -version (stderr)
 if command -v java >/dev/null 2>&1; then
   ver=$(java -version 2>&1 | head -1)
   info "  ✓ Java: $ver"
@@ -342,3 +304,5 @@ echo "  Maven:       $(mvn --version 2>&1 | head -1)"
 echo "  Node.js:     $(node --version)"
 echo "  Claude Code: $(claude --version 2>/dev/null || echo 'installed')"
 echo ""
+
+
