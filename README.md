@@ -85,7 +85,7 @@ cd ~/dev/ai-vm
 
 # 3. Configure
 cp .env.example .env
-# Edit .env — set ANTHROPIC_API_KEY at minimum
+# Edit .env as needed
 
 # 4. Launch (from any project directory under ~/dev)
 cd ~/dev/my-project
@@ -179,7 +179,6 @@ Defaults (override in `.env`):
 
 - **No SSH keys** inside the VM
 - **No git credentials** inside the VM
-- **No API keys** stored in the VM — `ANTHROPIC_API_KEY` is injected at session start and is only available in the `claude` process's environment
 - **MCPJungle** is the only external integration surface; it runs on the host and is not accessible from outside `127.0.0.1`
 - The VM is **fully disposable** — `colima delete aivm` and restart to get a clean slate
 - MCPJungle data (SQLite) persists at `~/.aivm/mcpjungle-data/` on the host

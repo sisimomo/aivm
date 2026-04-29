@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bootstrap.sh — VM environment setup. Runs INSIDE the VM (via colima ssh).
-# Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, GitHub Copilot CLI.
+# Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, Claude Code CLI.
 #
 # Designed to run EXACTLY ONCE, when the VM is first created. 'aivm stop'
 # deletes the VM, so any next start either resumes an already-provisioned VM
@@ -147,24 +147,25 @@ RTK_ACTUAL=$(rtk --version 2>/dev/null || echo "unknown")
 info "rtk: $RTK_ACTUAL"
 success "rtk installed: $RTK_ACTUAL"
 
-# ── 7. GitHub Copilot CLI ─────────────────────────────────────────────────────
-step "Installing GitHub Copilot CLI"
+# ── 7. Claude Code CLI ────────────────────────────────────────────────────────
+step "Installing Claude Code CLI"
 
-# Install to ~/.local/bin (default non-root prefix).
-# Echo "n" to suppress the interactive "add to PATH?" prompt.
-echo "n" | bash -c "$(curl -fsSL https://gh.io/copilot-install)" \
-  2>&1 | tee -a "$LOG_FILE" || true
+curl -fsSL https://claude.ai/install.sh | bash 2>&1 | tee -a "$LOG_FILE"
 
-# Ensure ~/.local/bin is on PATH for the rest of this script
-export PATH="$HOME/.local/bin:$PATH"
+# Ensure the installer's bin dir is on PATH for the rest of this script
+export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
 
-if ! command -v copilot >/dev/null 2>&1; then
-  fatal "Copilot CLI not found at ~/.local/bin/copilot after install"
+if ! command -v claude >/dev/null 2>&1; then
+  fatal "Claude Code CLI not found after install"
 fi
 
-COPILOT_ACTUAL=$(copilot --version 2>/dev/null || echo "unknown")
-info "Copilot CLI: $COPILOT_ACTUAL"
-success "Copilot CLI installed: $COPILOT_ACTUAL"
+CLAUDE_ACTUAL=$(claude --version 2>/dev/null || echo "unknown")
+info "Claude Code: $CLAUDE_ACTUAL"
+success "Claude Code installed: $CLAUDE_ACTUAL"
+
+step "Configuring Claude Code"
+echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
+success "~/.claude.json written"
 
 # ── 8. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
@@ -178,20 +179,19 @@ sudo chmod 0644 /etc/profile.d/aivm.sh
 
 success "Shell profile configured (/etc/profile.d/aivm.sh)"
 
-# ── 9. MCP client config for Copilot CLI ──────────────────────────────────────
-step "Configuring MCP client for Copilot CLI"
+# ── 9. MCP client config for Claude Code ─────────────────────────────────────
+step "Configuring MCP client for Claude Code"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
-COPILOT_CONFIG_DIR="$HOME/.copilot"
-MCP_CONFIG="$COPILOT_CONFIG_DIR/mcp-config.json"
-mkdir -p "$COPILOT_CONFIG_DIR"
+MCP_CONFIG="$HOME/.claude/mcp-config.json"
+mkdir -p "$HOME/.claude"
 
 cat > "$MCP_CONFIG" <<EOF
 {
   "mcpServers": {
     "mcpjungle": {
-      "url": "http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp",
-      "transport": "http"
+      "type": "http",
+      "url": "http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
     }
   }
 }
@@ -226,7 +226,7 @@ check_tool "Docker"  docker
 check_tool "Node.js" node
 check_tool "npm"     npm
 check_tool "uv"      uv
-check_tool "Copilot CLI" copilot
+check_tool "Claude Code" claude
 check_tool "rtk"     rtk
 
 # Java uses -version (stderr)
@@ -255,5 +255,5 @@ echo "  Maven:       $(mvn --version 2>&1 | head -1)"
 echo "  Node.js:     $(node --version)"
 echo "  rtk:         $(rtk --version 2>/dev/null || echo 'installed')"
 echo "  python:      $(python --version 2>/dev/null || echo 'installed')"
-echo "  Copilot CLI: $(copilot --version 2>/dev/null || echo 'installed')"
+echo "  Claude Code: $(claude --version 2>/dev/null || echo 'installed')"
 echo ""

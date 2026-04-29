@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# aivm — Launch GitHub Copilot CLI agents inside a secure Colima VM.
+# aivm — Launch Claude Code agents inside a secure Colima VM.
 #
 # Usage:
-#   aivm                   Launch Copilot CLI in current directory (default)
-#   aivm start             Start VM and services without launching Copilot CLI
+#   aivm                   Launch Claude Code in current directory (default)
+#   aivm start             Start VM and services without launching Claude Code
 #   aivm stop              Stop VM and all services
 #   aivm restart           Restart VM and services
 #   aivm status            Show VM and service status
@@ -306,7 +306,7 @@ do_ssh() {
   colima ssh --profile "$COLIMA_PROFILE"
 }
 
-# ── Launch Copilot CLI ────────────────────────────────────────────────────────
+# ── Launch Claude Code ────────────────────────────────────────────────────────
 do_launch() {
   local host_cwd
   host_cwd="$(pwd)"
@@ -318,13 +318,11 @@ do_launch() {
   log_info "Host: $host_cwd"
   log_info "VM:   $vm_dir"
 
-  # Ensure GH_TOKEN is available for Copilot auth
-  local gh_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
-  if [[ -z "$gh_token" ]]; then
-    log_fatal "GH_TOKEN (or GITHUB_TOKEN) is not set.
-    https://github.com/settings/personal-access-tokens/new
-  Then set it in $REPO_ROOT/.env:
-    GH_TOKEN=github_pat_..."
+  # Ensure CLAUDE_CODE_OAUTH_TOKEN is available for Claude Code auth
+  local api_key="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+  if [[ -z "$api_key" ]]; then
+    log_fatal "CLAUDE_CODE_OAUTH_TOKEN is not set. Set it in $REPO_ROOT/.env:
+  CLAUDE_CODE_OAUTH_TOKEN=<your token>"
   fi
 
   # Create session lock
@@ -332,7 +330,7 @@ do_launch() {
   lock_file=$(create_session_lock)
   trap "remove_session_lock '$lock_file'" EXIT INT TERM
 
-  log_step "Launching Copilot CLI in VM"
+  log_step "Launching Claude Code in VM"
   log_info "Working directory: $vm_dir"
   log_info "Session lock: $lock_file"
   echo ""
@@ -342,14 +340,11 @@ do_launch() {
   local vm_dir_q
   vm_dir_q=$(printf '%q' "$vm_dir")
 
-  # Launch Copilot CLI interactively inside VM
-  # - env injects GH_TOKEN without persisting it in VM
-  # - bash -l loads login profile (PATH etc.)
-  # - exec copilot replaces bash to forward signals cleanly
+  # Launch Claude Code interactively inside VM.
+  # bash -l loads login profile (PATH etc.); exec claude forwards signals cleanly.
   colima ssh --profile "$COLIMA_PROFILE" -- \
     env \
-      "GH_TOKEN=${gh_token}" \
-      "GITHUB_TOKEN=${gh_token}" \
+      "CLAUDE_CODE_OAUTH_TOKEN=${api_key}" \
       "AIVM_SESSION_ID=$$" \
     bash -lc "
       set -e
@@ -359,7 +354,7 @@ do_launch() {
         exit 1
       fi
       cd ${vm_dir_q}
-      exec copilot --yolo
+      exec claude --dangerously-skip-permissions --mcp-config \"\$HOME/.claude/mcp-config.json\"
     "
 }
 
@@ -373,8 +368,8 @@ do_help() {
     aivm [command] [options]
 
   COMMANDS
-    (default)              Start VM + services and launch Copilot CLI
-    start                  Start VM and services only (no Copilot CLI)
+    (default)              Start VM + services and launch Claude Code
+    start                  Start VM and services only (no Claude Code)
     stop                   Stop VM and all services
     restart                Restart VM and services
     status                 Show VM, MCPJungle, and session status
@@ -385,12 +380,12 @@ do_help() {
     help                   Show this help
 
   REQUIREMENTS
-    • colima          brew install colima
-    • docker          Docker Desktop, OrbStack, or 'colima start' (default profile)
-    • GH_TOKEN        https://github.com/settings/personal-access-tokens/new
+    • colima               brew install colima
+    • docker               Docker Desktop, OrbStack, or 'colima start' (default profile)
+    • CLAUDE_CODE_OAUTH_TOKEN  set in .env (claude setup-token runs automatically on bootstrap)
 
   CONFIGURATION
-    Edit ~/dev/ai-vm/.env (copy from .env.example)
+    Edit $REPO_ROOT/.env (copy from .env.example)
 
   PATH MAPPING
     Host path is used as-is inside the VM (Lima mounts at identical path).

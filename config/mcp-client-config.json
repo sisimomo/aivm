@@ -1,9 +1,9 @@
 {
-  "_comment": "MCP client config template for Claude Code inside VM. Populated by bootstrap.sh.",
+  "_comment": "MCP client config for Claude Code inside VM. Written to ~/.claude/mcp-config.json by bootstrap.sh.",
   "mcpServers": {
     "mcpjungle": {
-      "url": "http://host.lima.internal:${MCPJUNGLE_PORT}/mcp",
-      "transport": "http"
+      "type": "http",
+      "url": "http://host.lima.internal:${MCPJUNGLE_PORT}/mcp"
     }
   }
 }

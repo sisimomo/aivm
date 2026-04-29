@@ -20,7 +20,7 @@ info "Checking required tools..."
 
 missing=()
 command -v colima  >/dev/null 2>&1 || missing+=("colima  → brew install colima")
-command -v incus   >/dev/null 2>&1 || missing+=("incus  → brew install incus")
+command -v incus   >/dev/null 2>&1 || missing+=("incus   → brew install incus")
 command -v docker  >/dev/null 2>&1 || missing+=("docker  → https://www.docker.com/products/docker-desktop/")
 command -v curl    >/dev/null 2>&1 || missing+=("curl    → brew install curl")
 command -v python3 >/dev/null 2>&1 || missing+=("python3 → brew install python3")
@@ -68,7 +68,7 @@ ok "Installed: $(which aivm)"
 if [[ ! -f "$REPO_ROOT/.env" ]]; then
   info "Creating .env from .env.example..."
   cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-  warn "⚠️  Edit $REPO_ROOT/.env and set ANTHROPIC_API_KEY before running aivm"
+  warn "⚠️  Edit $REPO_ROOT/.env and set CLAUDE_CODE_OAUTH_TOKEN before running aivm"
 else
   ok ".env already exists"
 fi
@@ -79,7 +79,7 @@ echo "  ────────────────────────
 echo -e "  ${GREEN}Installation complete!${NC}"
 echo ""
 echo "  Next steps:"
-echo "    1. Edit $REPO_ROOT/.env and set ANTHROPIC_API_KEY"
+echo "    1. Edit $REPO_ROOT/.env and set CLAUDE_CODE_OAUTH_TOKEN"
 echo "    2. Run: aivm          (from any directory under ~/dev)"
 echo ""
 echo "  Other commands:"

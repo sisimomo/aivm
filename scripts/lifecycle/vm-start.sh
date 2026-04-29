@@ -102,11 +102,18 @@ main() {
 
     log_info "CPU=${VM_CPUS} Memory=${VM_MEMORY}GiB Disk=${VM_DISK}GiB Type=${VM_TYPE}"
 
+    # If the repo lives outside DEV_ROOT, mount only the bootstrap dir (read-only) so bootstrap.sh is reachable inside the VM.
+    local extra_mounts=()
+    if [[ "$REPO_ROOT" != "$DEV_ROOT"* ]]; then
+      extra_mounts=(--mount "${REPO_ROOT}/bootstrap:r")
+    fi
+
     colima start "$COLIMA_PROFILE" \
       --cpu "$VM_CPUS" \
       --memory "$VM_MEMORY" \
       --disk "$VM_DISK" \
       --mount "${DEV_ROOT}:w" \
+      "${extra_mounts[@]}" \
       $vm_type_flags \
       --ssh-agent=false \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log"
@@ -133,12 +140,12 @@ main() {
   if (( vm_was_created )); then
     log_step "Running VM bootstrap (one-time, on fresh VM)"
     local vm_bootstrap_path
-    vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
+    vm_bootstrap_path="$BOOTSTRAP_SCRIPT"
     local vm_bootstrap_path_q
     vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
     # Inject only the specific vars bootstrap needs — never pass secrets or the full .env.
     colima ssh --profile "$COLIMA_PROFILE" -- \
-      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' bash ${vm_bootstrap_path_q}" \
+      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' bash ${vm_bootstrap_path_q}" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
     log_success "Bootstrap complete"
   else
