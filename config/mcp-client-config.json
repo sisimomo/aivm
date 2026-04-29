@@ -1,0 +1,9 @@
+{
+  "_comment": "MCP client config template for Claude Code inside VM. Populated by bootstrap.sh.",
+  "mcpServers": {
+    "mcpjungle": {
+      "url": "http://host.lima.internal:${MCPJUNGLE_PORT}/mcp",
+      "transport": "http"
+    }
+  }
+}

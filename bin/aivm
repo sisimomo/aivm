@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+# aivm — Launch Claude Code agents inside a secure Colima VM.
+#
+# Usage:
+#   aivm                   Launch Claude Code in current directory (default)
+#   aivm start             Start VM and services without launching Claude Code
+#   aivm stop              Stop VM and all services
+#   aivm restart           Restart VM and services
+#   aivm status            Show VM and service status
+#   aivm ssh               Open an interactive shell in the VM
+#   aivm bootstrap         Re-run VM bootstrap
+#   aivm logs [service]    Show logs (service: mcpjungle | monitor | bootstrap)
+#   aivm help              Show this help
+set -euo pipefail
+
+# Resolve symlink chain so REPO_ROOT points to the real repo,
+# not the directory containing the symlink (e.g. /usr/local/bin).
+_s="${BASH_SOURCE[0]}"
+while [[ -L "$_s" ]]; do
+  _l="$(readlink "$_s")"
+  [[ "$_l" = /* ]] && _s="$_l" || _s="$(cd "$(dirname "$_s")" && pwd)/$_l"
+done
+SCRIPT_DIR="$(cd "$(dirname "$_s")" && pwd)"
+unset _s _l
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+source "$REPO_ROOT/scripts/utils/logging.sh"
+
+# ── Load config ───────────────────────────────────────────────────────────────
+[[ -f "$REPO_ROOT/.env" ]] && set -a && source "$REPO_ROOT/.env" && set +a
+
+COLIMA_PROFILE="${AIVM_COLIMA_PROFILE:-aivm}"
+DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
+DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
+DEV_ROOT="$(realpath "$DEV_ROOT" 2>/dev/null || echo "$DEV_ROOT")"
+VM_USER="${AIVM_VM_USER:-$(whoami)}"
+AIVM_STATE_DIR="$HOME/.aivm"
+SESSION_DIR="$AIVM_STATE_DIR/sessions"
+IDLE_MONITOR_PID_FILE="$AIVM_STATE_DIR/idle-monitor.pid"
+
+# ── Preflight checks ──────────────────────────────────────────────────────────
+preflight() {
+  local failed=0
+
+  command -v colima >/dev/null 2>&1 || {
+    log_error "colima not found. Install: brew install colima"
+    failed=1
+  }
+  command -v docker >/dev/null 2>&1 || {
+    log_error "docker not found. Install Docker Desktop or OrbStack."
+    failed=1
+  }
+  command -v curl >/dev/null 2>&1 || {
+    log_error "curl not found."
+    failed=1
+  }
+
+  (( failed )) && log_fatal "Preflight checks failed. Fix the above issues and retry."
+
+  # Ensure state directories exist
+  mkdir -p "$AIVM_STATE_DIR/logs" "$SESSION_DIR"
+}
+
+# ── Path translation: host CWD → VM path ─────────────────────────────────────
+host_to_vm_path() {
+  local host_path="$1"
+  local real_path
+  real_path="$(realpath "$host_path" 2>/dev/null || echo "$host_path")"
+
+  # Validate: must be under DEV_ROOT
+  if [[ "$real_path" != "$DEV_ROOT"* ]]; then
+    log_fatal "Current directory '$real_path' is not under \$AIVM_DEV_ROOT ($DEV_ROOT).
+  aivm only works inside $DEV_ROOT"
+  fi
+
+  # Lima mounts ~/dev at the same macOS path inside the VM (/Users/<user>/dev).
+  # bootstrap.sh creates a symlink: /home/<user>/dev → /Users/<user>/dev.
+  # We expose the /home/<user> path to the user for a clean Linux-style experience.
+  local home_path="$HOME"
+  home_path="$(realpath "$home_path" 2>/dev/null || echo "$home_path")"
+
+  # Strip macOS-style prefix, replace with Linux home
+  # e.g.  /Users/simon/dev/project  →  /home/simon/dev/project
+  local suffix="${real_path#$home_path}"
+  echo "/home/${VM_USER}${suffix}"
+}
+
+# ── VM status ─────────────────────────────────────────────────────────────────
+is_vm_running() {
+  colima list 2>/dev/null | awk 'NR>1 {print $1, $2}' \
+    | grep -q "^${COLIMA_PROFILE} Running"
+}
+
+is_mcpjungle_healthy() {
+  local port="${MCPJUNGLE_PORT:-8080}"
+  curl -sf "http://127.0.0.1:${port}/health" >/dev/null 2>&1
+}
+
+# ── Session lock management ───────────────────────────────────────────────────
+create_session_lock() {
+  mkdir -p "$SESSION_DIR"
+  local lock_file="$SESSION_DIR/$$.lock"
+  local start_epoch
+  start_epoch=$(date +%s)
+  echo "$$ $start_epoch" > "$lock_file"
+  echo "$lock_file"
+}
+
+remove_session_lock() {
+  local lock_file="$1"
+  rm -f "$lock_file"
+  date +%s > "$AIVM_STATE_DIR/last-session-end"
+}
+
+# ── Idle monitor management ───────────────────────────────────────────────────
+ensure_idle_monitor() {
+  if [[ -f "$IDLE_MONITOR_PID_FILE" ]]; then
+    local pid
+    pid=$(cat "$IDLE_MONITOR_PID_FILE" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      log_debug "Idle monitor already running (pid=$pid)"
+      return 0
+    fi
+    rm -f "$IDLE_MONITOR_PID_FILE"
+  fi
+
+  log_info "Starting idle monitor..."
+  nohup bash "$REPO_ROOT/scripts/lifecycle/idle-monitor.sh" \
+    >> "$AIVM_STATE_DIR/logs/idle-monitor.log" 2>&1 &
+  disown $!
+  log_debug "Idle monitor launched (pid=$!)"
+}
+
+# ── Startup sequence ──────────────────────────────────────────────────────────
+do_start() {
+  log_step "Starting aivm"
+
+  # 1. Start MCPJungle on host
+  log_info "Ensuring MCPJungle is running..."
+  "$REPO_ROOT/scripts/mcp/start-mcpjungle.sh"
+
+  # 2. Start VM (includes bootstrap if needed)
+  "$REPO_ROOT/scripts/lifecycle/vm-start.sh"
+
+  # 3. Ensure idle monitor is running
+  ensure_idle_monitor
+
+  log_success "aivm is ready"
+}
+
+# ── Shutdown sequence ─────────────────────────────────────────────────────────
+do_stop() {
+  log_step "Stopping aivm"
+
+  # 1. Stop VM (stops Docker workloads inside)
+  "$REPO_ROOT/scripts/lifecycle/vm-stop.sh"
+
+  # 2. Stop MCPJungle
+  "$REPO_ROOT/scripts/mcp/stop-mcpjungle.sh"
+
+  # 3. Stop idle monitor
+  if [[ -f "$IDLE_MONITOR_PID_FILE" ]]; then
+    local pid
+    pid=$(cat "$IDLE_MONITOR_PID_FILE" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      log_info "Stopping idle monitor (pid=$pid)..."
+      kill "$pid" 2>/dev/null || true
+    fi
+    rm -f "$IDLE_MONITOR_PID_FILE"
+  fi
+
+  log_success "aivm stopped"
+}
+
+# ── Status display ────────────────────────────────────────────────────────────
+do_status() {
+  local port="${MCPJUNGLE_PORT:-8080}"
+  echo ""
+  echo "  ┌─ aivm status ─────────────────────────────────┐"
+
+  # VM
+  if is_vm_running; then
+    echo "  │  VM (${COLIMA_PROFILE}):     ✅ Running"
+    local bootstrap_ver
+    bootstrap_ver=$(colima ssh --profile "$COLIMA_PROFILE" -- \
+      bash -lc "cat ~/.aivm-bootstrap-version 2>/dev/null || echo 'not bootstrapped'" 2>/dev/null || echo "unknown")
+    echo "  │  Bootstrap:         ${bootstrap_ver}"
+  else
+    echo "  │  VM (${COLIMA_PROFILE}):     ❌ Stopped"
+  fi
+
+  # MCPJungle
+  if is_mcpjungle_healthy; then
+    echo "  │  MCPJungle:         ✅ Healthy (port ${port})"
+  else
+    echo "  │  MCPJungle:         ❌ Not running"
+  fi
+
+  # Idle monitor
+  if [[ -f "$IDLE_MONITOR_PID_FILE" ]]; then
+    local pid
+    pid=$(cat "$IDLE_MONITOR_PID_FILE" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "  │  Idle monitor:      ✅ Running (pid=${pid})"
+    else
+      echo "  │  Idle monitor:      ⚠️  PID stale"
+    fi
+  else
+    echo "  │  Idle monitor:      ❌ Not running"
+  fi
+
+  # Active sessions
+  local session_count=0
+  if [[ -d "$SESSION_DIR" ]]; then
+    shopt -s nullglob
+    for lf in "$SESSION_DIR"/*.lock; do
+      local lpid
+      lpid=$(awk '{print $1}' "$lf" 2>/dev/null || echo "")
+      [[ -n "$lpid" ]] && kill -0 "$lpid" 2>/dev/null && (( session_count++ ))
+    done
+    shopt -u nullglob
+  fi
+  echo "  │  Active sessions:   ${session_count}"
+  echo "  └───────────────────────────────────────────────┘"
+  echo ""
+}
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+do_logs() {
+  local service="${1:-mcpjungle}"
+  local port="${MCPJUNGLE_PORT:-8080}"
+
+  case "$service" in
+    mcpjungle)
+      log_info "MCPJungle container logs (Ctrl-C to stop):"
+      docker logs -f mcpjungle-server 2>/dev/null \
+        || log_error "Could not get MCPJungle logs. Try: docker --context <host-context> logs -f mcpjungle-server"
+      ;;
+    monitor|idle-monitor)
+      tail -f "$AIVM_STATE_DIR/logs/idle-monitor.log" 2>/dev/null \
+        || log_error "No idle monitor log found at $AIVM_STATE_DIR/logs/idle-monitor.log"
+      ;;
+    bootstrap)
+      colima ssh --profile "$COLIMA_PROFILE" -- \
+        bash -lc "tail -50 ~/.aivm-bootstrap.log 2>/dev/null || echo 'No bootstrap log found'"
+      ;;
+    colima)
+      tail -f "$AIVM_STATE_DIR/logs/colima.log" 2>/dev/null \
+        || log_error "No colima log found"
+      ;;
+    *)
+      log_error "Unknown service: $service"
+      log_info "Available: mcpjungle | monitor | bootstrap | colima"
+      exit 1
+      ;;
+  esac
+}
+
+# ── Bootstrap ─────────────────────────────────────────────────────────────────
+do_bootstrap() {
+  if ! is_vm_running; then
+    log_fatal "VM is not running. Run 'aivm start' first."
+  fi
+
+  local vm_bootstrap_path="/Users/${VM_USER}/dev/ai-vm/bootstrap/bootstrap.sh"
+  log_step "Running bootstrap in VM"
+  colima ssh --profile "$COLIMA_PROFILE" -- \
+    bash -lc "BOOTSTRAP_FORCE=1 bash '${vm_bootstrap_path}'" \
+    2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
+}
+
+# ── SSH into VM ───────────────────────────────────────────────────────────────
+do_ssh() {
+  if ! is_vm_running; then
+    log_fatal "VM is not running. Run 'aivm start' first."
+  fi
+  log_info "Opening shell in VM '${COLIMA_PROFILE}'..."
+  colima ssh --profile "$COLIMA_PROFILE"
+}
+
+# ── Launch Claude Code ────────────────────────────────────────────────────────
+do_launch() {
+  local host_cwd
+  host_cwd="$(pwd)"
+
+  # Translate host path to VM path
+  local vm_dir
+  vm_dir="$(host_to_vm_path "$host_cwd")"
+
+  log_info "Host: $host_cwd"
+  log_info "VM:   $vm_dir"
+
+  # Ensure ANTHROPIC_API_KEY is available
+  if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    log_fatal "ANTHROPIC_API_KEY is not set.
+  Set it in $REPO_ROOT/.env or export it before running aivm:
+    export ANTHROPIC_API_KEY=sk-ant-..."
+  fi
+
+  # Create session lock
+  local lock_file
+  lock_file=$(create_session_lock)
+  trap "remove_session_lock '$lock_file'" EXIT INT TERM
+
+  log_step "Launching Claude Code in VM"
+  log_info "Working directory: $vm_dir"
+  log_info "Session lock: $lock_file"
+  echo ""
+
+  # Launch Claude Code interactively inside VM
+  # - env injects API key without persisting it in VM
+  # - bash -l loads login profile (SDKMAN, fnm, etc.)
+  # - exec claude replaces bash to forward signals cleanly
+  colima ssh --profile "$COLIMA_PROFILE" -- \
+    env \
+      "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+      "AIVM_SESSION_ID=$$" \
+    bash -lc "
+      set -e
+      if [[ ! -d '${vm_dir}' ]]; then
+        echo '[aivm] ERROR: VM directory ${vm_dir} does not exist.'
+        echo '[aivm] Check that ~/dev is correctly mounted in the VM.'
+        exit 1
+      fi
+      cd '${vm_dir}'
+      exec claude
+    "
+}
+
+# ── Help ──────────────────────────────────────────────────────────────────────
+do_help() {
+  cat <<'EOF'
+
+  aivm — AI VM sandbox CLI
+
+  USAGE
+    aivm [command] [options]
+
+  COMMANDS
+    (default)              Start VM + services and launch Claude Code
+    start                  Start VM and services only (no Claude Code)
+    stop                   Stop VM and all services
+    restart                Restart VM and services
+    status                 Show VM, MCPJungle, and session status
+    ssh                    Open interactive shell in the VM
+    bootstrap              Force re-run of VM bootstrap
+    logs [service]         Show service logs (mcpjungle|monitor|bootstrap|colima)
+    help                   Show this help
+
+  REQUIREMENTS
+    • colima          brew install colima
+    • docker          Docker Desktop, OrbStack, or 'colima start' (default profile)
+    • ANTHROPIC_API_KEY  set in .env or environment
+
+  CONFIGURATION
+    Edit ~/dev/ai-vm/.env (copy from .env.example)
+
+  PATH MAPPING
+    Host: ~/dev/...        →  VM: /home/<user>/dev/...
+    Current directory is automatically translated.
+
+EOF
+}
+
+# ── Command dispatch ──────────────────────────────────────────────────────────
+main() {
+  local cmd="${1:-launch}"
+
+  # For commands that modify VM state, run preflight checks
+  case "$cmd" in
+    launch|start|restart|bootstrap)
+      preflight
+      ;;
+  esac
+
+  case "$cmd" in
+    launch)
+      do_start
+      do_launch
+      ;;
+    start)
+      do_start
+      ;;
+    stop)
+      do_stop
+      ;;
+    restart)
+      do_stop
+      sleep 2
+      do_start
+      ;;
+    status)
+      do_status
+      ;;
+    ssh)
+      do_ssh
+      ;;
+    bootstrap)
+      do_start
+      do_bootstrap
+      ;;
+    logs)
+      do_logs "${2:-mcpjungle}"
+      ;;
+    help|--help|-h)
+      do_help
+      ;;
+    *)
+      log_error "Unknown command: $cmd"
+      do_help
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
