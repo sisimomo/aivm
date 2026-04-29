@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # bootstrap.sh — Idempotent VM environment setup.
 # Runs INSIDE the VM (via colima ssh).
-# Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, Claude Code.
+# Installs: Java 25 (Temurin/apt), Maven (latest 3.x), Node.js LTS, GitHub Copilot CLI.
 # Writes ~/.aivm-bootstrap-version ONLY after all tools are verified.
 set -euo pipefail
 
 # ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2025-04-28-v6"
+BOOTSTRAP_VERSION="2025-04-28-v9"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -55,25 +55,7 @@ sudo apt-get install -y --no-install-recommends \
 
 success "System packages installed"
 
-# ── 2. Docker validation ──────────────────────────────────────────────────────
-step "Validating Docker"
-
-# Docker is pre-installed by Colima/Lima in the VM.
-if ! docker info >/dev/null 2>&1; then
-  warn "Docker daemon not yet accessible — adding user to docker group"
-  sudo usermod -aG docker "$USER" 2>/dev/null || true
-  if ! sg docker -c "docker info" >/dev/null 2>&1; then
-    fatal "Docker is not functional in this VM. Check Colima configuration."
-  fi
-fi
-
-docker run --rm hello-world 2>&1 | tee -a "$LOG_FILE" \
-  | grep -q "Hello from Docker!" \
-  || fatal "docker run hello-world failed — Docker is not fully operational"
-
-success "Docker is operational"
-
-# ── 3. Java 25 (Temurin via Adoptium apt repo) ───────────────────────────────
+# ── 2. Java 25 (Temurin via Adoptium apt repo) ───────────────────────────────
 step "Installing Java 25 (Temurin)"
 
 if ! java -version 2>&1 | grep -qE 'version "2[5-9]|version "3[0-9]' 2>/dev/null; then
@@ -100,7 +82,7 @@ if ! java -version 2>&1 | grep -qE 'version "2[5-9]|version "3[0-9]'; then
 fi
 success "Java installed: $JAVA_ACTUAL"
 
-# ── 4. Maven (latest 3.x — direct download from Apache) ──────────────────────
+# ── 3. Maven (latest 3.x — direct download from Apache) ──────────────────────
 step "Installing Maven"
 
 MAVEN_INSTALL_DIR="/opt/maven"
@@ -130,7 +112,7 @@ MVN_ACTUAL=$(mvn --version 2>&1 | head -1)
 info "Maven: $MVN_ACTUAL"
 success "Maven installed: $MVN_ACTUAL"
 
-# ── 5. Node.js LTS (via NodeSource apt repo) ─────────────────────────────────
+# ── 4. Node.js LTS (via NodeSource apt repo) ─────────────────────────────────
 step "Installing Node.js LTS"
 
 if ! command -v node >/dev/null 2>&1; then
@@ -146,25 +128,48 @@ NPM_ACTUAL=$(npm --version 2>/dev/null)
 info "Node: $NODE_ACTUAL, npm: $NPM_ACTUAL"
 success "Node.js installed: $NODE_ACTUAL"
 
-# ── 6. Claude Code ────────────────────────────────────────────────────────────
-step "Installing Claude Code"
+# ── 5. Python (via uv) ────────────────────────────────────────────────────────
+step "Installing uv and Python"
 
-# Configure npm global prefix to a user-writable directory so sudo is not needed
-NPM_GLOBAL_DIR="$HOME/.npm-global"
-mkdir -p "$NPM_GLOBAL_DIR"
-npm config set prefix "$NPM_GLOBAL_DIR"
-export PATH="$NPM_GLOBAL_DIR/bin:$PATH"
-
-if ! command -v claude >/dev/null 2>&1; then
-  npm install -g @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE"
+if ! command -v uv >/dev/null 2>&1; then
+  # INSTALLER_NO_MODIFY_PATH=1 skips the interactive profile-edit prompt
+  INSTALLER_NO_MODIFY_PATH=1 \
+    curl -LsSf https://astral.sh/uv/install.sh | sh \
+    2>&1 | tee -a "$LOG_FILE"
 else
-  info "Claude Code already installed — updating"
-  npm update -g @anthropic-ai/claude-code 2>&1 | tee -a "$LOG_FILE" || true
+  info "uv already installed — updating"
+  uv self update 2>&1 | tee -a "$LOG_FILE" || true
 fi
 
-CLAUDE_ACTUAL=$(claude --version 2>/dev/null || echo "unknown")
-info "Claude Code: $CLAUDE_ACTUAL"
-success "Claude Code installed: $CLAUDE_ACTUAL"
+export PATH="$HOME/.local/bin:$PATH"
+
+# Install latest stable Python
+uv python install 2>&1 | tee -a "$LOG_FILE"
+
+UV_ACTUAL=$(uv --version 2>/dev/null)
+PYTHON_ACTUAL=$(uv run python --version 2>/dev/null || python3 --version 2>/dev/null || echo "unknown")
+info "uv: $UV_ACTUAL"
+info "Python: $PYTHON_ACTUAL"
+success "uv + Python installed: $UV_ACTUAL"
+
+# ── 6. GitHub Copilot CLI ─────────────────────────────────────────────────────
+step "Installing GitHub Copilot CLI"
+
+# Install to ~/.local/bin (default non-root prefix).
+# Echo "n" to suppress the interactive "add to PATH?" prompt.
+echo "n" | bash -c "$(curl -fsSL https://gh.io/copilot-install)" \
+  2>&1 | tee -a "$LOG_FILE" || true
+
+# Ensure ~/.local/bin is on PATH for the rest of this script
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v copilot >/dev/null 2>&1; then
+  fatal "Copilot CLI not found at ~/.local/bin/copilot after install"
+fi
+
+COPILOT_ACTUAL=$(copilot --version 2>/dev/null || echo "unknown")
+info "Copilot CLI: $COPILOT_ACTUAL"
+success "Copilot CLI installed: $COPILOT_ACTUAL"
 
 # ── 7. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
@@ -192,7 +197,7 @@ PYEOF
   cat >> "$profile_file" <<EOF
 
 ${PROFILE_BLOCK_START}
-export PATH="/opt/maven/bin:\$HOME/.npm-global/bin:\$PATH"
+export PATH="/opt/maven/bin:\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH"
 ${PROFILE_BLOCK_END}
 EOF
 }
@@ -226,15 +231,17 @@ fi
 
 success "Home dev symlink configured"
 
-# ── 9. MCP client config ──────────────────────────────────────────────────────
-step "Configuring MCP client for Claude Code"
+# ── 9. MCP client config for Copilot CLI ─────────────────────────────────────
+step "Configuring MCP client for Copilot CLI"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
+COPILOT_CONFIG_DIR="$HOME/.copilot"
+mkdir -p "$COPILOT_CONFIG_DIR"
 
 python3 - <<PYEOF
 import json, os, pathlib
 
-config_path = pathlib.Path(os.path.expanduser("~/.claude.json"))
+config_path = pathlib.Path(os.path.expanduser("~/.copilot/mcp.json"))
 config = {}
 if config_path.exists():
     try:
@@ -257,7 +264,7 @@ success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_EN
 # ── 10. Verify all tools ──────────────────────────────────────────────────────
 step "Verifying tool installations"
 
-export PATH="/opt/maven/bin:$HOME/.npm-global/bin:$PATH"
+export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 
 FAILED=0
 
@@ -278,7 +285,8 @@ check_tool "Git"     git
 check_tool "Docker"  docker
 check_tool "Node.js" node
 check_tool "npm"     npm
-check_tool "Claude"  claude
+check_tool "uv"      uv
+check_tool "Copilot CLI" copilot
 
 # Java uses -version (stderr)
 if command -v java >/dev/null 2>&1; then
@@ -302,7 +310,7 @@ echo ""
 echo "  Java:        $(java -version 2>&1 | head -1)"
 echo "  Maven:       $(mvn --version 2>&1 | head -1)"
 echo "  Node.js:     $(node --version)"
-echo "  Claude Code: $(claude --version 2>/dev/null || echo 'installed')"
+echo "  Copilot CLI: $(copilot --version 2>/dev/null || echo 'installed')"
 echo ""
 
 
