@@ -15,7 +15,7 @@ Idle Monitor daemon                   Node.js + Claude Code
 MCP Gateway (port 8080)               Client → host.lima.internal:8080/mcp
 ```
 
-The **VM is fully disposable** — blow it away and re-run `aivm` to rebuild from scratch. State lives on the host.
+The **VM is persistent by default** — `aivm stop` preserves the disk for fast resume; `aivm start` picks up where you left off. State lives on the host. The VM is automatically offered for recreation when it exceeds `AIVM_VM_MAX_AGE_DAYS` (default: 7 days).
 
 ---
 
@@ -109,8 +109,11 @@ aivm status
 # Open a shell in the VM
 aivm ssh
 
-# Stop everything
+# Stop everything (disk preserved for fast resume)
 aivm stop
+
+# Delete VM (host-side state like MCPJungle data is preserved)
+aivm destroy
 
 # Restart VM and services
 aivm restart
@@ -170,6 +173,7 @@ Defaults (override in `.env`):
 | `AIVM_VM_MEMORY` | `8` | VM RAM (GiB) |
 | `AIVM_VM_DISK` | `60` | VM disk (GiB) |
 | `AIVM_VM_TYPE` | `vz` | `vz` (Apple Silicon) or `qemu` |
+| `AIVM_VM_MAX_AGE_DAYS` | `7` | Days before prompting to recreate VM |
 | `MCPJUNGLE_PORT` | `8080` | MCPJungle port on host |
 | `AIVM_IDLE_TIMEOUT` | `300` | Idle shutdown after N seconds |
 
@@ -180,7 +184,7 @@ Defaults (override in `.env`):
 - **No SSH keys** inside the VM
 - **No git credentials** inside the VM
 - **MCPJungle** is the only external integration surface; it runs on the host and is not accessible from outside `127.0.0.1`
-- The VM is **fully disposable** — `colima delete aivm` and restart to get a clean slate
+- The VM is **easily disposable** — `aivm destroy` deletes it; `aivm` rebuilds from scratch
 - MCPJungle data (SQLite) persists at `~/.aivm/mcpjungle-data/` on the host
 
 ---
@@ -193,7 +197,7 @@ Defaults (override in `.env`):
 - A session is active if its PID is alive (verified with PID + start-time)
 - After `AIVM_IDLE_TIMEOUT` seconds (default: 5 min) with no active sessions:
   1. Stops Docker containers inside VM
-  2. Stops Colima VM
+  2. Stops Colima VM (disk preserved for fast resume)
   3. Stops MCPJungle
 
 Handles: killed terminals, orphaned processes, stale lock files.
@@ -213,19 +217,17 @@ All sessions share the same VM, Docker daemon, and MCPJungle instance.
 
 ## Reset / Clean Slate
 
+`aivm stop` preserves the VM disk. To delete the VM and start fresh:
+
 ```bash
-# Stop everything
-aivm stop
+# Delete the VM — host-side state (MCPJungle data, sessions, logs) is preserved
+aivm destroy
 
-# Delete the Colima VM (all VM-side state is wiped)
-colima delete aivm
-
-# (Optional) Clear MCPJungle data
-rm -rf ~/.aivm/mcpjungle-data
-
-# Restart fresh
+# Restart with a clean VM; bootstrap runs automatically
 aivm
 ```
+
+> **Tip:** If the VM is older than `AIVM_VM_MAX_AGE_DAYS` days (default: 7), `aivm start` will prompt you interactively to delete and recreate it.
 
 ---
 
@@ -257,7 +259,8 @@ ai-vm/
 │   ├── lifecycle/
 │   │   ├── idle-monitor.sh        ← Host-side idle shutdown daemon
 │   │   ├── vm-start.sh            ← Start Colima VM
-│   │   └── vm-stop.sh             ← Stop Colima VM
+│   │   ├── vm-stop.sh             ← Stop Colima VM (disk preserved)
+│   │   └── vm-destroy.sh          ← Delete VM and wipe all VM-side state
 │   ├── mcp/
 │   │   ├── start-mcpjungle.sh     ← Start MCPJungle (host Docker)
 │   │   └── stop-mcpjungle.sh      ← Stop MCPJungle

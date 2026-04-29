@@ -15,11 +15,13 @@ VM_CPUS="${AIVM_VM_CPUS:-4}"
 VM_MEMORY="${AIVM_VM_MEMORY:-8}"
 VM_DISK="${AIVM_VM_DISK:-60}"
 VM_TYPE="${AIVM_VM_TYPE:-vz}"
+VM_MAX_AGE_DAYS="${AIVM_VM_MAX_AGE_DAYS:-7}"
 DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
 DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
 AIVM_STATE_DIR="$HOME/.aivm"
 LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
 BOOTSTRAP_SCRIPT="$REPO_ROOT/bootstrap/bootstrap.sh"
+VM_CREATED_AT_FILE="$AIVM_STATE_DIR/vm-created-at"
 
 # ── Lifecycle lock (mkdir is atomic on APFS/HFS+) ────────────────────────────
 acquire_lifecycle_lock() {
@@ -72,6 +74,33 @@ colima_vm_type_flag() {
   echo "--vm-type qemu"
 }
 
+# Returns 0 (true) if the existing stopped VM is too old and the user wants to recreate it.
+should_recreate_vm() {
+  if [[ ! -f "$VM_CREATED_AT_FILE" ]]; then
+    return 1
+  fi
+  local created_at
+  created_at=$(cat "$VM_CREATED_AT_FILE" 2>/dev/null || echo "0")
+  if ! [[ "$created_at" =~ ^[0-9]+$ ]] || (( created_at == 0 )); then
+    return 1
+  fi
+  local now age_days
+  now=$(date +%s)
+  age_days=$(( (now - created_at) / 86400 ))
+  if (( age_days < VM_MAX_AGE_DAYS )); then
+    return 1
+  fi
+  log_warn "VM '${COLIMA_PROFILE}' is ${age_days} day(s) old (threshold: ${VM_MAX_AGE_DAYS} days)"
+  if [[ -t 0 ]]; then
+    local answer
+    read -r -p "  → Delete and recreate for a clean slate? [y/N] " answer < /dev/tty
+    [[ "${answer,,}" == "y" ]]
+  else
+    log_info "Non-interactive mode — keeping existing VM despite age"
+    return 1
+  fi
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   mkdir -p "$AIVM_STATE_DIR/logs"
@@ -79,48 +108,55 @@ main() {
   acquire_lifecycle_lock
   trap 'release_lifecycle_lock' EXIT INT TERM
 
-  # Track whether the VM existed before this run; bootstrap only runs when we
-  # just created it (since 'aivm stop' deletes the VM, the next start that
-  # doesn't find the profile is, by definition, a fresh creation).
+  # vm_was_created=1 means we created a fresh VM this run → bootstrap + record timestamp.
   local vm_was_created=0
 
   if is_vm_running; then
     log_info "VM '${COLIMA_PROFILE}' is already running"
   else
+    # If the profile exists but is stopped, check its age and optionally delete it.
+    if vm_profile_exists && should_recreate_vm; then
+      log_step "Deleting aged VM profile '${COLIMA_PROFILE}'"
+      colima delete "$COLIMA_PROFILE" --force --data \
+        2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" \
+        || log_fatal "Failed to delete VM profile '${COLIMA_PROFILE}'"
+      rm -f "$VM_CREATED_AT_FILE"
+      log_success "Old VM deleted"
+    fi
+
     if ! vm_profile_exists; then
+      # ── Fresh VM creation ────────────────────────────────────────────────────
       vm_was_created=1
+      log_step "Creating Colima VM '${COLIMA_PROFILE}'"
+      mkdir -p "$DEV_ROOT"
+
+      local vm_type_flags
+      vm_type_flags=$(colima_vm_type_flag)
+      log_info "CPU=${VM_CPUS} Memory=${VM_MEMORY}GiB Disk=${VM_DISK}GiB Type=${VM_TYPE}"
+
+      local extra_mounts=()
+      if [[ "$REPO_ROOT" != "$DEV_ROOT"* ]]; then
+        extra_mounts=(--mount "${REPO_ROOT}/bootstrap:r")
+      fi
+
+      colima start "$COLIMA_PROFILE" \
+        --cpu "$VM_CPUS" \
+        --memory "$VM_MEMORY" \
+        --disk "$VM_DISK" \
+        --mount "${DEV_ROOT}:w" \
+        "${extra_mounts[@]}" \
+        $vm_type_flags \
+        --ssh-agent=false \
+        2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log"
+    else
+      # ── Resume stopped VM ────────────────────────────────────────────────────
+      log_step "Resuming stopped VM '${COLIMA_PROFILE}'"
+      colima start "$COLIMA_PROFILE" \
+        2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log"
     fi
 
-    log_step "Starting Colima VM '${COLIMA_PROFILE}'"
-
-    # Ensure dev root exists on host
-    mkdir -p "$DEV_ROOT"
-
-    # Determine VM type flags
-    local vm_type_flags
-    vm_type_flags=$(colima_vm_type_flag)
-
-    log_info "CPU=${VM_CPUS} Memory=${VM_MEMORY}GiB Disk=${VM_DISK}GiB Type=${VM_TYPE}"
-
-    # If the repo lives outside DEV_ROOT, mount only the bootstrap dir (read-only) so bootstrap.sh is reachable inside the VM.
-    local extra_mounts=()
-    if [[ "$REPO_ROOT" != "$DEV_ROOT"* ]]; then
-      extra_mounts=(--mount "${REPO_ROOT}/bootstrap:r")
-    fi
-
-    colima start "$COLIMA_PROFILE" \
-      --cpu "$VM_CPUS" \
-      --memory "$VM_MEMORY" \
-      --disk "$VM_DISK" \
-      --mount "${DEV_ROOT}:w" \
-      "${extra_mounts[@]}" \
-      $vm_type_flags \
-      --ssh-agent=false \
-      2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log"
-
-    # Wait for VM to be ready
-    local retries=30
-    local i=0
+    # Wait for VM to be SSH-reachable
+    local retries=30 i=0
     while (( i < retries )); do
       if colima ssh --profile "$COLIMA_PROFILE" -- echo "VM ready" >/dev/null 2>&1; then
         break
@@ -133,6 +169,11 @@ main() {
     fi
 
     log_success "VM '${COLIMA_PROFILE}' is running"
+
+    # Record creation timestamp so age checks work on future starts.
+    if (( vm_was_created )); then
+      date +%s > "$VM_CREATED_AT_FILE"
+    fi
   fi
 
   # Run bootstrap only on a freshly created VM. A resumed (stopped→running)
@@ -143,7 +184,6 @@ main() {
     vm_bootstrap_path="$BOOTSTRAP_SCRIPT"
     local vm_bootstrap_path_q
     vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
-    # Inject only the specific vars bootstrap needs — never pass secrets or the full .env.
     colima ssh --profile "$COLIMA_PROFILE" -- \
       bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' bash ${vm_bootstrap_path_q}" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"

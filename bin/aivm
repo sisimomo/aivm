@@ -146,6 +146,11 @@ do_start() {
   log_success "aivm is ready"
 }
 
+# ── Destroy sequence ──────────────────────────────────────────────────────────
+do_destroy() {
+  "$REPO_ROOT/scripts/lifecycle/vm-destroy.sh"
+}
+
 # ── Shutdown sequence ─────────────────────────────────────────────────────────
 do_stop() {
   log_step "Stopping aivm"
@@ -370,7 +375,8 @@ do_help() {
   COMMANDS
     (default)              Start VM + services and launch Claude Code
     start                  Start VM and services only (no Claude Code)
-    stop                   Stop VM and all services
+    stop                   Stop VM and all services (disk preserved)
+    destroy                Delete VM (host-side state preserved)
     restart                Restart VM and services
     status                 Show VM, MCPJungle, and session status
     ssh                    Open interactive shell in the VM
@@ -415,6 +421,9 @@ main() {
       ;;
     stop)
       do_stop
+      ;;
+    destroy)
+      do_destroy
       ;;
     restart)
       do_stop

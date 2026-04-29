@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# vm-stop.sh — Stop the aivm Colima VM (keeps the disk for fast resume).
-# The next 'aivm start' resumes the existing VM without re-running bootstrap.
-# Use 'aivm start' after deletion to get a clean slate.
+# vm-destroy.sh — Stop and permanently delete the aivm Colima VM.
+# All VM-side state (disk, containers, bootstrap) is wiped.
+# The next 'aivm start' creates a fresh VM and re-runs bootstrap from scratch.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +14,7 @@ source "$REPO_ROOT/scripts/utils/logging.sh"
 COLIMA_PROFILE="${AIVM_COLIMA_PROFILE:-aivm}"
 AIVM_STATE_DIR="$HOME/.aivm"
 LIFECYCLE_LOCK_DIR="$AIVM_STATE_DIR/lifecycle.lock.d"
+VM_CREATED_AT_FILE="$AIVM_STATE_DIR/vm-created-at"
 
 is_vm_running() {
   colima list 2>/dev/null | awk 'NR>1 {print $1, $2}' \
@@ -50,7 +51,6 @@ main() {
   acquire_lifecycle_lock
   trap 'release_lifecycle_lock' EXIT INT TERM
 
-  # Gracefully stop Docker workloads and the VM only if it is currently running.
   if is_vm_running; then
     log_info "Stopping Docker containers inside VM..."
     colima ssh --profile "$COLIMA_PROFILE" -- \
@@ -62,9 +62,17 @@ main() {
       log_warn "Graceful stop failed; forcing..."
       colima stop "$COLIMA_PROFILE" --force 2>/dev/null || true
     }
-    log_success "VM '${COLIMA_PROFILE}' stopped (disk preserved for fast resume)"
+  fi
+
+  if is_vm_profile_exists; then
+    log_step "Deleting VM profile '${COLIMA_PROFILE}' (all VM-side state will be wiped)"
+    colima delete "$COLIMA_PROFILE" --force --data \
+      2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" \
+      || log_fatal "Failed to delete VM profile '${COLIMA_PROFILE}' — manual cleanup may be needed"
+    rm -f "$VM_CREATED_AT_FILE"
+    log_success "VM '${COLIMA_PROFILE}' destroyed — run 'aivm start' for a clean slate"
   else
-    log_info "VM '${COLIMA_PROFILE}' is not running — nothing to stop"
+    log_info "VM profile '${COLIMA_PROFILE}' does not exist — nothing to destroy"
   fi
 }
 
