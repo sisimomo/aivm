@@ -100,7 +100,7 @@ count_active_sessions() {
       fi
     fi
 
-    (( active++ ))
+    (( ++active ))
   done
   shopt -u nullglob
 

@@ -30,6 +30,7 @@ source "$REPO_ROOT/scripts/utils/logging.sh"
 [[ -f "$REPO_ROOT/.env" ]] && set -a && source "$REPO_ROOT/.env" && set +a
 
 COLIMA_PROFILE="${AIVM_COLIMA_PROFILE:-aivm}"
+IDLE_TIMEOUT="${AIVM_IDLE_TIMEOUT:-300}"
 DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
 DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
 DEV_ROOT="$(realpath "$DEV_ROOT" 2>/dev/null || echo "$DEV_ROOT")"
@@ -173,7 +174,7 @@ do_status() {
 
   # VM
   if is_vm_running; then
-    echo "  │  VM (${COLIMA_PROFILE}):     ✅ Running"
+    echo "  │  VM (${COLIMA_PROFILE}):         ✅ Running"
     local bootstrap_ver
     bootstrap_ver=$(colima ssh --profile "$COLIMA_PROFILE" -- \
       bash -lc "cat ~/.aivm-bootstrap-version 2>/dev/null || echo 'not bootstrapped'" 2>/dev/null || echo "unknown")
@@ -209,13 +210,33 @@ do_status() {
     for lf in "$SESSION_DIR"/*.lock; do
       local lpid
       lpid=$(awk '{print $1}' "$lf" 2>/dev/null || echo "")
-      [[ -n "$lpid" ]] && kill -0 "$lpid" 2>/dev/null && (( session_count++ ))
+      [[ -n "$lpid" ]] && kill -0 "$lpid" 2>/dev/null && (( ++session_count )) || true
     done
     shopt -u nullglob
   fi
   echo "  │  Active sessions:   ${session_count}"
+
+  # Idle shutdown countdown
+  local monitor_pid=""
+  [[ -f "$IDLE_MONITOR_PID_FILE" ]] && monitor_pid=$(cat "$IDLE_MONITOR_PID_FILE" 2>/dev/null || echo "")
+  if [[ -n "$monitor_pid" ]] && kill -0 "$monitor_pid" 2>/dev/null; then
+    if (( session_count > 0 )); then
+      echo "  │  Idle shutdown:     ─ sessions active"
+    else
+      local last_epoch now idle_secs remaining
+      last_epoch=$(cat "$AIVM_STATE_DIR/last-session-end" 2>/dev/null || date +%s)
+      now=$(date +%s)
+      idle_secs=$(( now - last_epoch ))
+      remaining=$(( IDLE_TIMEOUT - idle_secs ))
+      if (( remaining <= 0 )); then
+        echo "  │  Idle shutdown:     ⚠️  imminent"
+      else
+        echo "  │  Idle shutdown:     in ${remaining}s"
+      fi
+    fi
+  fi
+
   echo "  └───────────────────────────────────────────────┘"
-  echo ""
 }
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
@@ -267,6 +288,11 @@ do_ssh() {
   if ! is_vm_running; then
     log_fatal "VM is not running. Run 'aivm start' first."
   fi
+
+  local lock_file
+  lock_file=$(create_session_lock)
+  trap "remove_session_lock '$lock_file'" EXIT INT TERM
+
   log_info "Opening shell in VM '${COLIMA_PROFILE}'..."
   colima ssh --profile "$COLIMA_PROFILE"
 }
@@ -319,7 +345,7 @@ do_launch() {
         exit 1
       fi
       cd '${vm_dir}'
-      exec copilot
+      exec copilot --yolo
     "
 }
 
