@@ -284,9 +284,11 @@ do_bootstrap() {
   fi
 
   local vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
+  local vm_bootstrap_path_q
+  vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
   log_step "Re-running bootstrap in VM"
   colima ssh --profile "$COLIMA_PROFILE" -- \
-    bash -lc "rm -f ~/.aivm-bootstrap-version && bash '${vm_bootstrap_path}'" \
+    bash -lc "rm -f ~/.aivm-bootstrap-version && bash ${vm_bootstrap_path_q}" \
     2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
 }
 
@@ -335,6 +337,11 @@ do_launch() {
   log_info "Session lock: $lock_file"
   echo ""
 
+  # printf %q produces a bash-safe quoted token that survives single-quotes,
+  # spaces, and other special characters in the path.
+  local vm_dir_q
+  vm_dir_q=$(printf '%q' "$vm_dir")
+
   # Launch Copilot CLI interactively inside VM
   # - env injects GH_TOKEN without persisting it in VM
   # - bash -l loads login profile (PATH etc.)
@@ -346,12 +353,12 @@ do_launch() {
       "AIVM_SESSION_ID=$$" \
     bash -lc "
       set -e
-      if [[ ! -d '${vm_dir}' ]]; then
-        echo '[aivm] ERROR: VM directory ${vm_dir} does not exist.'
+      if [[ ! -d ${vm_dir_q} ]]; then
+        echo '[aivm] ERROR: VM directory ${vm_dir_q} does not exist.'
         echo '[aivm] Check that ~/dev is correctly mounted in the VM.'
         exit 1
       fi
-      cd '${vm_dir}'
+      cd ${vm_dir_q}
       exec copilot --yolo
     "
 }

@@ -134,9 +134,11 @@ main() {
     log_step "Running VM bootstrap (one-time, on fresh VM)"
     local vm_bootstrap_path
     vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
+    local vm_bootstrap_path_q
+    vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
     # Inject only the specific vars bootstrap needs — never pass secrets or the full .env.
     colima ssh --profile "$COLIMA_PROFILE" -- \
-      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' bash '${vm_bootstrap_path}'" \
+      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' bash ${vm_bootstrap_path_q}" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
     log_success "Bootstrap complete"
   else
