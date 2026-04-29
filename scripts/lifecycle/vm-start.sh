@@ -129,6 +129,7 @@ main() {
       vm_was_created=1
       log_step "Creating Colima VM '${COLIMA_PROFILE}'"
       mkdir -p "$DEV_ROOT"
+      mkdir -p "$AIVM_STATE_DIR/.claude/projects"
 
       local vm_type_flags
       vm_type_flags=$(colima_vm_type_flag)
@@ -144,6 +145,7 @@ main() {
         --memory "$VM_MEMORY" \
         --disk "$VM_DISK" \
         --mount "${DEV_ROOT}:w" \
+        --mount "$AIVM_STATE_DIR/.claude/projects:w" \
         "${extra_mounts[@]}" \
         $vm_type_flags \
         --ssh-agent=false \
@@ -185,7 +187,7 @@ main() {
     local vm_bootstrap_path_q
     vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
     colima ssh --profile "$COLIMA_PROFILE" -- \
-      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' bash ${vm_bootstrap_path_q}" \
+      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' AIVM_HOST_HOME='${HOME}' bash ${vm_bootstrap_path_q}" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
     log_success "Bootstrap complete"
   else

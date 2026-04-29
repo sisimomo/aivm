@@ -167,6 +167,13 @@ step "Configuring Claude Code"
 echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
 success "~/.claude.json written"
 
+if [[ -n "${AIVM_HOST_HOME:-}" ]]; then
+  CLAUDE_PROJECTS_MOUNT="${AIVM_HOST_HOME}/.aivm/.claude/projects"
+  mkdir -p "$HOME/.claude"
+  ln -sfn "$CLAUDE_PROJECTS_MOUNT" "$HOME/.claude/projects"
+  success "~/.claude/projects → $CLAUDE_PROJECTS_MOUNT (host-persisted)"
+fi
+
 # ── 8. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
 

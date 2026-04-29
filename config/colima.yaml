@@ -19,6 +19,10 @@ mounts:
     writable: true
     # Lima mounts this at the same absolute path inside the VM (e.g. /Users/simon/dev).
     # No path translation is needed — aivm passes the host CWD through unchanged.
+  - location: ~/.aivm/.claude/projects
+    writable: true
+    # Persists Claude Code conversation history across VM recreations.
+    # Inside the VM, bootstrap.sh symlinks ~/.claude/projects here.
 
 # Docker is included by default in Colima VMs; no extra configuration needed.
 # docker:
