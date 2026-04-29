@@ -17,7 +17,7 @@ services:
       OTEL_ENABLED: "false"
       MCP_SERVER_INIT_REQ_TIMEOUT_SEC: ${MCP_SERVER_INIT_REQ_TIMEOUT_SEC:-30}
     ports:
-      - "127.0.0.1:${MCPJUNGLE_PORT:-8080}:8080"
+      - "${MCPJUNGLE_PORT:-8080}:8080"
     volumes:
       # Persistent SQLite database directory
       - ${MCPJUNGLE_DATA_DIR:-~/.aivm/mcpjungle-data}:/data

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2026-04-29-v1"
+BOOTSTRAP_VERSION="2026-04-29-v2"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -227,28 +227,19 @@ step "Configuring MCP client for Copilot CLI"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
 COPILOT_CONFIG_DIR="$HOME/.copilot"
+MCP_CONFIG="$COPILOT_CONFIG_DIR/mcp-config.json"
 mkdir -p "$COPILOT_CONFIG_DIR"
 
-python3 - <<PYEOF
-import json, os, pathlib
+# Seed empty config if missing or invalid
+if ! jq -e . "$MCP_CONFIG" >/dev/null 2>&1; then
+  echo '{"mcpServers":{}}' > "$MCP_CONFIG"
+fi
 
-config_path = pathlib.Path(os.path.expanduser("~/.copilot/mcp.json"))
-config = {}
-if config_path.exists():
-    try:
-        config = json.loads(config_path.read_text())
-    except Exception:
-        config = {}
+jq --arg url "http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp" \
+  '.mcpServers.mcpjungle = {"url": $url, "transport": "http"}' \
+  "$MCP_CONFIG" > "${MCP_CONFIG}.tmp" && mv "${MCP_CONFIG}.tmp" "$MCP_CONFIG"
 
-port = os.environ.get("MCPJUNGLE_PORT", "${MCPJUNGLE_PORT_ENV}")
-config.setdefault("mcpServers", {})["mcpjungle"] = {
-    "url": f"http://host.lima.internal:{port}/mcp",
-    "transport": "http"
-}
-
-config_path.write_text(json.dumps(config, indent=2))
-print(f"MCP config written to {config_path}")
-PYEOF
+info "MCP config written to $MCP_CONFIG"
 
 success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
 
