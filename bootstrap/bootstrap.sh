@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # ── Version tag — bump to force re-bootstrap ─────────────────────────────────
-BOOTSTRAP_VERSION="2026-04-28-v1"
+BOOTSTRAP_VERSION="2026-04-29-v1"
 
 MARKER_FILE="$HOME/.aivm-bootstrap-version"
 LOG_FILE="$HOME/.aivm-bootstrap.log"
@@ -222,30 +222,7 @@ write_profile_block "$HOME/.bashrc"
 
 success "Shell profile configured"
 
-# ── 9. /home/<user>/dev symlink (convenience alias) ──────────────────────────
-step "Setting up home dev symlink"
-
-# Lima mounts the host at the exact same absolute path (e.g. /Users/simon/dev).
-# Create /home/<user>/dev as a convenience symlink pointing to that mount.
-HOST_DEV_LIMA="/Users/$(whoami)/dev"
-VM_DEV_HOME="$HOME/dev"
-
-if [[ -d "$HOST_DEV_LIMA" ]]; then
-  if [[ ! -e "$VM_DEV_HOME" ]]; then
-    ln -s "$HOST_DEV_LIMA" "$VM_DEV_HOME"
-    info "Created symlink: $VM_DEV_HOME → $HOST_DEV_LIMA"
-  elif [[ -L "$VM_DEV_HOME" ]]; then
-    info "Symlink already exists: $VM_DEV_HOME → $(readlink "$VM_DEV_HOME")"
-  else
-    warn "$VM_DEV_HOME exists and is not a symlink — skipping"
-  fi
-else
-  warn "Host dev dir not mounted at $HOST_DEV_LIMA — check Colima mount config"
-fi
-
-success "Home dev symlink configured"
-
-# ── 10. MCP client config for Copilot CLI ─────────────────────────────────────
+# ── 9. MCP client config for Copilot CLI ──────────────────────────────────────
 step "Configuring MCP client for Copilot CLI"
 
 MCPJUNGLE_PORT_ENV="${MCPJUNGLE_PORT:-8080}"
@@ -275,7 +252,7 @@ PYEOF
 
 success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
 
-# ── 11. Verify all tools ──────────────────────────────────────────────────────
+# ── 10. Verify all tools ──────────────────────────────────────────────────────
 step "Verifying tool installations"
 
 export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"

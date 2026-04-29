@@ -17,6 +17,8 @@ rosetta: true    # enables Rosetta 2 for x86_64 compatibility on Apple Silicon
 mounts:
   - location: ~/dev
     writable: true
+    # Lima mounts this at the same absolute path inside the VM (e.g. /Users/simon/dev).
+    # No path translation is needed — aivm passes the host CWD through unchanged.
 
 # Docker is included by default in Colima VMs; no extra configuration needed.
 # docker:

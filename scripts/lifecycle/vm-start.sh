@@ -85,12 +85,6 @@ bootstrap_needed() {
   [[ "$current_version" != "$required_version" ]]
 }
 
-# ── Host path in VM ───────────────────────────────────────────────────────────
-host_dev_in_vm() {
-  # Lima mounts ~/dev at /Users/<user>/dev; bootstrap creates /home/<user>/dev symlink.
-  echo "/Users/$(whoami)/dev"
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   mkdir -p "$AIVM_STATE_DIR/logs"
@@ -142,7 +136,7 @@ main() {
   if bootstrap_needed; then
     log_step "Running VM bootstrap (this may take several minutes on first run)"
     local vm_bootstrap_path
-    vm_bootstrap_path="$(host_dev_in_vm)/ai-vm/bootstrap/bootstrap.sh"
+    vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
     colima ssh --profile "$COLIMA_PROFILE" -- \
       bash -lc "bash '${vm_bootstrap_path}'" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"

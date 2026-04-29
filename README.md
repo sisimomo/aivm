@@ -136,13 +136,10 @@ aivm help
 
 | Host | VM |
 |---|---|
-| `~/dev` | `/home/simon/dev` |
-| `~/dev/projects/app/backend` | `/home/simon/dev/projects/app/backend` |
+| `~/dev/projects/app/backend` | `/Users/simon/dev/projects/app/backend` (same path) |
 
 **How it works:**
-1. Colima mounts `~/dev` at `/Users/simon/dev` inside the VM (Lima standard behaviour).
-2. `bootstrap.sh` creates a symlink: `/home/simon/dev → /Users/simon/dev`.
-3. `aivm` translates the host CWD and `cd`s to the matching path before launching Claude.
+Lima/Colima mounts `~/dev` at the **same absolute path** inside the VM. No translation is needed — `aivm` validates that your current directory is under `~/dev` and passes it through unchanged.
 
 **Requirement:** You must run `aivm` from inside `~/dev`. Paths outside `~/dev` are not supported and will produce an error.
 

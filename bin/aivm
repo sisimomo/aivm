@@ -33,7 +33,6 @@ COLIMA_PROFILE="${AIVM_COLIMA_PROFILE:-aivm}"
 DEV_ROOT="${AIVM_DEV_ROOT:-$HOME/dev}"
 DEV_ROOT="${DEV_ROOT/#\~/$HOME}"
 DEV_ROOT="$(realpath "$DEV_ROOT" 2>/dev/null || echo "$DEV_ROOT")"
-VM_USER="${AIVM_VM_USER:-$(whoami)}"
 AIVM_STATE_DIR="$HOME/.aivm"
 SESSION_DIR="$AIVM_STATE_DIR/sessions"
 IDLE_MONITOR_PID_FILE="$AIVM_STATE_DIR/idle-monitor.pid"
@@ -256,7 +255,7 @@ do_bootstrap() {
     log_fatal "VM is not running. Run 'aivm start' first."
   fi
 
-  local vm_bootstrap_path="/Users/${VM_USER}/dev/ai-vm/bootstrap/bootstrap.sh"
+  local vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
   log_step "Running bootstrap in VM"
   colima ssh --profile "$COLIMA_PROFILE" -- \
     bash -lc "BOOTSTRAP_FORCE=1 bash '${vm_bootstrap_path}'" \
