@@ -363,6 +363,160 @@ do_launch() {
     "
 }
 
+# ── Export: VM → Host ─────────────────────────────────────────────────────────
+do_export() {
+  local vm_path="${1:-}"
+  local host_path="${2:-}"
+
+  if [[ -z "$vm_path" || -z "$host_path" ]]; then
+    log_error "Usage: aivm export <vm-path> <host-path>"
+    exit 1
+  fi
+
+  if ! is_vm_running; then
+    log_fatal "VM is not running. Run 'aivm start' first."
+  fi
+
+  local vm_path_q src_name src_parent_q src_name_q
+  vm_path_q="$(printf '%q' "$vm_path")"
+  src_name="$(basename "$vm_path")"
+  src_parent_q="$(printf '%q' "$(dirname "$vm_path")")"
+  src_name_q="$(printf '%q' "$src_name")"
+
+  # One SSH call: type signal on stderr, file content on stdout.
+  # Avoids a separate round-trip just to detect file vs directory.
+  local type_tmp content_tmp
+  type_tmp="$(mktemp)"
+  content_tmp="$(mktemp)"
+  colima ssh --profile "$COLIMA_PROFILE" -- \
+    bash -c "
+      if   [[ -f ${vm_path_q} ]]; then echo file >&2; cat ${vm_path_q}
+      elif [[ -d ${vm_path_q} ]]; then echo dir  >&2
+      else                              echo none >&2; exit 1
+      fi
+    " >"$content_tmp" 2>"$type_tmp" || true
+  local src_type
+  src_type=$(cat "$type_tmp"); rm -f "$type_tmp"
+
+  case "${src_type:-none}" in
+    none)
+      rm -f "$content_tmp"
+      log_fatal "VM path does not exist: $vm_path"
+      ;;
+    file)
+      log_step "Exporting from VM"
+      log_info "VM source: $vm_path"
+      log_info "Host dest: $host_path"
+      if [[ -e "$host_path" ]]; then
+        read -r -p "  '$host_path' already exists. Overwrite? [y/N] " reply
+        if [[ ! "$reply" =~ ^[Yy]$ ]]; then rm -f "$content_tmp"; log_info "Aborted."; exit 0; fi
+      fi
+      mkdir -p "$(dirname "$host_path")"
+      mv "$content_tmp" "$host_path"
+      log_success "Exported to $host_path"
+      ;;
+    dir)
+      rm -f "$content_tmp"
+      local dest="$host_path/$src_name"
+      read -r -p "  '$vm_path' is a directory. Export to '$dest'? [Y/n] " reply
+      [[ "${reply:-Y}" =~ ^[Nn]$ ]] && { log_info "Aborted."; exit 0; }
+      if [[ -e "$dest" ]]; then
+        [[ ! -d "$dest" ]] && log_fatal "'$dest' already exists and is not a directory."
+        [[ -n "$(ls -A "$dest" 2>/dev/null)" ]] && log_fatal "'$dest' already exists and is not empty."
+      fi
+      log_step "Exporting from VM"
+      log_info "VM source: $vm_path"
+      log_info "Host dest: $dest"
+      mkdir -p "$host_path"
+      colima ssh --profile "$COLIMA_PROFILE" -- \
+        bash -c "tar -czf - -C ${src_parent_q} ${src_name_q}" \
+        | tar -xzf - -C "$host_path" \
+        || log_fatal "Export failed."
+      log_success "Exported to $dest"
+      ;;
+  esac
+}
+
+# ── Import: Host → VM ─────────────────────────────────────────────────────────
+do_import() {
+  local host_path="${1:-}"
+  local vm_path="${2:-}"
+
+  if [[ -z "$host_path" || -z "$vm_path" ]]; then
+    log_error "Usage: aivm import <host-path> <vm-path>"
+    exit 1
+  fi
+
+  if ! is_vm_running; then
+    log_fatal "VM is not running. Run 'aivm start' first."
+  fi
+
+  if [[ ! -e "$host_path" ]]; then
+    log_fatal "Host path does not exist: $host_path"
+  fi
+
+  local host_real
+  host_real="$(realpath "$host_path" 2>/dev/null || echo "$host_path")"
+  local src_name
+  src_name="$(basename "$host_real")"
+
+  local vm_path_q
+  vm_path_q="$(printf '%q' "$vm_path")"
+
+  if [[ -d "$host_real" ]]; then
+    local dest="$vm_path/$src_name"
+    local dest_q
+    dest_q="$(printf '%q' "$dest")"
+
+    read -r -p "  '$host_real' is a directory. Import to '$dest'? [Y/n] " reply
+    [[ "${reply:-Y}" =~ ^[Nn]$ ]] && { log_info "Aborted."; exit 0; }
+
+    local dest_state
+    dest_state=$(colima ssh --profile "$COLIMA_PROFILE" -- \
+      bash -c "
+        if [[ ! -e ${dest_q} ]]; then echo none
+        elif [[ ! -d ${dest_q} ]]; then echo file
+        elif [[ -z \"\$(ls -A ${dest_q} 2>/dev/null)\" ]]; then echo empty_dir
+        else echo nonempty_dir
+        fi
+      " 2>/dev/null || echo "none")
+    [[ "$dest_state" == "file" ]]        && log_fatal "'$dest' already exists in the VM and is not a directory."
+    [[ "$dest_state" == "nonempty_dir" ]] && log_fatal "'$dest' already exists in the VM and is not empty."
+
+    log_step "Importing to VM"
+    log_info "Host source: $host_real"
+    log_info "VM dest:     $dest"
+
+    # mkdir + tar in one SSH call
+    tar -czf - -C "$(dirname "$host_real")" "$src_name" \
+      | colima ssh --profile "$COLIMA_PROFILE" -- \
+          bash -c "mkdir -p ${vm_path_q} && tar -xzf - -C ${vm_path_q}"
+    log_success "Imported to $dest"
+
+  else
+    local vm_path_q vm_parent_q
+    vm_path_q="$(printf '%q' "$vm_path")"
+    vm_parent_q="$(printf '%q' "$(dirname "$vm_path")")"
+
+    local dest_state
+    dest_state=$(colima ssh --profile "$COLIMA_PROFILE" -- \
+      bash -c "[[ -e ${vm_path_q} ]] && echo exists || echo none" 2>/dev/null || echo "none")
+    if [[ "$dest_state" == "exists" ]]; then
+      read -r -p "  '$vm_path' already exists in the VM. Overwrite? [y/N] " reply
+      [[ "$reply" =~ ^[Yy]$ ]] || { log_info "Aborted."; exit 0; }
+    fi
+
+    log_step "Importing to VM"
+    log_info "Host source: $host_real"
+    log_info "VM dest:     $vm_path"
+
+    # mkdir + cat in one SSH call
+    colima ssh --profile "$COLIMA_PROFILE" -- \
+      bash -c "mkdir -p ${vm_parent_q} && cat > ${vm_path_q}" < "$host_real"
+    log_success "Imported to $vm_path"
+  fi
+}
+
 # ── Help ──────────────────────────────────────────────────────────────────────
 do_help() {
   cat <<'EOF'
@@ -382,6 +536,8 @@ do_help() {
     ssh                    Open interactive shell in the VM
     bootstrap              Re-run VM bootstrap (escape hatch; bootstrap
                            normally runs once, automatically, on VM creation)
+    export <vm-path> <host-path>  Copy file/folder from VM to host
+    import <host-path> <vm-path>  Copy file/folder from host to VM
     logs [service]         Show service logs (mcpjungle|monitor|bootstrap|colima)
     help                   Show this help
 
@@ -439,6 +595,12 @@ main() {
     bootstrap)
       do_start
       do_bootstrap
+      ;;
+    export)
+      do_export "${2:-}" "${3:-}"
+      ;;
+    import)
+      do_import "${2:-}" "${3:-}"
       ;;
     logs)
       do_logs "${2:-mcpjungle}"
