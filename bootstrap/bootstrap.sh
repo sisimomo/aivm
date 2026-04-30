@@ -174,6 +174,9 @@ if [[ -n "${AIVM_HOST_HOME:-}" ]]; then
   success "~/.claude/projects → $CLAUDE_PROJECTS_MOUNT (host-persisted)"
 fi
 
+rtk init -g --auto-patch
+success "rtk Claude Code hook configured (rtk init -g)"
+
 # ── 8. Shell profile setup ────────────────────────────────────────────────────
 step "Configuring shell profile"
 
