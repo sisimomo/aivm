@@ -323,7 +323,7 @@ do_bootstrap() {
     log_fatal "VM is not running. Run 'aivm start' first."
   fi
 
-  local vm_bootstrap_path="${DEV_ROOT}/ai-vm/bootstrap/bootstrap.sh"
+  local vm_bootstrap_path="${DEV_ROOT}/aivm/bootstrap/bootstrap.sh"
   local vm_bootstrap_path_q
   vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
   log_step "Re-running bootstrap in VM"

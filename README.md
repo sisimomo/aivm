@@ -1,4 +1,4 @@
-# ai-vm
+# aivm
 
 A production-ready local AI sandbox that runs **Claude Code** agents inside a secure, disposable [Colima](https://github.com/abiosoft/colima) VM. A single `aivm` command handles the full lifecycle — from boot to teardown.
 
@@ -77,8 +77,8 @@ mcpjungle register --name context7 \
 
 ```bash
 # 1. Clone into ~/dev
-git clone <repo-url> ~/dev/ai-vm
-cd ~/dev/ai-vm
+git clone <repo-url> ~/dev/aivm
+cd ~/dev/aivm
 
 # 2. Install
 ./install.sh
@@ -250,7 +250,7 @@ aivm
 ## Repository Structure
 
 ```
-ai-vm/
+aivm/
 ├── bin/
 │   └── aivm                       ← CLI entry point (add to PATH via install.sh)
 ├── bootstrap/
