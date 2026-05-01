@@ -95,12 +95,16 @@ is_mcpjungle_healthy() {
 }
 
 # ── Session lock management ───────────────────────────────────────────────────
+# Lock file format (two lines):
+#   line 1: <pid> <epoch>
+#   line 2: <working-directory>  (empty string if not provided)
 create_session_lock() {
+  local dir="${1:-}"
   mkdir -p "$SESSION_DIR"
   local lock_file="$SESSION_DIR/$$.lock"
   local start_epoch
   start_epoch=$(date +%s)
-  echo "$$ $start_epoch" > "$lock_file"
+  printf '%s %s\n%s\n' "$$" "$start_epoch" "$dir" > "$lock_file"
   echo "$lock_file"
 }
 
@@ -108,6 +112,37 @@ remove_session_lock() {
   local lock_file="$1"
   rm -f "$lock_file"
   date +%s > "$AIVM_STATE_DIR/last-session-end"
+}
+
+# ── Terminal title management ─────────────────────────────────────────────────
+save_terminal_title() {
+  printf '\033[22;0t' > /dev/tty 2>/dev/null || true
+}
+
+restore_terminal_title() {
+  printf '\033[23;0t' > /dev/tty 2>/dev/null || true
+}
+
+set_terminal_title() {
+  [[ "${TERM:-}" == "dumb" ]] && return 0
+  printf '\033]0;%s\007' "$1" > /dev/tty 2>/dev/null || true
+}
+
+# Count active sessions whose lock directory matches target_dir.
+count_folder_sessions() {
+  local target_dir="$1"
+  local count=0
+  local lf lpid ldir old_nullglob
+  old_nullglob=$(shopt -p nullglob)
+  shopt -s nullglob
+  for lf in "$SESSION_DIR"/*.lock; do
+    lpid=$(awk 'NR==1{print $1}' "$lf" 2>/dev/null) || continue
+    ldir=$(sed -n '2p' "$lf" 2>/dev/null) || true
+    [[ -n "$lpid" ]] && kill -0 "$lpid" 2>/dev/null \
+      && [[ "$ldir" == "$target_dir" ]] && (( ++count )) || true
+  done
+  eval "$old_nullglob"
+  echo "$count"
 }
 
 # ── Idle monitor management ───────────────────────────────────────────────────
@@ -218,7 +253,7 @@ do_status() {
     shopt -s nullglob
     for lf in "$SESSION_DIR"/*.lock; do
       local lpid
-      lpid=$(awk '{print $1}' "$lf" 2>/dev/null || echo "")
+      lpid=$(awk 'NR==1{print $1}' "$lf" 2>/dev/null || echo "")
       [[ -n "$lpid" ]] && kill -0 "$lpid" 2>/dev/null && (( ++session_count )) || true
     done
     shopt -u nullglob
@@ -303,9 +338,28 @@ do_ssh() {
     log_fatal "VM is not running. Run 'aivm start' first."
   fi
 
+  local host_cwd
+  host_cwd="$(pwd)"
+
   local lock_file
-  lock_file=$(create_session_lock)
-  trap "remove_session_lock '$lock_file'" EXIT INT TERM
+  lock_file=$(create_session_lock "$host_cwd")
+
+  local folder_name instance_count title
+  folder_name="$(basename "$host_cwd")"
+  instance_count=$(count_folder_sessions "$host_cwd")
+  if (( instance_count <= 1 )); then
+    title="$folder_name"
+  else
+    title="${folder_name} #${instance_count}"
+  fi
+  save_terminal_title
+  set_terminal_title "$title"
+  while kill -0 "$$" 2>/dev/null; do
+    printf '\033]0;%s\007' "$title" > /dev/tty 2>/dev/null || true
+    sleep 0.5
+  done &
+  local title_keeper_pid=$!
+  trap "kill '$title_keeper_pid' 2>/dev/null || true; restore_terminal_title; remove_session_lock '$lock_file'" EXIT INT TERM
 
   log_info "Opening shell in VM '${COLIMA_PROFILE}'..."
   colima ssh --profile "$COLIMA_PROFILE"
@@ -330,10 +384,27 @@ do_launch() {
   CLAUDE_CODE_OAUTH_TOKEN=<your token>"
   fi
 
-  # Create session lock
+  # Create session lock (includes working directory for multi-instance title naming)
   local lock_file
-  lock_file=$(create_session_lock)
-  trap "remove_session_lock '$lock_file'" EXIT INT TERM
+  lock_file=$(create_session_lock "$host_cwd")
+
+  # Set terminal title to the folder name; append #N for concurrent instances
+  local folder_name instance_count title
+  folder_name="$(basename "$host_cwd")"
+  instance_count=$(count_folder_sessions "$host_cwd")
+  if (( instance_count <= 1 )); then
+    title="$folder_name"
+  else
+    title="${folder_name} #${instance_count}"
+  fi
+  save_terminal_title
+  set_terminal_title "$title"
+  while kill -0 "$$" 2>/dev/null; do
+    printf '\033]0;%s\007' "$title" > /dev/tty 2>/dev/null || true
+    sleep 0.5
+  done &
+  local title_keeper_pid=$!
+  trap "kill '$title_keeper_pid' 2>/dev/null || true; restore_terminal_title; remove_session_lock '$lock_file'" EXIT INT TERM
 
   log_step "Launching Claude Code in VM"
   log_info "Working directory: $vm_dir"
