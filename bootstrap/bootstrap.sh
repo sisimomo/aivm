@@ -53,6 +53,7 @@ sudo apt-get install -y --no-install-recommends \
   jq \
   htop \
   python3 \
+  libaio1t64 \
   2>&1 | tee -a "$LOG_FILE"
 
 success "System packages installed"
@@ -211,7 +212,93 @@ info "MCP config written to $MCP_CONFIG"
 
 success "MCP client configured → http://host.lima.internal:${MCPJUNGLE_PORT_ENV}/mcp"
 
-# ── 10. Verify all tools ──────────────────────────────────────────────────────
+# ── 10. AWS CLI v2 ────────────────────────────────────────────────────────────
+step "Installing AWS CLI v2"
+
+if ! command -v aws >/dev/null 2>&1; then
+  case "$(uname -m)" in
+    aarch64|arm64) AWS_ARCH="aarch64" ;;
+    x86_64)        AWS_ARCH="x86_64"  ;;
+    *) fatal "Unsupported architecture for AWS CLI: $(uname -m)" ;;
+  esac
+  AWS_TMP=$(mktemp -d)
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" \
+    -o "$AWS_TMP/awscliv2.zip" 2>&1 | tee -a "$LOG_FILE"
+  unzip -q "$AWS_TMP/awscliv2.zip" -d "$AWS_TMP"
+  sudo "$AWS_TMP/aws/install" 2>&1 | tee -a "$LOG_FILE"
+  rm -rf "$AWS_TMP"
+else
+  info "aws CLI already installed — skipping"
+fi
+
+AWS_ACTUAL=$(aws --version 2>&1 | head -1)
+info "AWS CLI: $AWS_ACTUAL"
+success "AWS CLI installed"
+
+# ── 11. Backend Skills Plugin ─────────────────────────────────────────────────
+step "Installing backend-skills-plugin"
+
+# The repo is cloned on the host and mounted read-only into the VM.
+# No git access, SSH key, or agent is needed inside the VM.
+BSP_MOUNT="${AIVM_HOST_HOME}/.aivm/backend-skills-plugin"
+BSP_REPO="$HOME/backend-skills-plugin"
+
+if [[ ! -d "$BSP_MOUNT" ]]; then
+  fatal "backend-skills-plugin not found at $BSP_MOUNT — host-side clone may have failed"
+fi
+
+# Copy the read-only mount to a writable location so install.sh can create
+# its Python venv at mcp-servers/touchtunes-tools/.venv inside the repo.
+if [[ ! -d "$BSP_REPO/.git" ]]; then
+  cp -r "$BSP_MOUNT" "$BSP_REPO"
+else
+  info "backend-skills-plugin already present at $BSP_REPO — skipping copy"
+fi
+
+# Write AWS credentials so the plugin's MCP server can call Secrets Manager.
+# Use [default] + [test] profiles: install.sh's heuristic maps "default" → dev
+# slot and "test" → test slot, producing AWS_PROFILE_MAP=dev=default,test=test.
+mkdir -p "$HOME/.aws"
+chmod 700 "$HOME/.aws"
+
+cat > "$HOME/.aws/credentials" <<AWSCREDS
+[default]
+aws_access_key_id = ${BSP_AWS_ACCESS_KEY_ID:-}
+aws_secret_access_key = ${BSP_AWS_SECRET_ACCESS_KEY:-}
+AWSCREDS
+chmod 600 "$HOME/.aws/credentials"
+
+cat > "$HOME/.aws/config" <<AWSCONFIG
+[default]
+region = ${BSP_AWS_REGION:-us-east-1}
+AWSCONFIG
+chmod 600 "$HOME/.aws/config"
+
+# Run install.sh non-interactively.
+# SKIP_TT_ASSISTANT=1: skips the interactive tt-meeting-assistant prompt.
+SKIP_TT_ASSISTANT=1 \
+  DEBIAN_FRONTEND=noninteractive \
+  bash "$BSP_REPO/install.sh" \
+  2>&1 | tee -a "$LOG_FILE"
+
+success "backend-skills-plugin installed"
+
+# Remove meeting-assistant skills — they require the tt-meeting-assistant MCP
+# server (skipped via SKIP_TT_ASSISTANT=1) and are dormant without it.
+BSP_SKILLS_DIR="$HOME/.claude/plugins/local/touchtunes-backend-knowledge"
+for skill in \
+  tt-assistant-action-tracker \
+  tt-assistant-adr-generator \
+  tt-assistant-enroll-speaker \
+  tt-assistant-meeting-extract \
+  tt-assistant-meeting-transcribe
+do
+  rm -rf "${BSP_SKILLS_DIR}/${skill}"
+  info "Removed dormant skill: $skill"
+done
+success "Meeting-assistant skills removed"
+
+# ── 12. Verify all tools ──────────────────────────────────────────────────────
 step "Verifying tool installations"
 
 export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
@@ -238,6 +325,7 @@ check_tool "npm"     npm
 check_tool "uv"      uv
 check_tool "Claude Code" claude
 check_tool "rtk"     rtk
+check_tool "aws"     aws
 
 # Java uses -version (stderr)
 if command -v java >/dev/null 2>&1; then
