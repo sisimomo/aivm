@@ -101,27 +101,6 @@ should_recreate_vm() {
   fi
 }
 
-BSP_REPO_DIR="$AIVM_STATE_DIR/backend-skills-plugin"
-BSP_REPO_URL="git@github.com:TouchTunes/backend-skills-plugin.git"
-
-# Clone or update backend-skills-plugin on the HOST using the host's own git/SSH.
-# The clone lives in ~/.aivm/ — no SSH key or agent ever enters the VM.
-BSP_REPO_BRANCH="feat/oracle-instant-client-linux-arm64"
-
-ensure_bsp_repo() {
-  if [[ ! -d "$BSP_REPO_DIR/.git" ]]; then
-    log_info "Cloning backend-skills-plugin (host-side, branch: ${BSP_REPO_BRANCH})..."
-    mkdir -p "$BSP_REPO_DIR"
-    git clone --depth 1 --branch "$BSP_REPO_BRANCH" "$BSP_REPO_URL" "$BSP_REPO_DIR" \
-      2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" \
-      || log_fatal "Failed to clone backend-skills-plugin"
-  else
-    log_info "Updating backend-skills-plugin (host-side)..."
-    git -C "$BSP_REPO_DIR" pull --ff-only \
-      2>&1 | tee -a "$AIVM_STATE_DIR/logs/colima.log" || true
-  fi
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   mkdir -p "$AIVM_STATE_DIR/logs"
@@ -148,10 +127,6 @@ main() {
     if ! vm_profile_exists; then
       # ── Fresh VM creation ────────────────────────────────────────────────────
       vm_was_created=1
-
-      # Clone the plugin on the host before starting the VM so it can be mounted.
-      ensure_bsp_repo
-
       log_step "Creating Colima VM '${COLIMA_PROFILE}'"
       mkdir -p "$DEV_ROOT"
       mkdir -p "$AIVM_STATE_DIR/.claude/projects"
@@ -171,7 +146,6 @@ main() {
         --disk "$VM_DISK" \
         --mount "${DEV_ROOT}:w" \
         --mount "$AIVM_STATE_DIR/.claude/projects:w" \
-        --mount "$BSP_REPO_DIR:r" \
         "${extra_mounts[@]}" \
         $vm_type_flags \
         --ssh-agent=false \
@@ -213,13 +187,7 @@ main() {
     local vm_bootstrap_path_q
     vm_bootstrap_path_q=$(printf '%q' "$vm_bootstrap_path")
     colima ssh --profile "$COLIMA_PROFILE" -- \
-      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' \
-        CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' \
-        AIVM_HOST_HOME='${HOME}' \
-        BSP_AWS_ACCESS_KEY_ID='${BSP_AWS_ACCESS_KEY_ID:-}' \
-        BSP_AWS_SECRET_ACCESS_KEY='${BSP_AWS_SECRET_ACCESS_KEY:-}' \
-        BSP_AWS_REGION='${BSP_AWS_REGION:-us-east-1}' \
-        bash ${vm_bootstrap_path_q}" \
+      bash -lc "MCPJUNGLE_PORT='${MCPJUNGLE_PORT:-8080}' CLAUDE_CODE_OAUTH_TOKEN='${CLAUDE_CODE_OAUTH_TOKEN:-}' AIVM_HOST_HOME='${HOME}' bash ${vm_bootstrap_path_q}" \
       2>&1 | tee -a "$AIVM_STATE_DIR/logs/bootstrap.log"
     log_success "Bootstrap complete"
   else
