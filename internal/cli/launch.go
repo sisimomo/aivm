@@ -72,6 +72,7 @@ func DoLaunch(ctx context.Context, app *App) error {
 
 	script := fmt.Sprintf(`
 set -e
+export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 if [[ ! -d %s ]]; then
   echo "[aivm] ERROR: VM directory %s does not exist"
   exit 1
@@ -95,7 +96,9 @@ func shellescape(s string) string {
 }
 
 func interactiveSsh(ctx context.Context, profile string, env map[string]string, script string) error {
-	args := []string{"ssh", "--profile", profile, "--"}
+	// limactl shell allocates a PTY when stdin is a terminal (unlike colima ssh -- CMD).
+	// This is required for TUI applications like claude.
+	limaInstance := "colima-" + profile
 	envParts := []string{}
 	for k, v := range env {
 		envParts = append(envParts, k+"="+shellescape(v))
@@ -104,7 +107,5 @@ func interactiveSsh(ctx context.Context, profile string, env map[string]string, 
 	if len(envParts) > 0 {
 		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
 	}
-
-	args = append(args, bashCmd)
-	return run.Interactive(ctx, "colima", args...)
+	return run.Interactive(ctx, "limactl", "shell", limaInstance, bashCmd)
 }
