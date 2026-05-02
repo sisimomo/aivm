@@ -17,23 +17,29 @@ import (
 var composeFileContent []byte
 
 type Manager struct {
-	ComposeFile string
-	Port        int
-	DataDir     string
-	DockerHost  string
-	DevRoot     string
-	ImageTag    string
-	ServerMode  string
+	ComposeFile   string
+	Port          int
+	DataDir       string
+	DockerHost    string
+	DevRoot       string
+	ImageTag      string
+	ServerMode    string
+	ContainerName string
 }
 
 func (m *Manager) env() map[string]string {
+	name := m.ContainerName
+	if name == "" {
+		name = "mcpjungle-server"
+	}
 	return map[string]string{
-		"DOCKER_HOST":           m.DockerHost,
-		"MCPJUNGLE_PORT":        fmt.Sprintf("%d", m.Port),
-		"MCPJUNGLE_DATA_DIR":    m.DataDir,
-		"AIVM_DEV_ROOT":         m.DevRoot,
-		"MCPJUNGLE_IMAGE_TAG":   m.ImageTag,
-		"MCPJUNGLE_SERVER_MODE": m.ServerMode,
+		"DOCKER_HOST":              m.DockerHost,
+		"MCPJUNGLE_PORT":           fmt.Sprintf("%d", m.Port),
+		"MCPJUNGLE_DATA_DIR":       m.DataDir,
+		"AIVM_DEV_ROOT":            m.DevRoot,
+		"MCPJUNGLE_IMAGE_TAG":      m.ImageTag,
+		"MCPJUNGLE_SERVER_MODE":    m.ServerMode,
+		"MCPJUNGLE_CONTAINER_NAME": name,
 	}
 }
 

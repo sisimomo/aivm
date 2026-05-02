@@ -9,7 +9,7 @@
 services:
   mcpjungle:
     image: ghcr.io/mcpjungle/mcpjungle:${MCPJUNGLE_IMAGE_TAG:-latest-stdio}
-    container_name: mcpjungle-server
+    container_name: ${MCPJUNGLE_CONTAINER_NAME:-mcpjungle-server}
     # SQLite db is created in /data (default behaviour when DATABASE_URL is unset)
     working_dir: /data
     environment:

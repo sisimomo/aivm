@@ -206,13 +206,14 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	mcpMgr := &mcp.Manager{
-		ComposeFile: composeFile,
-		Port:        cfg.MCP.Port,
-		DataDir:     cfg.MCP.DataDir,
-		DockerHost:  dockerHost,
-		DevRoot:     cfg.VM.DevRoot,
-		ImageTag:    cfg.MCP.ImageTag,
-		ServerMode:  cfg.MCP.ServerMode,
+		ComposeFile:   composeFile,
+		Port:          cfg.MCP.Port,
+		DataDir:       cfg.MCP.DataDir,
+		DockerHost:    dockerHost,
+		DevRoot:       cfg.VM.DevRoot,
+		ImageTag:      cfg.MCP.ImageTag,
+		ServerMode:    cfg.MCP.ServerMode,
+		ContainerName: "mcpjungle-" + cfg.VM.Profile,
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
