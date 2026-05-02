@@ -12,7 +12,7 @@ DEV_BUILD_FLAGS := -ldflags="-s -w \
   -X main.defaultProfile=$(DEV_PROFILE) \
   -X main.defaultMCPPort=$(DEV_MCP_PORT)"
 
-.PHONY: build build-dev install install-dev uninstall uninstall-dev clean test test-integration fmt vet
+.PHONY: build build-dev install install-dev uninstall uninstall-dev clean test test-integration build-test-image fmt vet
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -59,7 +59,10 @@ clean:
 test:
 	go test ./...
 
-test-integration:
+build-test-image:
+	docker build -t aivm-test-base:latest ./test/docker/
+
+test-integration: build-test-image
 	@go build -tags integration ./test/... 2>&1
 	go test -tags integration -v -timeout 60m ./test/scenarios/
 

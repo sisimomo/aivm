@@ -167,13 +167,13 @@ func CorruptBootstrapVersion() fw.StepFunc {
 	}
 }
 
-// ResetMockVMRunCount resets the primary mock VM's run counter to zero.
-// Use this before a step where you want to assert that no (or some) scripts
-// were run by bootstrap.
+// ResetMockVMRunCount resets the primary VM's run counter to zero.
+// Use this before a step where you want to assert on the number of scripts
+// run by a specific bootstrap phase. No-op if the VM does not implement RunCounter.
 func ResetMockVMRunCount() fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		if m := h.MockVMs.Get(h.Profile); m != nil {
-			m.ResetRunCount()
+		if rc, ok := h.App.VM.(fw.RunCounter); ok {
+			rc.ResetRunCount()
 		}
 		return nil
 	}

@@ -1,6 +1,10 @@
 // Package framework provides the integration testing harness for AIVM.
-// It creates isolated mock VM environments per test, wires up the full
-// cli.App (with a no-op MCP stub), and tears everything down on completion.
+// It creates isolated Docker-container VM environments per test, wires up the
+// full cli.App (with a no-op MCP stub), and tears everything down on completion.
+//
+// Each test gets a dedicated Ubuntu container that behaves like a real Linux VM.
+// Bootstrap scripts execute inside the container via docker exec, so toolchain
+// installation, plugin check scripts, and configure steps all run for real.
 //
 // Usage:
 //
@@ -21,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"aivm/internal/agent"
@@ -35,25 +40,34 @@ import (
 )
 
 // Harness holds the full isolated test environment for one test.
-// Each Harness gets a unique mock VM profile and temp state directory.
-// The state dir is always removed when the test finishes (even on failure).
+// Each Harness gets a unique Docker container profile and temp state directory.
+// Both are always cleaned up when the test finishes, even on failure.
 type Harness struct {
 	t        *testing.T
 	tc       testConfig
 	StateDir string
 	Profile  string
 	App      *cli.App
-	// MockVMs provides access to all MockVM instances created during the test,
-	// keyed by profile name. Use this to assert on secondary VM state (e.g.
-	// the legacy VM destroyed during a soft rebuild).
-	MockVMs *MockVMRegistry
+	// ContainerVMs provides access to all DockerVM instances created during the
+	// test, keyed by profile name. Use this to inspect secondary VMs (e.g. the
+	// new VM profile bootstrapped during a soft rebuild).
+	ContainerVMs *ContainerVMRegistry
 }
 
 // New creates a new Harness for the calling test.
-// The Harness is fully wired (cli.App with mock VM and stub MCP) and registers
-// a t.Cleanup that removes the temp state directory.
+// The Harness is fully wired (cli.App with a Docker container VM and stub MCP)
+// and registers a t.Cleanup that stops all containers and removes the temp state
+// directory.
+//
+// Requires the aivm-test-base:latest Docker image to be present. Build it once
+// with: make build-test-image
 func New(t *testing.T, opts ...Option) *Harness {
 	t.Helper()
+
+	// Ensure the base Docker image exists, building it if needed.
+	if err := EnsureTestImage(testDockerDir()); err != nil {
+		t.Fatalf("harness: ensure test image: %v", err)
+	}
 
 	tc := defaultTestConfig()
 	for _, opt := range opts {
@@ -89,29 +103,37 @@ func New(t *testing.T, opts ...Option) *Harness {
 
 	cfg := buildTestConfig(profile, stateDir, tc)
 
-	mockVMs := NewMockVMRegistry()
-	primaryVM := newMockVM(cfg.VM.Profile, cfg.StateDir)
-	mockVMs.Register(primaryVM)
-	factory := mockVMs.Factory()
+	containerVMs := NewContainerVMRegistry()
+	primaryVM := newDockerVM(cfg.VM.Profile, cfg.StateDir)
+	containerVMs.Register(primaryVM)
+	factory := containerVMs.Factory()
 
 	app := buildTestApp(t, cfg, tc, primaryVM, factory)
 
 	h := &Harness{
-		t:        t,
-		tc:       tc,
-		StateDir: stateDir,
-		Profile:  profile,
-		App:      app,
-		MockVMs:  mockVMs,
+		t:            t,
+		tc:           tc,
+		StateDir:     stateDir,
+		Profile:      profile,
+		App:          app,
+		ContainerVMs: containerVMs,
 	}
 
 	t.Cleanup(func() {
+		containerVMs.DestroyAll()
 		if err := os.RemoveAll(testRunDir); err != nil {
 			t.Logf("harness cleanup: remove test run dir %q: %v", testRunDir, err)
 		}
 	})
 
 	return h
+}
+
+// GetOrCreateSecondaryVM returns the DockerVM for the given profile, creating a
+// new container if one does not already exist. Use this in tests that need to
+// inspect or control a secondary VM (e.g. the "-next" profile in a soft rebuild).
+func (h *Harness) GetOrCreateSecondaryVM(profile string) vm.VM {
+	return h.ContainerVMs.GetOrCreate(profile, h.StateDir)
 }
 
 // RunCLI executes an aivm CLI command through the real Cobra entry point,
@@ -223,6 +245,13 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	}
 
 	return app
+}
+
+// testDockerDir returns the absolute path to the test/docker/ directory
+// containing the Dockerfile for the container base image.
+func testDockerDir() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(file), "..", "docker")
 }
 
 func mustRandomHex(n int) string {

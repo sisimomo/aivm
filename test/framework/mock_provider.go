@@ -22,9 +22,13 @@ func newMockProvider(real agent.Provider) *MockProvider {
 	return &MockProvider{real: real}
 }
 
-func (m *MockProvider) Name() string             { return m.real.Name() }
-func (m *MockProvider) Description() string      { return m.real.Description() }
-func (m *MockProvider) RequiredPlugins() []string { return m.real.RequiredPlugins() }
+func (m *MockProvider) Name() string        { return m.real.Name() }
+func (m *MockProvider) Description() string { return m.real.Description() }
+
+// RequiredPlugins returns an empty list so that the harness does not attempt to
+// install real agent CLI tools (claude, copilot) during bootstrap.
+// Tests that need a specific plugin use framework.WithPlugins().
+func (m *MockProvider) RequiredPlugins() []string { return []string{} }
 
 // Launch records the call and returns immediately with exit code 0.
 // No SSH or subprocess is started.

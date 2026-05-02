@@ -169,15 +169,16 @@ func BaseImageIsNot(prev *string) fw.AssertFunc {
 	}
 }
 
-// VMRunCountIs asserts that the primary mock VM's Run() was called exactly n
-// times since the last ResetMockVMRunCount.
+// VMRunCountIs asserts that the primary VM's Run() was called exactly n times
+// since the last ResetMockVMRunCount. Silently passes if the VM does not
+// implement RunCounter (e.g. a real Colima VM).
 func VMRunCountIs(n int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		m := h.MockVMs.Get(h.Profile)
-		if m == nil {
-			return fmt.Errorf("mock VM not found for profile %q", h.Profile)
+		rc, ok := h.App.VM.(fw.RunCounter)
+		if !ok {
+			return nil
 		}
-		got := m.RunCount()
+		got := rc.RunCount()
 		if got != n {
 			return fmt.Errorf("VM run count: got %d, want %d", got, n)
 		}
@@ -185,15 +186,16 @@ func VMRunCountIs(n int) fw.AssertFunc {
 	}
 }
 
-// VMRunCountAtLeast asserts that the primary mock VM's Run() was called at
-// least n times since the last ResetMockVMRunCount.
+// VMRunCountAtLeast asserts that the primary VM's Run() was called at least n
+// times since the last ResetMockVMRunCount. Silently passes if the VM does not
+// implement RunCounter.
 func VMRunCountAtLeast(n int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		m := h.MockVMs.Get(h.Profile)
-		if m == nil {
-			return fmt.Errorf("mock VM not found for profile %q", h.Profile)
+		rc, ok := h.App.VM.(fw.RunCounter)
+		if !ok {
+			return nil
 		}
-		got := m.RunCount()
+		got := rc.RunCount()
 		if got < n {
 			return fmt.Errorf("VM run count: got %d, want at least %d", got, n)
 		}

@@ -75,7 +75,7 @@ python:
     uv python install
 
 rtk:
-  description: "rtk (Rust Token Killer) — Claude Code hook"
+  description: "rtk (Rust Token Killer)"
   dependencies:
     - system
   check: |
@@ -102,24 +102,30 @@ claude:
     fi
   configure: |
     export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+
     echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
+
     {{ if .host_home }}
     mkdir -p "$HOME/.claude"
     PROJECTS_MOUNT="{{ .host_home }}/.aivm/.claude/projects"
     mkdir -p "$PROJECTS_MOUNT"
     ln -sfn "$PROJECTS_MOUNT" "$HOME/.claude/projects"
     {{ end }}
-    mkdir -p "$HOME/.claude"
-    cat > "$HOME/.claude/mcp-config.json" <<'AIVM_EOF'
-    {
-      "mcpServers": {
-        "mcpjungle": {
-          "type": "http",
-          "url": "http://host.lima.internal:{{ .mcp_port }}/mcp"
-        }
+
+    MCP_FILE="$HOME/.claude/mcp-config.json"
+    mkdir -p "$(dirname "$MCP_FILE")"
+
+    # Ensure base file exists
+    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
+
+    # Inject/merge mcpjungle via jq (idempotent)
+    jq '
+      .mcpServers.mcpjungle = {
+        type: "http",
+        url: "http://host.lima.internal:{{ .mcp_port }}/mcp"
       }
-    }
-    AIVM_EOF
+    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"
+
     rtk init -g --auto-patch 2>/dev/null || true
 
 golang:
@@ -142,15 +148,15 @@ copilot:
     launch_command: "gh copilot"
   check: |
     gh extension list 2>/dev/null | grep -q 'github/gh-copilot'
-  install: |
-    export DEBIAN_FRONTEND=noninteractive
-    # Install GitHub CLI
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-    sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt-get update -qq
-    sudo apt-get install gh -y
-    # Install Copilot extension (requires prior `gh auth login`)
-    gh extension install github/gh-copilot 2>/dev/null || gh extension upgrade gh-copilot 2>/dev/null || true
+  configure: |
+    MCP_FILE="$HOME/.config/gh-copilot/mcp-config.json"
+    mkdir -p "$(dirname "$MCP_FILE")"
+
+    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
+
+    jq '
+      .mcpServers.mcpjungle = {
+        type: "http",
+        url: "http://host.lima.internal:8080/mcp"
+      }
+    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"

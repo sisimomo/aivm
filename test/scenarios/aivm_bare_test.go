@@ -103,7 +103,7 @@ func TestBareCommandMultipleSessions(t *testing.T) {
 //
 //  1. Start VM (creates base image v1, primary profile).
 //  2. Manually write a transition state pointing to a "-next" profile.
-//  3. Register the "-next" profile in MockVMs so the factory can create it.
+//  3. Register the "-next" profile so the factory can create its container.
 //  4. Run `aivm` bare — DoLaunch must see the transition, switch to the new VM,
 //     verify it is running, and launch the agent.
 func TestBareCommandWithTransitionState(t *testing.T) {
@@ -151,13 +151,7 @@ func prepareTransition(t *testing.T, h *framework.Harness) framework.StepFunc {
 	return func(ctx context.Context, _ *framework.Harness) error {
 		nextProfile := h.Profile + "-next"
 
-		// The mock VM factory already creates MockVMs on demand; just start it.
-		nextVM := h.MockVMs.Get(nextProfile)
-		if nextVM == nil {
-			// Factory creates and registers it automatically on first Get.
-			// Trigger creation by using the factory directly.
-			nextVM = h.MockVMs.GetOrCreate(nextProfile, h.StateDir)
-		}
+		nextVM := h.GetOrCreateSecondaryVM(nextProfile)
 
 		if err := nextVM.Start(ctx, vm.StartOptions{}); err != nil {
 			return fmt.Errorf("start next VM: %w", err)
