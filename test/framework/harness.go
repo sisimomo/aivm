@@ -153,6 +153,16 @@ func (h *Harness) RunMonitorInProcess(ctx context.Context) context.CancelFunc {
 	return cancel
 }
 
+// ProviderLaunchCount returns the number of times the active agent provider's
+// Launch method was called. All harness-created Apps use MockProvider, so this
+// is always accurate. Use with assertions.AgentLaunched() or assertions.AgentLaunchCount().
+func (h *Harness) ProviderLaunchCount() int {
+	if mp, ok := h.App.Provider.(*MockProvider); ok {
+		return mp.LaunchCallCount()
+	}
+	return 0
+}
+
 // ImageManager returns the ImageManager for the test VM, scoped to StateDir.
 func (h *Harness) ImageManager() *vm.ImageManager {
 	return vm.NewImageManager(h.App.VM, h.StateDir)
@@ -162,8 +172,8 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	t.Helper()
 
 	agentReg := agent.NewRegistry()
-	agentReg.Register(claude.New())
-	agentReg.Register(copilot.New())
+	agentReg.Register(newMockProvider(claude.New()))
+	agentReg.Register(newMockProvider(copilot.New()))
 
 	prov, ok := agentReg.Get(tc.Provider)
 	if !ok {
@@ -199,6 +209,10 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Agents:    agentReg,
 		Provider:  prov,
 		VMFactory: factory,
+		// DoLaunch uses GetWorkDir to resolve the working directory.
+		// In tests, return DevRoot so the CWD-under-DevRoot check always passes
+		// without needing os.Chdir (which is process-global and unsafe in tests).
+		GetWorkDir: func() (string, error) { return cfg.VM.DevRoot, nil },
 	}
 
 	// Wire injectable I/O: only active when Interactive=true so that

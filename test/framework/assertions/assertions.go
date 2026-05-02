@@ -290,7 +290,30 @@ func BootstrapStateInstalledExactly(plugins ...string) fw.AssertFunc {
 	}
 }
 
-// bootstrapState mirrors cli.BootstrapState for JSON decoding inside the assertions package.
+// AgentLaunched asserts that the active agent provider's Launch method was
+// called at least once. Use after running `aivm` bare (or any scenario that
+// should culminate in an agent session being started).
+func AgentLaunched() fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		if n := h.ProviderLaunchCount(); n == 0 {
+			return fmt.Errorf("expected agent provider.Launch to be called, but it was not")
+		}
+		return nil
+	}
+}
+
+// AgentLaunchCount asserts that the active agent provider's Launch method was
+// called exactly n times.
+func AgentLaunchCount(want int) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		got := h.ProviderLaunchCount()
+		if got != want {
+			return fmt.Errorf("expected %d agent Launch call(s), got %d", want, got)
+		}
+		return nil
+	}
+}
+
 type bootstrapState struct {
 	Version   string   `json:"version"`
 	Provider  string   `json:"provider"`

@@ -35,7 +35,14 @@ func LaunchCmd(getApp func() (*App, error)) *cobra.Command {
 func DoLaunch(ctx context.Context, app *App) error {
 	cfg := app.Config
 
-	hostCWD, _ := os.Getwd()
+	getCWD := app.GetWorkDir
+	if getCWD == nil {
+		getCWD = os.Getwd
+	}
+	hostCWD, err := getCWD()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
+	}
 	devRoot := cfg.VM.DevRoot
 	realCWD, _ := filepath.EvalSymlinks(hostCWD)
 	realDev, _ := filepath.EvalSymlinks(devRoot)

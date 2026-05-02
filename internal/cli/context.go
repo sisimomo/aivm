@@ -33,4 +33,7 @@ type App struct {
 	// IsTerminal reports whether the process is attached to an interactive terminal.
 	// Defaults to the real os.Stdin character-device check when nil.
 	IsTerminal func() bool
+	// GetWorkDir returns the working directory used by DoLaunch for path resolution.
+	// When nil, os.Getwd() is used. Override in tests to decouple from the real CWD.
+	GetWorkDir func() (string, error)
 }

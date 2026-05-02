@@ -151,6 +151,18 @@ func (r *MockVMRegistry) Get(profile string) *MockVM {
 	return r.vms[profile]
 }
 
+// GetOrCreate returns the MockVM for the given profile, creating it if needed.
+func (r *MockVMRegistry) GetOrCreate(profile, stateDir string) *MockVM {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if m, ok := r.vms[profile]; ok {
+		return m
+	}
+	m := newMockVM(profile, stateDir)
+	r.vms[profile] = m
+	return m
+}
+
 // Factory returns a vm.VMFactory that creates or retrieves a MockVM per profile.
 // The first call for a given profile creates a new MockVM; subsequent calls
 // return the same instance.
