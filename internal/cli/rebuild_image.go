@@ -9,10 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"aivm/internal/bootstrap"
 	"aivm/internal/config"
 	aivmlog "aivm/internal/log"
-	"aivm/internal/plugin"
 	"aivm/internal/vm"
 )
 
@@ -112,7 +110,7 @@ func doHardRebuild(ctx context.Context, app *App, imgMgr *vm.ImageManager) error
 	if err := rebuildStartVM(ctx, app.VM, cfg); err != nil {
 		return err
 	}
-	if err := rebuildBootstrap(ctx, app.VM, cfg); err != nil {
+	if err := fullBootstrap(ctx, app, app.VM, true); err != nil {
 		return err
 	}
 
@@ -145,7 +143,7 @@ func doSoftRebuild(ctx context.Context, app *App, imgMgr *vm.ImageManager) error
 	}
 
 	aivmlog.Step("Bootstrapping rebuild VM from scratch")
-	if err := rebuildBootstrap(ctx, tempVM, cfg); err != nil {
+	if err := rebuildBootstrap(ctx, app, tempVM); err != nil {
 		_ = tempVM.Destroy(ctx)
 		return err
 	}
@@ -203,19 +201,12 @@ func rebuildStartVM(ctx context.Context, v vm.VM, cfg *config.Config) error {
 	return nil
 }
 
-// rebuildBootstrap runs every plugin unconditionally (force=true skips per-plugin Check).
-func rebuildBootstrap(ctx context.Context, v vm.VM, cfg *config.Config) error {
-	eng := &bootstrap.Engine{
-		VM: v,
-		Executor: &plugin.Executor{
-			Registry:     plugin.Global(),
-			Enabled:      cfg.Plugins.Enabled,
-			PluginConfig: cfg.Plugins.Config,
-			StateDir:     cfg.StateDir,
-			VMInst:       v,
-		},
-		StateDir: cfg.StateDir,
-	}
+// rebuildBootstrap runs every plugin unconditionally on the given VM (force=true
+// skips per-plugin Check). Does not update the host-side bootstrap state — the
+// caller is responsible for that when appropriate (hard rebuild saves state via
+// fullBootstrap; soft rebuild does not, since the main VM is still running).
+func rebuildBootstrap(ctx context.Context, app *App, v vm.VM) error {
+	eng := newBootstrapEngine(app, v, nil)
 	if err := eng.Run(ctx, true); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}

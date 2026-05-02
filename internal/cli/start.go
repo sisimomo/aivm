@@ -10,10 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"aivm/internal/bootstrap"
 	"aivm/internal/config"
 	aivmlog "aivm/internal/log"
-	"aivm/internal/plugin"
 	"aivm/internal/vm"
 )
 
@@ -89,19 +87,7 @@ func DoStart(ctx context.Context, app *App) error {
 		// Fresh VM: restore from the current base image to skip bootstrap (fast path).
 		// If no base image exists yet, fall through to full bootstrap and save one.
 		if !imgMgr.TryRestoreBaseImage(ctx) {
-			eng := &bootstrap.Engine{
-				VM: app.VM,
-				Executor: &plugin.Executor{
-					Registry:       app.Registry,
-					Enabled:        cfg.Plugins.Enabled,
-					PluginConfig:   cfg.Plugins.Config,
-					StateDir:       cfg.StateDir,
-					ActiveProvider: app.Provider.Name(),
-					VMInst:         app.VM,
-				},
-				StateDir: cfg.StateDir,
-			}
-			if err := eng.Run(ctx, false); err != nil {
+			if err := fullBootstrap(ctx, app, app.VM, true); err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
 			img, err := imgMgr.SaveBaseImage(ctx)
@@ -110,26 +96,29 @@ func DoStart(ctx context.Context, app *App) error {
 			} else {
 				imgMgr.RecordVMImageRef(img.ID)
 			}
+		} else {
+			// Base image restored: clear state so syncBootstrap re-checks what is
+			// actually in the VM (the base image may predate plugins added since).
+			clearBootstrapState(cfg.StateDir)
+			recreated, err := syncBootstrap(ctx, app)
+			if err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			if recreated {
+				goto ready
+			}
 		}
 	} else {
-		// Resumed or already-running VM: bootstrap marker check ensures idempotency.
-		eng := &bootstrap.Engine{
-			VM: app.VM,
-			Executor: &plugin.Executor{
-				Registry:       app.Registry,
-				Enabled:        cfg.Plugins.Enabled,
-				PluginConfig:   cfg.Plugins.Config,
-				StateDir:       cfg.StateDir,
-				ActiveProvider: app.Provider.Name(),
-				VMInst:         app.VM,
-			},
-			StateDir: cfg.StateDir,
-		}
-		if err := eng.Run(ctx, false); err != nil {
+		recreated, err := syncBootstrap(ctx, app)
+		if err != nil {
 			return fmt.Errorf("bootstrap: %w", err)
+		}
+		if recreated {
+			goto ready
 		}
 	}
 
+ready:
 	if err := app.Monitor.EnsureRunning(); err != nil {
 		aivmlog.Warn("could not start idle monitor: %v", err)
 	}

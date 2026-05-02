@@ -14,9 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"aivm/internal/agent"
-	"aivm/internal/bootstrap"
 	aivmlog "aivm/internal/log"
-	"aivm/internal/plugin"
 	"aivm/internal/vm"
 )
 
@@ -219,19 +217,7 @@ func startTransitionVM(ctx context.Context, app *App) error {
 		[]byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
 
 	// Full bootstrap on the new VM.
-	eng := &bootstrap.Engine{
-		VM: newVM,
-		Executor: &plugin.Executor{
-			Registry:       app.Registry,
-			Enabled:        cfg.Plugins.Enabled,
-			PluginConfig:   cfg.Plugins.Config,
-			StateDir:       cfg.StateDir,
-			ActiveProvider: app.Provider.Name(),
-			VMInst:         newVM,
-		},
-		StateDir: cfg.StateDir,
-	}
-	if err := eng.Run(ctx, true); err != nil {
+	if err := fullBootstrap(ctx, app, newVM, true); err != nil {
 		return fmt.Errorf("bootstrap new VM: %w", err)
 	}
 

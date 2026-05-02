@@ -241,6 +241,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		Sessions: sessions,
 		Monitor:  mon,
 		Registry: reg,
+		Agents:   agentReg,
 		Provider: prov,
 	}, nil
 }

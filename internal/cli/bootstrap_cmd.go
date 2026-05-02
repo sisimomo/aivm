@@ -6,8 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"aivm/internal/bootstrap"
-	"aivm/internal/plugin"
 	"aivm/internal/vm"
 )
 
@@ -40,25 +38,26 @@ func DoBootstrap(ctx context.Context, app *App, onlyPlugin string, force bool) e
 		return fmt.Errorf("VM is not running — run 'aivm start' first")
 	}
 
-	cfg := app.Config
-	enabled := cfg.Plugins.Enabled
 	if onlyPlugin != "" {
-		enabled = []string{onlyPlugin}
+		eng := newBootstrapEngine(app, app.VM, []string{onlyPlugin})
+		if err := eng.Run(ctx, force); err != nil {
+			return err
+		}
+		// Keep the state file consistent.
+		state, _ := loadBootstrapState(app.Config.StateDir)
+		if state != nil {
+			state.Installed = mergeStrings(state.Installed, []string{onlyPlugin})
+			_ = saveBootstrapState(app.Config.StateDir, state)
+		}
+		return nil
 	}
 
-	eng := &bootstrap.Engine{
-		VM: app.VM,
-		Executor: &plugin.Executor{
-			Registry:       app.Registry,
-			Enabled:        enabled,
-			PluginConfig:   cfg.Plugins.Config,
-			StateDir:       cfg.StateDir,
-			ActiveProvider: app.Provider.Name(),
-			VMInst:         app.VM,
-		},
-		StateDir: cfg.StateDir,
+	if force {
+		return fullBootstrap(ctx, app, app.VM, true)
 	}
-	return eng.Run(ctx, force)
+
+	_, err = syncBootstrap(ctx, app)
+	return err
 }
 
 func ListPlugins(app *App) error {

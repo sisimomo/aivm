@@ -17,6 +17,7 @@ type App struct {
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
+	Agents   *agent.Registry
 	// Provider is the active AI agent provider selected from the config.
 	Provider agent.Provider
 }

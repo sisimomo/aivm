@@ -94,7 +94,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	v.SetDefault("idle.timeout", "5m")
 	v.SetDefault("idle.delete_timeout", "5m")
 	v.SetDefault("agent.provider", "claude")
-	v.SetDefault("plugins.enabled", []string{"system", "java", "maven", "nodejs", "python", "rtk", "claude"})
+	v.SetDefault("plugins.enabled", []string{"system", "java", "maven", "nodejs", "python", "rtk"})
 
 	v.SetEnvPrefix("AIVM")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

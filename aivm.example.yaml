@@ -33,6 +33,10 @@ agent:
 
 plugins:
   enabled:
+    # Common bootstrap plugins. The active agent plugin (e.g. "claude" or
+    # "copilot") is added automatically from agent.provider — you do not
+    # need to list it here. Agent-specific plugins for other providers are
+    # filtered out automatically.
     - system
     - java
     - maven
@@ -40,9 +44,8 @@ plugins:
     - python
     - golang
     - rtk
-    - claude
-    # Switch to the copilot provider: set agent.provider: copilot and replace
-    # `- claude` with `- copilot` in this list.
+    # Switching agent.provider is enough; you do not need to add or remove
+    # any plugin entries when changing agents.
 
   config:
     java:

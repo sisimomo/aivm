@@ -12,7 +12,11 @@ import (
 )
 
 const markerFile = ".aivm-bootstrap-version"
-const bootstrapVersion = "2"
+
+// BootstrapVersion is incremented whenever the bootstrap schema changes.
+// The CLI layer embeds this in the host-side bootstrap-state.json so it can
+// detect when the schema has changed and trigger a fresh reconcile.
+const BootstrapVersion = "2"
 
 type Engine struct {
 	VM       vm.VM
@@ -21,17 +25,21 @@ type Engine struct {
 }
 
 func (e *Engine) IsBootstrapped(ctx context.Context) bool {
-	err := e.VM.Run(ctx, fmt.Sprintf(`[ -f ~/%s ] && cat ~/%s | grep -q '%s'`, markerFile, markerFile, bootstrapVersion), nil)
+	err := e.VM.Run(ctx, fmt.Sprintf(`[ -f ~/%s ] && cat ~/%s | grep -q '%s'`, markerFile, markerFile, BootstrapVersion), nil)
 	return err == nil
 }
 
 func (e *Engine) Run(ctx context.Context, force bool) error {
-	if !force && e.IsBootstrapped(ctx) {
-		aivmlog.Info("VM already bootstrapped at version %s — skipping", bootstrapVersion)
-		return nil
-	}
+	bootstrapped := e.IsBootstrapped(ctx)
 
-	aivmlog.Step("Bootstrapping VM")
+	switch {
+	case force:
+		aivmlog.Step("Bootstrapping VM")
+	case bootstrapped:
+		aivmlog.Step("Reconciling VM bootstrap")
+	default:
+		aivmlog.Step("Bootstrapping VM")
+	}
 
 	ordered, err := e.Executor.Ordered()
 	if err != nil {
@@ -77,7 +85,7 @@ func (e *Engine) Run(ctx context.Context, force bool) error {
 		aivmlog.Success("%s installed", p.Name())
 	}
 
-	script := fmt.Sprintf(`echo '%s' > ~/%s`, bootstrapVersion, markerFile)
+	script := fmt.Sprintf(`echo '%s' > ~/%s`, BootstrapVersion, markerFile)
 	if err := e.VM.Run(ctx, script, nil); err != nil {
 		return fmt.Errorf("writing bootstrap marker: %w", err)
 	}
