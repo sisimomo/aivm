@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,9 +9,13 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 
 	"aivm/internal/plugin"
 )
+
+//go:embed defaults.yaml
+var defaultsYAML []byte
 
 type Config struct {
 	VM      VMConfig      `mapstructure:"vm"`
@@ -79,22 +84,12 @@ type Defaults struct {
 func Load(cfgPath string, d Defaults) (*Config, error) {
 	v := viper.New()
 
-	v.SetDefault("vm.cpus", 4)
-	v.SetDefault("vm.memory", 8)
-	v.SetDefault("vm.disk", 60)
-	v.SetDefault("vm.type", "vz")
-	v.SetDefault("vm.max_age_days", 7)
-	v.SetDefault("vm.base_image_max_age_days", 7)
-	v.SetDefault("vm.dev_root", "~/dev")
+	if err := setDefaultsFromYAML(v, defaultsYAML); err != nil {
+		return nil, fmt.Errorf("loading config defaults: %w", err)
+	}
 	v.SetDefault("vm.profile", d.VMProfile)
 	v.SetDefault("mcp.port", d.MCPPort)
 	v.SetDefault("mcp.data_dir", d.StateDir+"/mcpjungle-data")
-	v.SetDefault("mcp.image_tag", "latest-stdio")
-	v.SetDefault("mcp.server_mode", "development")
-	v.SetDefault("idle.timeout", "5m")
-	v.SetDefault("idle.delete_timeout", "5m")
-	v.SetDefault("agent.provider", "claude")
-	v.SetDefault("plugins.enabled", []string{"system", "java", "maven", "nodejs", "python", "rtk"})
 
 	v.SetEnvPrefix("AIVM")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -143,4 +138,29 @@ func expandPath(path, home string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+// setDefaultsFromYAML parses the given YAML bytes and registers each leaf value
+// as a viper default using dot-separated keys (e.g. "vm.cpus").
+func setDefaultsFromYAML(v *viper.Viper, data []byte) error {
+	var m map[string]any
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	setDefaultsFromMap(v, m, "")
+	return nil
+}
+
+func setDefaultsFromMap(v *viper.Viper, m map[string]any, prefix string) {
+	for k, val := range m {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+		if nested, ok := val.(map[string]any); ok {
+			setDefaultsFromMap(v, nested, key)
+		} else {
+			v.SetDefault(key, val)
+		}
+	}
 }
