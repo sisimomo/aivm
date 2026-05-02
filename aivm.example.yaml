@@ -18,7 +18,8 @@ mcp:
   server_mode: development
 
 idle:
-  timeout: 5m   # auto-shutdown after this idle duration
+  timeout: 5m        # stop (suspend) VM after this idle duration  — Phase 1
+  delete_timeout: 5m # delete suspended VM after this additional duration — Phase 2
 
 auth:
   # Claude Code OAuth token.

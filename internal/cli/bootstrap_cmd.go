@@ -14,6 +14,7 @@ import (
 func BootstrapCmd(app *App) *cobra.Command {
 	var listOnly bool
 	var forcePlugin string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
@@ -22,15 +23,18 @@ func BootstrapCmd(app *App) *cobra.Command {
 			if listOnly {
 				return ListPlugins(app)
 			}
-			return DoBootstrap(cmd.Context(), app, forcePlugin)
+			return DoBootstrap(cmd.Context(), app, forcePlugin, force || forcePlugin != "")
 		},
 	}
 	cmd.Flags().BoolVar(&listOnly, "list", false, "list all plugins and their status")
 	cmd.Flags().StringVar(&forcePlugin, "plugin", "", "run only this specific plugin")
+	cmd.Flags().BoolVar(&force, "force", false, "force re-run even if already bootstrapped")
 	return cmd
 }
 
-func DoBootstrap(ctx context.Context, app *App, onlyPlugin string) error {
+// DoBootstrap runs the bootstrap process. When force is true all plugins are re-run
+// regardless of whether the VM was already bootstrapped.
+func DoBootstrap(ctx context.Context, app *App, onlyPlugin string, force bool) error {
 	status, err := app.VM.Status(ctx)
 	if err != nil || status != vm.StatusRunning {
 		return fmt.Errorf("VM is not running — run 'aivm start' first")
@@ -53,7 +57,7 @@ func DoBootstrap(ctx context.Context, app *App, onlyPlugin string) error {
 		},
 		StateDir: cfg.StateDir,
 	}
-	return eng.Run(ctx, onlyPlugin != "")
+	return eng.Run(ctx, force)
 }
 
 func ListPlugins(app *App) error {

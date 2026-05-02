@@ -42,7 +42,8 @@ type MCPConfig struct {
 }
 
 type IdleConfig struct {
-	Timeout time.Duration `mapstructure:"timeout"`
+	Timeout       time.Duration `mapstructure:"timeout"`
+	DeleteTimeout time.Duration `mapstructure:"delete_timeout"`
 }
 
 type AuthConfig struct {
@@ -71,6 +72,7 @@ func Load(cfgPath string) (*Config, error) {
 	v.SetDefault("mcp.image_tag", "latest-stdio")
 	v.SetDefault("mcp.server_mode", "development")
 	v.SetDefault("idle.timeout", "5m")
+	v.SetDefault("idle.delete_timeout", "5m")
 	v.SetDefault("plugins.enabled", []string{"system", "java", "maven", "nodejs", "python", "rtk", "claude"})
 
 	v.SetEnvPrefix("AIVM")

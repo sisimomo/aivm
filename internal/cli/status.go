@@ -35,6 +35,23 @@ func DoStatus(ctx context.Context, app *App) error {
 	}
 	fmt.Printf("  │  VM (%s): %s %s\n", cfg.VM.Profile, vmIcon, status)
 
+	imgMgr := vm.NewImageManager(app.VM, cfg.StateDir)
+	baseImg := imgMgr.LoadBaseImage()
+	if baseImg != nil {
+		fmt.Printf("  │  Base image:        id=%s (%s)\n",
+			baseImg.ID, baseImg.CreatedAt.Local().Format("2006-01-02 15:04 MST"))
+		vmRef := imgMgr.GetVMImageRef()
+		if vmRef == "" {
+			fmt.Printf("  │  VM image ref:      (unknown)\n")
+		} else if imgMgr.IsVMLegacy() {
+			fmt.Printf("  │  VM image ref:      id=%s ⚠️  legacy\n", vmRef)
+		} else {
+			fmt.Printf("  │  VM image ref:      id=%s ✅ current\n", vmRef)
+		}
+	} else {
+		fmt.Printf("  │  Base image:        (none — run 'aivm start' to create)\n")
+	}
+
 	mcpIcon := "❌"
 	if app.MCP.IsHealthy(ctx) {
 		mcpIcon = "✅"
@@ -54,14 +71,29 @@ func DoStatus(ctx context.Context, app *App) error {
 	if len(sessions) == 0 {
 		last := app.Sessions.ReadLastActive()
 		idle := time.Since(last).Round(time.Second)
-		remaining := cfg.Idle.Timeout - idle
-		if remaining > 0 {
-			fmt.Printf("  │  Idle shutdown:     in %s\n", remaining)
-		} else {
-			fmt.Printf("  │  Idle shutdown:     ⚠️  imminent\n")
+
+		switch status {
+		case vm.StatusRunning:
+			remaining := cfg.Idle.Timeout - idle
+			if remaining > 0 {
+				fmt.Printf("  │  Idle suspend:      in %s\n", remaining)
+			} else {
+				fmt.Printf("  │  Idle suspend:      ⚠️  imminent\n")
+			}
+		case vm.StatusStopped:
+			stoppedAt := app.Sessions.ReadVMStoppedAt()
+			if !stoppedAt.IsZero() {
+				elapsed := time.Since(stoppedAt).Round(time.Second)
+				remaining := cfg.Idle.DeleteTimeout - elapsed
+				if remaining > 0 {
+					fmt.Printf("  │  VM deletion:       in %s\n", remaining)
+				} else {
+					fmt.Printf("  │  VM deletion:       ⚠️  imminent\n")
+				}
+			}
 		}
 	} else {
-		fmt.Printf("  │  Idle shutdown:     ─ sessions active\n")
+		fmt.Printf("  │  Idle suspend:      ─ sessions active\n")
 	}
 
 	fmt.Println("  └───────────────────────────────────────────────┘")

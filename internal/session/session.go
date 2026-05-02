@@ -165,3 +165,27 @@ func (s *Store) ReadLastActive() time.Time {
 	}
 	return time.Unix(epoch, 0)
 }
+
+func (s *Store) vmStoppedAtFile() string {
+	return filepath.Join(filepath.Dir(s.dir), "vm-stopped-at")
+}
+
+func (s *Store) WriteVMStoppedAt() {
+	os.WriteFile(s.vmStoppedAtFile(), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+}
+
+func (s *Store) ReadVMStoppedAt() time.Time {
+	data, err := os.ReadFile(s.vmStoppedAtFile())
+	if err != nil {
+		return time.Time{}
+	}
+	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(epoch, 0)
+}
+
+func (s *Store) ClearVMStoppedAt() {
+	os.Remove(s.vmStoppedAtFile())
+}

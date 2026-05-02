@@ -75,26 +75,57 @@ func DoStart(ctx context.Context, app *App) error {
 		os.WriteFile(agePath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
 	}
 
-	// Wait for SSH to be reachable whenever the VM was just started or resumed.
 	if needsStart {
 		if err := app.VM.WaitReady(ctx, 60*time.Second); err != nil {
 			return err
 		}
+		// Resuming or creating a VM cancels any pending Phase 2 deletion.
+		app.Sessions.ClearVMStoppedAt()
 	}
 
-	eng := &bootstrap.Engine{
-		VM: app.VM,
-		Executor: &plugin.Executor{
-			Registry:     app.Registry,
-			Enabled:      cfg.Plugins.Enabled,
-			PluginConfig: cfg.Plugins.Config,
-			StateDir:     cfg.StateDir,
-			VMInst:       app.VM,
-		},
-		StateDir: cfg.StateDir,
-	}
-	if err := eng.Run(ctx, false); err != nil {
-		return fmt.Errorf("bootstrap: %w", err)
+	imgMgr := vm.NewImageManager(app.VM, cfg.StateDir)
+
+	if wasCreated {
+		// Fresh VM: restore from the current base image to skip bootstrap (fast path).
+		// If no base image exists yet, fall through to full bootstrap and save one.
+		if !imgMgr.TryRestoreBaseImage(ctx) {
+			eng := &bootstrap.Engine{
+				VM: app.VM,
+				Executor: &plugin.Executor{
+					Registry:     app.Registry,
+					Enabled:      cfg.Plugins.Enabled,
+					PluginConfig: cfg.Plugins.Config,
+					StateDir:     cfg.StateDir,
+					VMInst:       app.VM,
+				},
+				StateDir: cfg.StateDir,
+			}
+			if err := eng.Run(ctx, false); err != nil {
+				return fmt.Errorf("bootstrap: %w", err)
+			}
+			img, err := imgMgr.SaveBaseImage(ctx)
+			if err != nil {
+				aivmlog.Warn("could not save base image (non-fatal): %v", err)
+			} else {
+				imgMgr.RecordVMImageRef(img.ID)
+			}
+		}
+	} else {
+		// Resumed or already-running VM: bootstrap marker check ensures idempotency.
+		eng := &bootstrap.Engine{
+			VM: app.VM,
+			Executor: &plugin.Executor{
+				Registry:     app.Registry,
+				Enabled:      cfg.Plugins.Enabled,
+				PluginConfig: cfg.Plugins.Config,
+				StateDir:     cfg.StateDir,
+				VMInst:       app.VM,
+			},
+			StateDir: cfg.StateDir,
+		}
+		if err := eng.Run(ctx, false); err != nil {
+			return fmt.Errorf("bootstrap: %w", err)
+		}
 	}
 
 	if err := app.Monitor.EnsureRunning(); err != nil {

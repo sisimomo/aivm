@@ -15,22 +15,24 @@ import (
 )
 
 type IdleMonitor struct {
-	Sessions     *session.Store
-	VM           vm.VM
-	MCP          *mcp.Manager
-	Timeout      time.Duration
-	PollInterval time.Duration
-	PIDFile      string
+	Sessions      *session.Store
+	VM            vm.VM
+	MCP           *mcp.Manager
+	Timeout       time.Duration
+	DeleteTimeout time.Duration
+	PollInterval  time.Duration
+	PIDFile       string
 }
 
-func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout time.Duration, stateDir string) *IdleMonitor {
+func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
 	return &IdleMonitor{
-		Sessions:     sessions,
-		VM:           v,
-		MCP:          m,
-		Timeout:      timeout,
-		PollInterval: 30 * time.Second,
-		PIDFile:      filepath.Join(stateDir, "idle-monitor.pid"),
+		Sessions:      sessions,
+		VM:            v,
+		MCP:           m,
+		Timeout:       timeout,
+		DeleteTimeout: deleteTimeout,
+		PollInterval:  30 * time.Second,
+		PIDFile:       filepath.Join(stateDir, "idle-monitor.pid"),
 	}
 }
 
@@ -62,7 +64,8 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 	os.WriteFile(m.PIDFile, []byte(strconv.Itoa(os.Getpid())), 0644)
 	defer os.Remove(m.PIDFile)
 
-	aivmlog.Info("idle monitor started (pid=%d, timeout=%s)", os.Getpid(), m.Timeout)
+	aivmlog.Info("idle monitor started (pid=%d, stop_timeout=%s, delete_timeout=%s)",
+		os.Getpid(), m.Timeout, m.DeleteTimeout)
 
 	ticker := time.NewTicker(m.PollInterval)
 	defer ticker.Stop()
@@ -75,49 +78,86 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			status, err := m.VM.Status(ctx)
-			if err != nil || status != vm.StatusRunning {
-				aivmlog.Info("VM is no longer running — idle monitor exiting")
+			if err != nil {
+				aivmlog.Warn("VM status error: %v", err)
+				continue
+			}
+
+			switch status {
+			case vm.StatusRunning:
+				// Phase 1: monitor for idle sessions; stop VM when idle long enough.
+				m.Sessions.ClearVMStoppedAt()
+
+				active, err := m.Sessions.CountActive()
+				if err != nil {
+					aivmlog.Warn("session count error: %v", err)
+					continue
+				}
+
+				if active > 0 {
+					idleSince = time.Time{}
+					aivmlog.Debug("active sessions: %d", active)
+					continue
+				}
+
+				if idleSince.IsZero() {
+					idleSince = time.Now()
+					m.Sessions.WriteLastActive()
+				}
+
+				idle := time.Since(idleSince)
+				remaining := m.Timeout - idle
+				aivmlog.Debug("idle for %s, stop in %s", idle.Round(time.Second), remaining.Round(time.Second))
+
+				if idle >= m.Timeout {
+					aivmlog.Step("Idle timeout reached — stopping VM (Phase 1)")
+					if err := m.VM.Stop(ctx); err != nil {
+						aivmlog.Warn("VM stop error: %v", err)
+					}
+					m.Sessions.WriteVMStoppedAt()
+					idleSince = time.Time{}
+					aivmlog.Success("VM stopped and suspended — will delete after %s if not resumed", m.DeleteTimeout)
+				}
+
+			case vm.StatusStopped:
+				// Phase 2: VM is suspended; destroy after DeleteTimeout if not resumed.
+				idleSince = time.Time{}
+
+				stoppedAt := m.Sessions.ReadVMStoppedAt()
+				if stoppedAt.IsZero() {
+					// VM was stopped manually (not by Phase 1); do not auto-delete.
+					aivmlog.Debug("VM stopped externally — skipping Phase 2 deletion")
+					continue
+				}
+
+				elapsed := time.Since(stoppedAt)
+				remaining := m.DeleteTimeout - elapsed
+				aivmlog.Debug("VM suspended for %s, deletion in %s", elapsed.Round(time.Second), remaining.Round(time.Second))
+
+				if elapsed >= m.DeleteTimeout {
+					return m.destroy(ctx)
+				}
+
+			case vm.StatusNotFound:
+				// VM already gone — nothing left to monitor.
+				aivmlog.Info("VM no longer exists — idle monitor exiting")
 				m.MCP.Stop(ctx)
 				return nil
-			}
-
-			active, err := m.Sessions.CountActive()
-			if err != nil {
-				aivmlog.Warn("session count error: %v", err)
-				continue
-			}
-
-			if active > 0 {
-				idleSince = time.Time{}
-				aivmlog.Debug("active sessions: %d", active)
-				continue
-			}
-
-			if idleSince.IsZero() {
-				idleSince = time.Now()
-				m.Sessions.WriteLastActive()
-			}
-
-			idle := time.Since(idleSince)
-			remaining := m.Timeout - idle
-			aivmlog.Debug("idle for %s, shutdown in %s", idle.Round(time.Second), remaining.Round(time.Second))
-
-			if idle >= m.Timeout {
-				return m.shutdown(ctx)
 			}
 		}
 	}
 }
 
-func (m *IdleMonitor) shutdown(ctx context.Context) error {
-	aivmlog.Step("Idle timeout reached — initiating shutdown")
-	if err := m.VM.Stop(ctx); err != nil {
-		aivmlog.Warn("VM stop error: %v", err)
+func (m *IdleMonitor) destroy(ctx context.Context) error {
+	aivmlog.Step("VM suspension timeout reached — deleting VM (Phase 2)")
+	if err := m.VM.Destroy(ctx); err != nil {
+		aivmlog.Warn("VM destroy error: %v", err)
 	}
+	m.Sessions.ClearVMStoppedAt()
 	if err := m.MCP.Stop(ctx); err != nil {
 		aivmlog.Warn("MCPJungle stop error: %v", err)
 	}
-	aivmlog.Success("aivm shutdown complete")
+	aivmlog.Success("VM deleted — resources reclaimed")
 	return nil
 }
 

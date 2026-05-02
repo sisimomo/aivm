@@ -134,6 +134,7 @@ Examples:
 			},
 		},
 		bootstrapSubcmd(&cfgPath),
+		rebuildImageSubcmd(&cfgPath),
 		logsSubcmd(&cfgPath),
 		monitorSubcmd(&cfgPath),
 		&cobra.Command{
@@ -176,7 +177,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
-	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.Timeout, cfg.StateDir)
+	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.Timeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 
 	reg := plugin.Global()
 
@@ -206,6 +207,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 func bootstrapSubcmd(cfgPath *string) *cobra.Command {
 	var listOnly bool
 	var forcePlugin string
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Run VM bootstrap",
@@ -217,11 +219,29 @@ func bootstrapSubcmd(cfgPath *string) *cobra.Command {
 			if listOnly {
 				return cli.ListPlugins(app)
 			}
-			return cli.DoBootstrap(cmd.Context(), app, forcePlugin)
+			return cli.DoBootstrap(cmd.Context(), app, forcePlugin, force || forcePlugin != "")
 		},
 	}
 	cmd.Flags().BoolVar(&listOnly, "list", false, "list plugins")
 	cmd.Flags().StringVar(&forcePlugin, "plugin", "", "run only this plugin")
+	cmd.Flags().BoolVar(&force, "force", false, "force re-run even if already bootstrapped")
+	return cmd
+}
+
+func rebuildImageSubcmd(cfgPath *string) *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "rebuild-image",
+		Short: "Rebuild the base VM image by re-running bootstrap",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := buildApp(*cfgPath)
+			if err != nil {
+				return err
+			}
+			return cli.DoRebuildImage(cmd.Context(), app, force)
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
 	return cmd
 }
 
