@@ -38,6 +38,7 @@ plugins:
     - maven
     - nodejs
     - python
+    - golang
     - rtk
     - claude
     # Switch to the copilot provider: set agent.provider: copilot and replace
