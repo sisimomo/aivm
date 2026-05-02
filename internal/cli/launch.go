@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"aivm/internal/agent"
 	"aivm/internal/bootstrap"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/plugin"
@@ -32,11 +32,6 @@ func LaunchCmd(app *App) *cobra.Command {
 
 func DoLaunch(ctx context.Context, app *App) error {
 	cfg := app.Config
-
-	token := cfg.Auth.ClaudeToken
-	if token == "" {
-		return fmt.Errorf("auth.claude_token is not set — edit aivm.yaml or set AIVM_AUTH_CLAUDE_TOKEN")
-	}
 
 	hostCWD, _ := os.Getwd()
 	devRoot := cfg.VM.DevRoot
@@ -84,27 +79,23 @@ func DoLaunch(ctx context.Context, app *App) error {
 
 	aivmlog.Info("Host: %s", hostCWD)
 	aivmlog.Info("VM:   %s", vmDir)
-	aivmlog.Step("Launching Claude Code in VM")
+	aivmlog.Step("Launching %s in VM", app.Provider.Description())
 
-	script := fmt.Sprintf(`
-set -e
-export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
-if [[ ! -d %s ]]; then
-  echo "[aivm] ERROR: VM directory %s does not exist"
-  exit 1
-fi
-cd %s
-exec claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"
-`, shellescape(vmDir), shellescape(vmDir), shellescape(vmDir))
-
-	colimaVM, ok := app.VM.(*vm.ColimaVM)
-	if !ok {
-		return fmt.Errorf("VM implementation does not support interactive claude launch")
+	providerCfg := cfg.Agent.Providers[app.Provider.Name()]
+	env := agent.LaunchEnv{
+		VMProfile: app.VM.Profile(),
+		WorkDir:   vmDir,
+		Config:    providerCfg,
 	}
 
-	return interactiveSsh(ctx, colimaVM.Profile(), map[string]string{
-		"CLAUDE_CODE_OAUTH_TOKEN": token,
-	}, script)
+	resp, err := app.Provider.Launch(ctx, env)
+	if err != nil {
+		return err
+	}
+	if resp != nil && resp.ExitCode != 0 {
+		return fmt.Errorf("agent exited with code %d", resp.ExitCode)
+	}
+	return nil
 }
 
 // checkBaseImageAge prompts the user when the base image is older than the configured
@@ -231,11 +222,12 @@ func startTransitionVM(ctx context.Context, app *App) error {
 	eng := &bootstrap.Engine{
 		VM: newVM,
 		Executor: &plugin.Executor{
-			Registry:     app.Registry,
-			Enabled:      cfg.Plugins.Enabled,
-			PluginConfig: cfg.Plugins.Config,
-			StateDir:     cfg.StateDir,
-			VMInst:       newVM,
+			Registry:       app.Registry,
+			Enabled:        cfg.Plugins.Enabled,
+			PluginConfig:   cfg.Plugins.Config,
+			StateDir:       cfg.StateDir,
+			ActiveProvider: app.Provider.Name(),
+			VMInst:         newVM,
 		},
 		StateDir: cfg.StateDir,
 	}
@@ -286,37 +278,4 @@ func vmCreatedRecently(stateDir string) bool {
 		return false
 	}
 	return time.Since(time.Unix(epoch, 0)) < 10*time.Minute
-}
-
-func shellescape(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
-}
-
-func interactiveSsh(ctx context.Context, profile string, env map[string]string, script string) error {
-	envParts := []string{}
-	for k, v := range env {
-		envParts = append(envParts, k+"="+shellescape(v))
-	}
-	bashCmd := "bash -lc " + shellescape(script)
-	if len(envParts) > 0 {
-		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
-	}
-
-	// colima ssh -- CMD runs without a PTY; TUI apps like claude need one.
-	// Use ssh -t directly with the SSH config file that colima/lima writes.
-	// The config is at $COLIMA_HOME/_lima/colima-<profile>/ssh.config and the
-	// hostname inside it is lima-colima-<profile>.
-	home, _ := os.UserHomeDir()
-	colimaHome := os.Getenv("COLIMA_HOME")
-	if colimaHome == "" {
-		colimaHome = filepath.Join(home, ".colima")
-	}
-	sshConfig := filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
-	sshHost := "lima-colima-" + profile
-
-	cmd := exec.CommandContext(ctx, "ssh", "-t", "-F", sshConfig, sshHost, bashCmd)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

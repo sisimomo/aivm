@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"aivm/internal/agent"
 	"aivm/internal/config"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
@@ -16,4 +17,6 @@ type App struct {
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
+	// Provider is the active AI agent provider selected from the config.
+	Provider agent.Provider
 }

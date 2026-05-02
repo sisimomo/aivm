@@ -49,11 +49,12 @@ func DoBootstrap(ctx context.Context, app *App, onlyPlugin string, force bool) e
 	eng := &bootstrap.Engine{
 		VM: app.VM,
 		Executor: &plugin.Executor{
-			Registry:     app.Registry,
-			Enabled:      enabled,
-			PluginConfig: cfg.Plugins.Config,
-			StateDir:     cfg.StateDir,
-			VMInst:       app.VM,
+			Registry:       app.Registry,
+			Enabled:        enabled,
+			PluginConfig:   cfg.Plugins.Config,
+			StateDir:       cfg.StateDir,
+			ActiveProvider: app.Provider.Name(),
+			VMInst:         app.VM,
 		},
 		StateDir: cfg.StateDir,
 	}

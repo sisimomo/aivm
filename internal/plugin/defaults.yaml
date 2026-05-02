@@ -85,6 +85,7 @@ rtk:
 
 claude:
   description: "Claude Code CLI + MCP config"
+  agents: [claude]
   dependencies:
     - nodejs
     - rtk
@@ -120,3 +121,25 @@ claude:
     }
     AIVM_EOF
     rtk init -g --auto-patch 2>/dev/null || true
+
+copilot:
+  description: "GitHub Copilot CLI (gh + copilot extension)"
+  agents: [copilot]
+  dependencies:
+    - system
+  defaults:
+    launch_command: "gh copilot"
+  check: |
+    gh extension list 2>/dev/null | grep -q 'github/gh-copilot'
+  install: |
+    export DEBIAN_FRONTEND=noninteractive
+    # Install GitHub CLI
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+    sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt-get update -qq
+    sudo apt-get install gh -y
+    # Install Copilot extension (requires prior `gh auth login`)
+    gh extension install github/gh-copilot 2>/dev/null || gh extension upgrade gh-copilot 2>/dev/null || true

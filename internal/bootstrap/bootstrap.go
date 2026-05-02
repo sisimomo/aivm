@@ -33,7 +33,7 @@ func (e *Engine) Run(ctx context.Context, force bool) error {
 
 	aivmlog.Step("Bootstrapping VM")
 
-	ordered, err := e.Executor.Registry.Resolve(e.Executor.Enabled)
+	ordered, err := e.Executor.Ordered()
 	if err != nil {
 		return fmt.Errorf("resolving plugin order: %w", err)
 	}

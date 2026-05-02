@@ -8,12 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"aivm/internal/agent"
 	"aivm/internal/cli"
 	"aivm/internal/config"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
+	"aivm/internal/providers/claude"
+	"aivm/internal/providers/copilot"
 	"aivm/internal/session"
 	"aivm/internal/vm"
 )
@@ -37,14 +40,16 @@ func main() {
 
 	root := &cobra.Command{
 		Use:   "aivm [directory]",
-		Short: "Launch Claude Code agents in a secure Colima VM",
+		Short: "Launch AI agents in a secure Colima VM",
 		Long: `aivm — AI VM manager
 
-Launch Claude Code in a secure, disposable Colima VM.
+Launch AI agents in a secure, disposable Colima VM.
 Run from any directory under your dev root.
 
+Supported providers: claude, copilot
+
 Examples:
-  aivm                   Launch Claude Code in current directory
+  aivm                   Launch the configured AI agent in the current directory
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
   aivm status            Show status
@@ -176,6 +181,17 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
+	// Build the agent provider registry and select the active provider.
+	agentReg := agent.NewRegistry()
+	agentReg.Register(claude.New())
+	agentReg.Register(copilot.New())
+
+	providerName := cfg.Agent.Provider
+	prov, ok := agentReg.Get(providerName)
+	if !ok {
+		return nil, fmt.Errorf("unknown agent provider %q — supported: claude, copilot", providerName)
+	}
+
 	vmInst := vm.NewColima(cfg.VM.Profile, cfg.StateDir)
 
 	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile)
@@ -224,6 +240,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		Sessions: sessions,
 		Monitor:  mon,
 		Registry: reg,
+		Provider: prov,
 	}, nil
 }
 

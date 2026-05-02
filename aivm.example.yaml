@@ -1,6 +1,5 @@
 # aivm configuration
 # Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
-# Then set auth.claude_token before first use.
 
 vm:
   cpus: 4
@@ -22,10 +21,15 @@ idle:
   timeout: 5m        # stop (suspend) VM after this idle duration  — Phase 1
   delete_timeout: 5m # delete suspended VM after this additional duration — Phase 2
 
-auth:
-  # Claude Code OAuth token.
-  # Can also be set via AIVM_AUTH_CLAUDE_TOKEN env var (preferred for security).
-  claude_token: ""
+agent:
+  # Active provider. Supported values: claude, copilot
+  # Authentication is handled externally (e.g. `claude auth` or `gh auth login` inside the VM).
+  provider: claude
+
+  # Per-provider configuration (all fields are optional).
+  # providers:
+  #   copilot:
+  #     launch_command: "gh copilot"
 
 plugins:
   enabled:
@@ -36,6 +40,8 @@ plugins:
     - python
     - rtk
     - claude
+    # Switch to the copilot provider: set agent.provider: copilot and replace
+    # `- claude` with `- copilot` in this list.
 
   config:
     java:
@@ -48,9 +54,12 @@ plugins:
 
   # Define or override plugins — same format as defaults, merged field-by-field.
   # Use to add custom plugins or tweak a built-in plugin's scripts.
+  # The optional `agents` list restricts a plugin to specific providers;
+  # omitting it means the plugin runs for all providers.
   # define:
   #   my-tool:
   #     description: "My custom tool"
+  #     agents: [claude]          # optional: restrict to one or more providers
   #     dependencies: [system]
   #     check: |
   #       my-tool --version >/dev/null 2>&1

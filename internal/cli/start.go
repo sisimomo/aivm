@@ -92,11 +92,12 @@ func DoStart(ctx context.Context, app *App) error {
 			eng := &bootstrap.Engine{
 				VM: app.VM,
 				Executor: &plugin.Executor{
-					Registry:     app.Registry,
-					Enabled:      cfg.Plugins.Enabled,
-					PluginConfig: cfg.Plugins.Config,
-					StateDir:     cfg.StateDir,
-					VMInst:       app.VM,
+					Registry:       app.Registry,
+					Enabled:        cfg.Plugins.Enabled,
+					PluginConfig:   cfg.Plugins.Config,
+					StateDir:       cfg.StateDir,
+					ActiveProvider: app.Provider.Name(),
+					VMInst:         app.VM,
 				},
 				StateDir: cfg.StateDir,
 			}
@@ -115,11 +116,12 @@ func DoStart(ctx context.Context, app *App) error {
 		eng := &bootstrap.Engine{
 			VM: app.VM,
 			Executor: &plugin.Executor{
-				Registry:     app.Registry,
-				Enabled:      cfg.Plugins.Enabled,
-				PluginConfig: cfg.Plugins.Config,
-				StateDir:     cfg.StateDir,
-				VMInst:       app.VM,
+				Registry:       app.Registry,
+				Enabled:        cfg.Plugins.Enabled,
+				PluginConfig:   cfg.Plugins.Config,
+				StateDir:       cfg.StateDir,
+				ActiveProvider: app.Provider.Name(),
+				VMInst:         app.VM,
 			},
 			StateDir: cfg.StateDir,
 		}

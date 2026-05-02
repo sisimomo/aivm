@@ -33,6 +33,9 @@ type Plugin interface {
 	Name() string
 	Description() string
 	Dependencies() []string
+	// Agents returns the provider names this plugin applies to.
+	// An empty slice means the plugin applies to all providers.
+	Agents() []string
 	Check(ctx context.Context, env InstallEnv) (bool, error)
 	Install(ctx context.Context, env InstallEnv) error
 	Configure(ctx context.Context, env InstallEnv) error

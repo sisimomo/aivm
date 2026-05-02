@@ -20,6 +20,9 @@ var defaultsYAML []byte
 type PluginDef struct {
 	Description  string         `yaml:"description"  mapstructure:"description"`
 	Dependencies []string       `yaml:"dependencies" mapstructure:"dependencies"`
+	// Agents restricts the plugin to the listed provider names.
+	// An empty slice means the plugin applies to all providers.
+	Agents       []string       `yaml:"agents"       mapstructure:"agents"`
 	Defaults     map[string]any `yaml:"defaults"     mapstructure:"defaults"`
 	Check        string         `yaml:"check"        mapstructure:"check"`
 	Install      string         `yaml:"install"      mapstructure:"install"`
@@ -44,6 +47,9 @@ func MergePluginDef(base, override PluginDef) PluginDef {
 	}
 	if len(override.Dependencies) > 0 {
 		result.Dependencies = override.Dependencies
+	}
+	if len(override.Agents) > 0 {
+		result.Agents = override.Agents
 	}
 	if override.Check != "" {
 		result.Check = override.Check
@@ -81,6 +87,7 @@ func NewYAMLPlugin(name string, def PluginDef) *YAMLPlugin {
 func (p *YAMLPlugin) Name() string           { return p.name }
 func (p *YAMLPlugin) Description() string    { return p.def.Description }
 func (p *YAMLPlugin) Dependencies() []string { return p.def.Dependencies }
+func (p *YAMLPlugin) Agents() []string       { return p.def.Agents }
 
 // effectiveConfig merges the plugin's bundled default config values with
 // per-plugin config from the user's aivm.yaml (user values win).

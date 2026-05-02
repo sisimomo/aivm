@@ -16,7 +16,7 @@ type Config struct {
 	VM      VMConfig      `mapstructure:"vm"`
 	MCP     MCPConfig     `mapstructure:"mcp"`
 	Idle    IdleConfig    `mapstructure:"idle"`
-	Auth    AuthConfig    `mapstructure:"auth"`
+	Agent   AgentConfig   `mapstructure:"agent"`
 	Plugins PluginsConfig `mapstructure:"plugins"`
 	Debug   bool          `mapstructure:"debug"`
 
@@ -46,8 +46,13 @@ type IdleConfig struct {
 	DeleteTimeout time.Duration `mapstructure:"delete_timeout"`
 }
 
-type AuthConfig struct {
-	ClaudeToken string `mapstructure:"claude_token"`
+// AgentConfig configures which AI agent provider is active and holds
+// provider-specific settings.
+type AgentConfig struct {
+	// Provider is the name of the active agent provider (e.g. "claude", "copilot").
+	Provider  string                    `mapstructure:"provider"`
+	// Providers holds per-provider configuration keyed by provider name.
+	Providers map[string]map[string]any `mapstructure:"providers"`
 }
 
 type PluginsConfig struct {
@@ -88,6 +93,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	v.SetDefault("mcp.server_mode", "development")
 	v.SetDefault("idle.timeout", "5m")
 	v.SetDefault("idle.delete_timeout", "5m")
+	v.SetDefault("agent.provider", "claude")
 	v.SetDefault("plugins.enabled", []string{"system", "java", "maven", "nodejs", "python", "rtk", "claude"})
 
 	v.SetEnvPrefix("AIVM")
