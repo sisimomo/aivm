@@ -23,6 +23,9 @@ func DoDestroy(ctx context.Context, app *App) error {
 	if err := app.VM.Destroy(ctx); err != nil {
 		return err
 	}
+	if err := app.MCP.Stop(ctx); err != nil {
+		aivmlog.Warn("MCPJungle stop error: %v", err)
+	}
 	aivmlog.Success("VM destroyed")
 	return nil
 }

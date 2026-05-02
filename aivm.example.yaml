@@ -8,11 +8,12 @@ vm:
   disk: 60          # GiB
   type: vz          # vz (Apple Silicon, macOS 13+) | qemu (Intel/fallback)
   max_age_days: 7   # days before prompting to recreate VM
+  base_image_max_age_days: 7  # days before prompting to rebuild base image
   dev_root: ~/dev   # host dev root mounted in VM at same path
   profile: aivm     # Colima profile name
 
 mcp:
-  port: 8080
+  port: 7593
   data_dir: ~/.aivm/mcpjungle-data
   image_tag: latest-stdio
   server_mode: development

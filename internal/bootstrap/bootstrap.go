@@ -55,13 +55,17 @@ func (e *Engine) Run(ctx context.Context, force bool) error {
 			VM:       e.VM,
 		}
 
-		already, err := p.Check(ctx, env)
-		if err != nil {
-			aivmlog.Warn("check failed for plugin %s: %v", p.Name(), err)
-		}
-		if already {
-			aivmlog.Info("skip %s (already installed)", p.Name())
-			continue
+		// When force is set we are running on a fresh VM — skip idempotency
+		// checks and always execute every plugin unconditionally.
+		if !force {
+			already, err := p.Check(ctx, env)
+			if err != nil {
+				aivmlog.Warn("check failed for plugin %s: %v", p.Name(), err)
+			}
+			if already {
+				aivmlog.Info("skip %s (already installed)", p.Name())
+				continue
+			}
 		}
 
 		if err := p.Install(ctx, env); err != nil {

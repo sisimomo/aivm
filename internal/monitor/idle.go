@@ -22,6 +22,7 @@ type IdleMonitor struct {
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
 	PIDFile       string
+	StateDir      string
 }
 
 func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
@@ -33,6 +34,7 @@ func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout, d
 		DeleteTimeout: deleteTimeout,
 		PollInterval:  30 * time.Second,
 		PIDFile:       filepath.Join(stateDir, "idle-monitor.pid"),
+		StateDir:      stateDir,
 	}
 }
 
@@ -110,13 +112,16 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 				aivmlog.Debug("idle for %s, stop in %s", idle.Round(time.Second), remaining.Round(time.Second))
 
 				if idle >= m.Timeout {
-					aivmlog.Step("Idle timeout reached — stopping VM (Phase 1)")
+					aivmlog.Step("Idle timeout reached — stopping VM and MCPJungle (Phase 1)")
 					if err := m.VM.Stop(ctx); err != nil {
 						aivmlog.Warn("VM stop error: %v", err)
 					}
+					if err := m.MCP.Stop(ctx); err != nil {
+						aivmlog.Warn("MCPJungle stop error: %v", err)
+					}
 					m.Sessions.WriteVMStoppedAt()
 					idleSince = time.Time{}
-					aivmlog.Success("VM stopped and suspended — will delete after %s if not resumed", m.DeleteTimeout)
+					aivmlog.Success("VM and MCPJungle stopped — will delete VM after %s if not resumed", m.DeleteTimeout)
 				}
 
 			case vm.StatusStopped:
@@ -192,4 +197,80 @@ func (m *IdleMonitor) Stop() {
 	}
 	proc.Signal(os.Interrupt)
 	os.Remove(m.PIDFile)
+}
+
+// EnsureLegacyMonitorRunning starts the legacy VM monitor daemon in the background.
+// It is called after initiating a two-VM transition so that the old VM is automatically
+// destroyed once all sessions that pre-date the transition have ended.
+func (m *IdleMonitor) EnsureLegacyMonitorRunning() error {
+	pidFile := filepath.Join(m.StateDir, "legacy-monitor.pid")
+	if data, err := os.ReadFile(pidFile); err == nil {
+		if pid, err := strconv.Atoi(string(data)); err == nil && pid > 0 {
+			if proc, err := os.FindProcess(pid); err == nil {
+				if proc.Signal(syscall.Signal(0)) == nil {
+					aivmlog.Debug("legacy monitor already running")
+					return nil
+				}
+			}
+		}
+		os.Remove(pidFile)
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	proc, err := os.StartProcess(exe, []string{exe, "__legacy-monitor"},
+		&os.ProcAttr{
+			Files: []*os.File{nil, nil, nil},
+			Sys:   daemonSysProcAttr(),
+		})
+	if err != nil {
+		return err
+	}
+	proc.Release()
+	aivmlog.Info("legacy monitor started (pid=%d)", proc.Pid)
+	return nil
+}
+
+// RunLegacyMonitor polls until all sessions that pre-date the transition have ended,
+// then destroys the legacy VM and clears the transition state.
+func (m *IdleMonitor) RunLegacyMonitor(ctx context.Context, ts *vm.TransitionState) error {
+	pidFile := filepath.Join(m.StateDir, "legacy-monitor.pid")
+	os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
+	defer os.Remove(pidFile)
+
+	legacyVM := vm.NewColima(ts.LegacyProfile, m.StateDir)
+
+	aivmlog.Info("legacy monitor started (pid=%d, legacy=%s, new=%s)",
+		os.Getpid(), ts.LegacyProfile, ts.NewProfile)
+
+	ticker := time.NewTicker(m.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			count, err := m.Sessions.CountLegacy(ts.StartedAt)
+			if err != nil {
+				aivmlog.Warn("legacy session count error: %v", err)
+				continue
+			}
+
+			if count > 0 {
+				aivmlog.Debug("legacy VM '%s': %d session(s) still active", ts.LegacyProfile, count)
+				continue
+			}
+
+			aivmlog.Step("All legacy sessions ended — removing legacy VM '%s'", ts.LegacyProfile)
+			if err := legacyVM.Destroy(ctx); err != nil {
+				aivmlog.Warn("legacy VM destroy error: %v", err)
+			}
+			vm.ClearTransitionState(m.StateDir)
+			aivmlog.Success("Legacy VM '%s' removed — transition complete", ts.LegacyProfile)
+			return nil
+		}
+	}
 }

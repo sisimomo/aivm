@@ -52,6 +52,29 @@ func DoStatus(ctx context.Context, app *App) error {
 		fmt.Printf("  │  Base image:        (none — run 'aivm start' to create)\n")
 	}
 
+	// Show legacy VM info when a two-VM transition is in progress.
+	if ts := vm.LoadTransitionState(cfg.StateDir); ts != nil {
+		legacyVM := vm.NewColima(ts.LegacyProfile, cfg.StateDir)
+		legacyStatus, _ := legacyVM.Status(ctx)
+		legacyIcon := "❌"
+		if legacyStatus == vm.StatusRunning {
+			legacyIcon = "🔄"
+		}
+		legacySessions, _ := app.Sessions.CountLegacy(ts.StartedAt)
+		fmt.Printf("  │  ─────────────────────────────────────────────\n")
+		fmt.Printf("  │  Legacy VM (%s): %s %s\n", ts.LegacyProfile, legacyIcon, legacyStatus)
+		fmt.Printf("  │  Legacy sessions:   %d remaining (auto-delete when done)\n", legacySessions)
+
+		legacyPID := filepath.Join(cfg.StateDir, "legacy-monitor.pid")
+		legacyMonIcon := "❌"
+		if _, err := os.Stat(legacyPID); err == nil {
+			legacyMonIcon = "✅"
+		}
+		fmt.Printf("  │  Legacy monitor:    %s\n", legacyMonIcon)
+		fmt.Printf("  │  Transition since:  %s\n", ts.StartedAt.Local().Format("2006-01-02 15:04 MST"))
+		fmt.Printf("  │  ─────────────────────────────────────────────\n")
+	}
+
 	mcpIcon := "❌"
 	if app.MCP.IsHealthy(ctx) {
 		mcpIcon = "✅"

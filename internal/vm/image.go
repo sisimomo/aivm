@@ -101,7 +101,24 @@ func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 	return true
 }
 
-// RecordVMImageRef persists which base image this VM was created from.
+// SaveBaseImageMetadataOnly records a new base image version without creating a VM snapshot.
+// Used during soft-transition rebuilds where bootstrap runs on a temporary VM.
+// The VM snapshot will be created on the next fresh VM start.
+func (m *ImageManager) SaveBaseImageMetadataOnly() (*BaseImage, error) {
+	id := strconv.FormatInt(time.Now().Unix(), 10)
+	img := &BaseImage{
+		ID:        id,
+		CreatedAt: time.Now().UTC(),
+		// SnapshotName intentionally empty; TryRestoreBaseImage will fall through to bootstrap.
+	}
+	if err := m.writeBaseImage(img); err != nil {
+		return nil, fmt.Errorf("recording base image metadata: %w", err)
+	}
+	aivmlog.Info("base image version recorded: id=%s (snapshot will be created on next start)", id)
+	return img, nil
+}
+
+
 func (m *ImageManager) RecordVMImageRef(imageID string) {
 	os.WriteFile(filepath.Join(m.stateDir, vmImageRefFile), []byte(imageID), 0644)
 }
@@ -143,6 +160,15 @@ func (m *ImageManager) AgeDays() int {
 		return 0
 	}
 	return int(time.Since(time.Unix(epoch, 0)).Hours() / 24)
+}
+
+// BaseImageAgeDays returns how many days ago the current base image was created.
+func (m *ImageManager) BaseImageAgeDays() int {
+	img := m.LoadBaseImage()
+	if img == nil {
+		return 0
+	}
+	return int(time.Since(img.CreatedAt).Hours() / 24)
 }
 
 func (m *ImageManager) writeBaseImage(img *BaseImage) error {

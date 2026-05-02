@@ -21,6 +21,7 @@ install: build
 
 uninstall:
 	sudo rm -f $(INSTALL_DIR)/$(BINARY)
+	rm -rf ~/.aivm/
 
 clean:
 	rm -rf bin/

@@ -189,3 +189,49 @@ func (s *Store) ReadVMStoppedAt() time.Time {
 func (s *Store) ClearVMStoppedAt() {
 	os.Remove(s.vmStoppedAtFile())
 }
+
+// KillAll sends SIGTERM to every active session process and returns the PIDs that were signalled.
+func (s *Store) KillAll() []int {
+	sessions, _ := s.List()
+	var killed []int
+	for _, sess := range sessions {
+		proc, err := os.FindProcess(sess.PID)
+		if err == nil {
+			if proc.Signal(syscall.SIGTERM) == nil {
+				killed = append(killed, sess.PID)
+			}
+		}
+	}
+	return killed
+}
+
+// CountLegacy returns the number of active sessions that started before the given time.
+// Used during VM transitions to determine when the legacy VM can be safely removed.
+func (s *Store) CountLegacy(startedBefore time.Time) (int, error) {
+	if err := os.MkdirAll(s.dir, 0755); err != nil {
+		return 0, err
+	}
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	count := 0
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) != ".lock" {
+			continue
+		}
+		lockPath := filepath.Join(s.dir, entry.Name())
+		sess, err := readLock(lockPath)
+		if err != nil {
+			os.Remove(lockPath)
+			continue
+		}
+		if isAlive(sess.PID) && time.Unix(sess.StartEpoch, 0).Before(startedBefore) {
+			count++
+		}
+	}
+	return count, nil
+}

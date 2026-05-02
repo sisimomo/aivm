@@ -137,6 +137,7 @@ Examples:
 		rebuildImageSubcmd(&cfgPath),
 		logsSubcmd(&cfgPath),
 		monitorSubcmd(&cfgPath),
+		legacyMonitorSubcmd(&cfgPath),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print version",
@@ -164,7 +165,10 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		dockerHost = ""
 	}
 
-	composeFile, _ := mcp.FindComposeFile(cfg.RepoRoot)
+	composeFile, err := mcp.EnsureComposeFile(cfg.StateDir)
+	if err != nil {
+		return nil, fmt.Errorf("preparing compose file: %w", err)
+	}
 
 	mcpMgr := &mcp.Manager{
 		ComposeFile: composeFile,
@@ -275,6 +279,25 @@ func monitorSubcmd(cfgPath *string) *cobra.Command {
 				return err
 			}
 			return app.Monitor.Run(cmd.Context())
+		},
+	}
+}
+
+func legacyMonitorSubcmd(cfgPath *string) *cobra.Command {
+	return &cobra.Command{
+		Use:    "__legacy-monitor",
+		Short:  "Internal: destroy legacy VM once its sessions drain",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := buildApp(*cfgPath)
+			if err != nil {
+				return err
+			}
+			ts := vm.LoadTransitionState(app.Config.StateDir)
+			if ts == nil {
+				return nil // no transition in progress
+			}
+			return app.Monitor.RunLegacyMonitor(cmd.Context(), ts)
 		},
 	}
 }

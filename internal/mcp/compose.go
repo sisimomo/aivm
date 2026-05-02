@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,6 +12,9 @@ import (
 	aivmlog "aivm/internal/log"
 	"aivm/internal/run"
 )
+
+//go:embed docker-compose.mcpjungle.yml
+var composeFileContent []byte
 
 type Manager struct {
 	ComposeFile string
@@ -43,10 +47,6 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.IsHealthy(ctx) {
 		aivmlog.Info("MCPJungle already running on port %d", m.Port)
 		return nil
-	}
-
-	if m.ComposeFile == "" {
-		return fmt.Errorf("docker-compose.mcpjungle.yml not found — check RepoRoot config")
 	}
 
 	w := aivmlog.Writer("mcpjungle")
@@ -88,14 +88,15 @@ func (m *Manager) IsHealthy(_ context.Context) bool {
 	return resp.StatusCode < 400
 }
 
-func FindComposeFile(repoRoot string) (string, error) {
-	candidates := []string{
-		filepath.Join(repoRoot, "docker-compose.mcpjungle.yml"),
+// EnsureComposeFile writes the embedded docker-compose.mcpjungle.yml to stateDir
+// and returns its path. Always writes so the file stays in sync with the binary.
+func EnsureComposeFile(stateDir string) (string, error) {
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return "", fmt.Errorf("creating state dir: %w", err)
 	}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c, nil
-		}
+	dest := filepath.Join(stateDir, "docker-compose.mcpjungle.yml")
+	if err := os.WriteFile(dest, composeFileContent, 0644); err != nil {
+		return "", fmt.Errorf("writing compose file: %w", err)
 	}
-	return "", fmt.Errorf("docker-compose.mcpjungle.yml not found in %s", repoRoot)
+	return dest, nil
 }

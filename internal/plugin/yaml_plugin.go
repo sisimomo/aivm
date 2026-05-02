@@ -78,8 +78,8 @@ func NewYAMLPlugin(name string, def PluginDef) *YAMLPlugin {
 	return &YAMLPlugin{name: name, def: def}
 }
 
-func (p *YAMLPlugin) Name()         string   { return p.name }
-func (p *YAMLPlugin) Description()  string   { return p.def.Description }
+func (p *YAMLPlugin) Name() string           { return p.name }
+func (p *YAMLPlugin) Description() string    { return p.def.Description }
 func (p *YAMLPlugin) Dependencies() []string { return p.def.Dependencies }
 
 // effectiveConfig merges the plugin's bundled default config values with
