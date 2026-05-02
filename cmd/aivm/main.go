@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +19,15 @@ import (
 )
 
 var version = "dev"
+
+// Build-time injectable defaults. Override via:
+//
+//	-ldflags "-X main.defaultStateDir=~/.aivm-dev -X main.defaultProfile=aivm-dev -X main.defaultMCPPort=7594"
+var (
+	defaultStateDir = "~/.aivm"
+	defaultProfile  = "aivm"
+	defaultMCPPort  = "7593"
+)
 
 func main() {
 	os.Setenv("PATH", "/opt/homebrew/bin:/usr/local/bin:"+os.Getenv("PATH"))
@@ -152,7 +162,16 @@ Examples:
 }
 
 func buildApp(cfgPath string) (*cli.App, error) {
-	cfg, err := config.Load(cfgPath)
+	port, _ := strconv.Atoi(defaultMCPPort)
+	if port == 0 {
+		port = 7593
+	}
+	d := config.Defaults{
+		StateDir:  defaultStateDir,
+		VMProfile: defaultProfile,
+		MCPPort:   port,
+	}
+	cfg, err := config.Load(cfgPath, d)
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}

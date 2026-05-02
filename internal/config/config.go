@@ -56,8 +56,22 @@ type PluginsConfig struct {
 	Define  map[string]plugin.PluginDef `mapstructure:"define"`
 }
 
+// Defaults holds build-time-injectable values so that a dev build can use a
+// separate state directory, Colima profile, and MCP port without conflicting
+// with the production install.
+type Defaults struct {
+	// StateDir is the raw (unexpanded) path used as the home state directory,
+	// e.g. "~/.aivm" for prod or "~/.aivm-dev" for dev.
+	StateDir string
+	// VMProfile is the default Colima profile name, e.g. "aivm" or "aivm-dev".
+	VMProfile string
+	// MCPPort is the default port for the MCP/mcpjungle service.
+	MCPPort int
+}
+
 // Load reads aivm.yaml from the given path (or searches standard locations).
-func Load(cfgPath string) (*Config, error) {
+// d provides build-time defaults so dev and prod builds stay isolated.
+func Load(cfgPath string, d Defaults) (*Config, error) {
 	v := viper.New()
 
 	v.SetDefault("vm.cpus", 4)
@@ -67,9 +81,9 @@ func Load(cfgPath string) (*Config, error) {
 	v.SetDefault("vm.max_age_days", 7)
 	v.SetDefault("vm.base_image_max_age_days", 7)
 	v.SetDefault("vm.dev_root", "~/dev")
-	v.SetDefault("vm.profile", "aivm")
-	v.SetDefault("mcp.port", 7593)
-	v.SetDefault("mcp.data_dir", "~/.aivm/mcpjungle-data")
+	v.SetDefault("vm.profile", d.VMProfile)
+	v.SetDefault("mcp.port", d.MCPPort)
+	v.SetDefault("mcp.data_dir", d.StateDir+"/mcpjungle-data")
 	v.SetDefault("mcp.image_tag", "latest-stdio")
 	v.SetDefault("mcp.server_mode", "development")
 	v.SetDefault("idle.timeout", "5m")
@@ -80,17 +94,19 @@ func Load(cfgPath string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
+	home, _ := os.UserHomeDir()
+	stateDir := expandPath(d.StateDir, home)
+
 	if cfgPath != "" {
 		v.SetConfigFile(expandHome(cfgPath))
 	} else {
 		v.SetConfigName("aivm")
 		v.SetConfigType("yaml")
-		home, _ := os.UserHomeDir()
 		v.AddConfigPath(".")
 		if repoRoot := os.Getenv("AIVM_REPO_ROOT"); repoRoot != "" {
 			v.AddConfigPath(repoRoot)
 		}
-		v.AddConfigPath(filepath.Join(home, ".aivm"))
+		v.AddConfigPath(stateDir)
 	}
 
 	if err := v.ReadInConfig(); err != nil {
@@ -104,10 +120,9 @@ func Load(cfgPath string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	home, _ := os.UserHomeDir()
 	cfg.VM.DevRoot = expandPath(cfg.VM.DevRoot, home)
 	cfg.MCP.DataDir = expandPath(cfg.MCP.DataDir, home)
-	cfg.StateDir = filepath.Join(home, ".aivm")
+	cfg.StateDir = stateDir
 
 	return &cfg, nil
 }

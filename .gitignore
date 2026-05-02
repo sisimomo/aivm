@@ -4,4 +4,4 @@
 aivm.yaml
 
 # compiled binary
-bin/aivm
+bin/*
