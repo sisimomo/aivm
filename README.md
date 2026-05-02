@@ -409,7 +409,6 @@ aivm/
 │   ├── colima.yaml               ← Colima VM config reference
 │   └── mcp-client-config.json   ← MCP client config template
 ├── aivm.example.yaml             ← Config template (copy to aivm.yaml)
-├── docker-compose.mcpjungle.yml  ← MCPJungle service definition
 └── Makefile
 ```
 

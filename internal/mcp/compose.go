@@ -2,22 +2,16 @@ package mcp
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	aivmlog "aivm/internal/log"
 	"aivm/internal/run"
 )
 
-//go:embed docker-compose.mcpjungle.yml
-var composeFileContent []byte
-
 type Manager struct {
-	ComposeFile   string
 	Port          int
 	DataDir       string
 	DockerHost    string
@@ -27,20 +21,33 @@ type Manager struct {
 	ContainerName string
 }
 
-func (m *Manager) env() map[string]string {
-	name := m.ContainerName
-	if name == "" {
-		name = "mcpjungle-server"
+func (m *Manager) image() string {
+	tag := m.ImageTag
+	if tag == "" {
+		tag = "latest-stdio"
 	}
-	return map[string]string{
-		"DOCKER_HOST":              m.DockerHost,
-		"MCPJUNGLE_PORT":           fmt.Sprintf("%d", m.Port),
-		"MCPJUNGLE_DATA_DIR":       m.DataDir,
-		"AIVM_DEV_ROOT":            m.DevRoot,
-		"MCPJUNGLE_IMAGE_TAG":      m.ImageTag,
-		"MCPJUNGLE_SERVER_MODE":    m.ServerMode,
-		"MCPJUNGLE_CONTAINER_NAME": name,
+	return "ghcr.io/mcpjungle/mcpjungle:" + tag
+}
+
+func (m *Manager) containerName() string {
+	if m.ContainerName != "" {
+		return m.ContainerName
 	}
+	return "mcpjungle-server"
+}
+
+func (m *Manager) serverMode() string {
+	if m.ServerMode != "" {
+		return m.ServerMode
+	}
+	return "development"
+}
+
+func (m *Manager) dockerEnv() map[string]string {
+	if m.DockerHost != "" {
+		return map[string]string{"DOCKER_HOST": m.DockerHost}
+	}
+	return nil
 }
 
 func (m *Manager) Start(ctx context.Context) error {
@@ -56,13 +63,37 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	w := aivmlog.Writer("mcpjungle")
+	img := m.image()
+	name := m.containerName()
 
 	aivmlog.Info("Pulling MCPJungle image...")
-	run.RunEnv(ctx, w, m.env(), "docker", "compose", "-f", m.ComposeFile, "pull", "--quiet")
+	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "pull", "--quiet", img)
+
+	// Remove any existing stopped container with the same name before starting.
+	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "rm", "-f", name)
 
 	aivmlog.Info("Starting MCPJungle container...")
-	if err := run.RunEnv(ctx, w, m.env(), "docker", "compose", "-f", m.ComposeFile, "up", "-d"); err != nil {
-		return fmt.Errorf("docker compose up: %w", err)
+	if err := run.RunEnv(ctx, w, m.dockerEnv(), "docker", "run", "-d",
+		"--name", name,
+		"-w", "/data",
+		"-e", "SERVER_MODE="+m.serverMode(),
+		"-e", "OTEL_ENABLED=false",
+		"-e", "MCP_SERVER_INIT_REQ_TIMEOUT_SEC=30",
+		"-p", fmt.Sprintf("127.0.0.1:%d:8080", m.Port),
+		"-v", m.DataDir+":/data",
+		"-v", m.DevRoot+":/host:ro",
+		"--health-cmd", "wget -qO- http://localhost:8080/health 2>/dev/null || exit 1",
+		"--health-interval", "15s",
+		"--health-timeout", "5s",
+		"--health-retries", "5",
+		"--health-start-period", "15s",
+		"--restart", "on-failure",
+		"--log-driver", "json-file",
+		"--log-opt", "max-size=10m",
+		"--log-opt", "max-file=3",
+		img,
+	); err != nil {
+		return fmt.Errorf("docker run: %w", err)
 	}
 
 	aivmlog.Info("Waiting for MCPJungle to become healthy...")
@@ -78,11 +109,10 @@ func (m *Manager) Start(ctx context.Context) error {
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
-	if m.ComposeFile == "" {
-		return nil
-	}
 	w := aivmlog.Writer("mcpjungle")
-	return run.RunEnv(ctx, w, m.env(), "docker", "compose", "-f", m.ComposeFile, "down")
+	name := m.containerName()
+	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "stop", name)
+	return run.RunEnv(ctx, w, m.dockerEnv(), "docker", "rm", name)
 }
 
 func (m *Manager) IsHealthy(_ context.Context) bool {
@@ -92,17 +122,4 @@ func (m *Manager) IsHealthy(_ context.Context) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode < 400
-}
-
-// EnsureComposeFile writes the embedded docker-compose.mcpjungle.yml to stateDir
-// and returns its path. Always writes so the file stays in sync with the binary.
-func EnsureComposeFile(stateDir string) (string, error) {
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		return "", fmt.Errorf("creating state dir: %w", err)
-	}
-	dest := filepath.Join(stateDir, "docker-compose.mcpjungle.yml")
-	if err := os.WriteFile(dest, composeFileContent, 0644); err != nil {
-		return "", fmt.Errorf("writing compose file: %w", err)
-	}
-	return dest, nil
 }

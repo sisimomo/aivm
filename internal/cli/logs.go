@@ -37,7 +37,11 @@ func DoLogs(_ context.Context, app *App, service string) error {
 			return fmt.Errorf("MCP logs are only available with the real MCPJungle manager")
 		}
 		aivmlog.Info("MCPJungle container logs (Ctrl-C to stop):")
-		cmd := exec.Command("docker", "compose", "-f", mgr.ComposeFile, "logs", "-f")
+		name := mgr.ContainerName
+		if name == "" {
+			name = "mcpjungle-server"
+		}
+		cmd := exec.Command("docker", "logs", "-f", name)
 		cmd.Env = append(os.Environ(), "DOCKER_HOST="+mgr.DockerHost)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

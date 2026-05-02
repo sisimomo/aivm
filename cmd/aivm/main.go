@@ -199,13 +199,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		dockerHost = ""
 	}
 
-	composeFile, err := mcp.EnsureComposeFile(cfg.StateDir)
-	if err != nil {
-		return nil, fmt.Errorf("preparing compose file: %w", err)
-	}
-
 	mcpMgr := &mcp.Manager{
-		ComposeFile:   composeFile,
 		Port:          cfg.MCP.Port,
 		DataDir:       cfg.MCP.DataDir,
 		DockerHost:    dockerHost,
