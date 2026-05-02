@@ -98,12 +98,13 @@ func interactiveSsh(ctx context.Context, profile string, env map[string]string, 
 	args := []string{"ssh", "--profile", profile, "--"}
 	envParts := []string{}
 	for k, v := range env {
-		envParts = append(envParts, k+"="+v)
+		envParts = append(envParts, k+"="+shellescape(v))
 	}
 	bashCmd := "bash -lc " + shellescape(script)
 	if len(envParts) > 0 {
 		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
 	}
+
 	args = append(args, bashCmd)
 	return run.Interactive(ctx, "colima", args...)
 }
