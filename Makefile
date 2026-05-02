@@ -11,6 +11,7 @@ build:
 install: build
 	@mkdir -p $(INSTALL_DIR)
 	sudo cp bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
+	sudo codesign --force --sign - $(INSTALL_DIR)/$(BINARY)
 	@mkdir -p ~/.aivm/logs ~/.aivm/sessions ~/.aivm/mcpjungle-data ~/.aivm/plugins
 	@if [ ! -f aivm.yaml ]; then \
 	  cp aivm.example.yaml aivm.yaml; \

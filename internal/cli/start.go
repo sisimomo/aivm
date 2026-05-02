@@ -72,25 +72,24 @@ func DoStart(ctx context.Context, app *App) error {
 	if wasCreated {
 		agePath := filepath.Join(cfg.StateDir, "vm-created-at")
 		os.WriteFile(agePath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
-
 		if err := app.VM.WaitReady(ctx, 60*time.Second); err != nil {
 			return err
 		}
+	}
 
-		eng := &bootstrap.Engine{
-			VM: app.VM,
-			Executor: &plugin.Executor{
-				Registry:     app.Registry,
-				Enabled:      cfg.Plugins.Enabled,
-				PluginConfig: cfg.Plugins.Config,
-				StateDir:     cfg.StateDir,
-				VMInst:       app.VM,
-			},
-			StateDir: cfg.StateDir,
-		}
-		if err := eng.Run(ctx, false); err != nil {
-			return fmt.Errorf("bootstrap: %w", err)
-		}
+	eng := &bootstrap.Engine{
+		VM: app.VM,
+		Executor: &plugin.Executor{
+			Registry:     app.Registry,
+			Enabled:      cfg.Plugins.Enabled,
+			PluginConfig: cfg.Plugins.Config,
+			StateDir:     cfg.StateDir,
+			VMInst:       app.VM,
+		},
+		StateDir: cfg.StateDir,
+	}
+	if err := eng.Run(ctx, false); err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
 	}
 
 	if err := app.Monitor.EnsureRunning(); err != nil {
