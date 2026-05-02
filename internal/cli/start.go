@@ -62,6 +62,7 @@ func DoStart(ctx context.Context, app *App) error {
 	}
 
 	wasCreated := (status == vm.StatusNotFound)
+	needsStart := (status != vm.StatusRunning)
 
 	os.MkdirAll(filepath.Join(cfg.StateDir, ".claude", "projects"), 0755)
 
@@ -72,6 +73,10 @@ func DoStart(ctx context.Context, app *App) error {
 	if wasCreated {
 		agePath := filepath.Join(cfg.StateDir, "vm-created-at")
 		os.WriteFile(agePath, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+	}
+
+	// Wait for SSH to be reachable whenever the VM was just started or resumed.
+	if needsStart {
 		if err := app.VM.WaitReady(ctx, 60*time.Second); err != nil {
 			return err
 		}

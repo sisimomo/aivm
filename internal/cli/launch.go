@@ -105,19 +105,21 @@ func interactiveSsh(ctx context.Context, profile string, env map[string]string, 
 		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
 	}
 
-	// limactl shell allocates a PTY when stdin+stdout are terminals (unlike colima ssh -- CMD).
-	// colima stores its Lima instances at ~/.colima/_lima (not ~/.lima), so we set LIMA_HOME accordingly.
+	// colima ssh -- CMD runs without a PTY; TUI apps like claude need one.
+	// Use ssh -t directly with the SSH config file that colima/lima writes.
+	// The config is at $COLIMA_HOME/_lima/colima-<profile>/ssh.config and the
+	// hostname inside it is lima-colima-<profile>.
 	home, _ := os.UserHomeDir()
 	colimaHome := os.Getenv("COLIMA_HOME")
 	if colimaHome == "" {
 		colimaHome = filepath.Join(home, ".colima")
 	}
-	limaHome := filepath.Join(colimaHome, "_lima")
+	sshConfig := filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
+	sshHost := "lima-colima-" + profile
 
-	cmd := exec.CommandContext(ctx, "limactl", "shell", "colima-"+profile, bashCmd)
+	cmd := exec.CommandContext(ctx, "ssh", "-t", "-F", sshConfig, sshHost, bashCmd)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "LIMA_HOME="+limaHome)
 	return cmd.Run()
 }
