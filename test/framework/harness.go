@@ -212,13 +212,22 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	mon.VMFactory = factory
 	mon.DisableDaemonLaunch = true
 
-	reg := plugin.Global()
+	// Create a per-test plugin registry so parallel tests don't share global state.
+	// Load plugin names from defaults, then register trivial test stubs for all of
+	// them. Stubs use marker files in /tmp so the full bootstrap state machine is
+	// exercised without any apt-get or network operations.
+	reg := plugin.NewRegistry()
 	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("harness: load plugin defaults: %v", err)
 	}
-	for name, def := range defs {
-		reg.Set(plugin.NewYAMLPlugin(name, def))
+	for name := range defs {
+		stub := plugin.PluginDef{
+			Description: name + " (test stub)",
+			Check:       "[ -f /tmp/.aivm_test_" + name + "_installed ]",
+			Install:     "touch /tmp/.aivm_test_" + name + "_installed",
+		}
+		reg.Set(plugin.NewYAMLPlugin(name, stub))
 	}
 
 	app := &cli.App{

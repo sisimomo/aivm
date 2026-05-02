@@ -20,11 +20,12 @@ import (
 //
 // Both timeouts are very short (10s each) so the full cycle completes quickly.
 func TestIdleDeleteRecreate(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithCPUs(2),
 		framework.WithMemoryGiB(4),
-		framework.WithIdleTimeout(10*time.Second),
-		framework.WithDeleteTimeout(10*time.Second),
+		framework.WithIdleTimeout(3*time.Second),
+		framework.WithDeleteTimeout(3*time.Second),
 		framework.WithPollInterval(1*time.Second),
 	)
 

@@ -21,6 +21,7 @@ import (
 //  4. Second start with identical config: syncBootstrap detects nothing new and
 //     skips — VM run count stays zero.
 func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("second start skips bootstrap when config is unchanged").
@@ -46,6 +47,7 @@ func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 //  4. Second start: only "nodejs" is installed (one script run).
 //  5. Bootstrap state now includes all three plugins.
 func TestStartInstallsNewPluginsIncrementally(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithPlugins("java"),
 	)
@@ -74,6 +76,7 @@ func TestStartInstallsNewPluginsIncrementally(t *testing.T) {
 //  3. Reset run counter.
 //  4. Second start: version mismatch triggers fullBootstrap → scripts run again.
 func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("stale bootstrap version triggers full re-bootstrap").

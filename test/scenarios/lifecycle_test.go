@@ -19,6 +19,7 @@ import (
 //  4. Destroy → NotFound.
 //  5. Start → Running (fresh VM, bootstrap runs again).
 func TestStopDestroyRestart(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("full VM lifecycle: start → stop → resume → destroy → recreate").
@@ -50,6 +51,7 @@ func TestStopDestroyRestart(t *testing.T) {
 //  2. Reset run counter.
 //  3. DoBootstrap(force=true) — all plugins run again regardless of state.
 func TestBootstrapCommandForce(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("bootstrap --force re-runs all plugins on an already-bootstrapped VM").
@@ -71,6 +73,7 @@ func TestBootstrapCommandForce(t *testing.T) {
 //  2. Reset run counter.
 //  3. DoBootstrap(plugin="java") — only the java plugin runs.
 func TestBootstrapCommandSinglePlugin(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("bootstrap --plugin runs only the specified plugin").
@@ -90,6 +93,7 @@ func TestBootstrapCommandSinglePlugin(t *testing.T) {
 //  2. Reset run counter.
 //  3. DoBootstrap(force=false, plugin="") — detects up-to-date, skips.
 func TestBootstrapCommandSync(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("bootstrap sync on up-to-date VM — no scripts run").

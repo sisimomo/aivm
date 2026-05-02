@@ -20,10 +20,11 @@ import (
 // Idle timeout and poll interval are set very short (10s / 1s) so the test
 // completes in under a minute.
 func TestIdleStopResume(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithCPUs(2),
 		framework.WithMemoryGiB(4),
-		framework.WithIdleTimeout(10*time.Second),
+		framework.WithIdleTimeout(3*time.Second),
 		framework.WithDeleteTimeout(5*time.Minute), // keep long so Phase 2 doesn't trigger
 		framework.WithPollInterval(1*time.Second),
 	)

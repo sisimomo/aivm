@@ -25,6 +25,7 @@ import (
 //  5. Bootstrap state now lists both providers' plugins.
 //  6. VM is NOT destroyed (still running, same instance).
 func TestAgentMismatchInstallIntoExistingVM(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("1"), // answer "1" = install into existing VM
 	)
@@ -59,6 +60,7 @@ func TestAgentMismatchInstallIntoExistingVM(t *testing.T) {
 //  4. Answer "2" → VM is destroyed and recreated with only the copilot plugin.
 //  5. Claude plugin is no longer present in the bootstrap state.
 func TestAgentMismatchRecreateVM(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("2"), // answer "2" = destroy and recreate
 	)

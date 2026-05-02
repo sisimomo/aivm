@@ -20,9 +20,10 @@ import (
 //  4. Remove the session.
 //  5. VM stops after the next idle poll cycle.
 func TestSessionBlocksIdleMonitor(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
-		framework.WithIdleTimeout(5*time.Second),
-		framework.WithDeleteTimeout(5*time.Minute), // keep long so delete doesn't trigger
+		framework.WithIdleTimeout(3*time.Second),
+		framework.WithDeleteTimeout(5*time.Minute), // keep long so Phase 2 doesn't trigger
 		framework.WithPollInterval(1*time.Second),
 	)
 
@@ -32,7 +33,7 @@ func TestSessionBlocksIdleMonitor(t *testing.T) {
 		Step("Launch idle monitor (in-process)", actions.StartMonitor(nil)).
 		Step("Create a fake active session", actions.CreateFakeSession()).
 		Assert("Session is registered", assertions.SessionCount(1)).
-		Step("Wait longer than idle timeout (VM should NOT stop)", sleepStep(12*time.Second)).
+		Step("Wait longer than idle timeout (VM should NOT stop)", sleepStep(7*time.Second)).
 		Assert("VM still running — session blocked idle stop",
 			assertions.VMStatus(vm.StatusRunning)).
 		Step("Remove session (idle timer can now elapse)", actions.RemoveFakeSessions()).
@@ -51,8 +52,9 @@ func TestSessionBlocksIdleMonitor(t *testing.T) {
 //  3. Remove all sessions.
 //  4. VM stops after idle timeout.
 func TestNoSessionsStopsVM(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
-		framework.WithIdleTimeout(5*time.Second),
+		framework.WithIdleTimeout(3*time.Second),
 		framework.WithDeleteTimeout(5*time.Minute),
 		framework.WithPollInterval(1*time.Second),
 	)

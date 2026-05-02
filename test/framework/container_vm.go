@@ -100,10 +100,19 @@ func (d *DockerVM) Stop(_ context.Context) error {
 	return dockerRun("stop", d.containerName)
 }
 
-// Destroy stops and removes the container along with any snapshot images that
-// were committed for this profile.
+// Destroy stops and removes the container. Snapshot images are intentionally
+// preserved so that TryRestoreBaseImage can find them after the container is
+// recreated. Images are only removed in destroyWithImages, called from
+// DestroyAll at test teardown.
 func (d *DockerVM) Destroy(_ context.Context) error {
-	// Best-effort stop before removal.
+	_ = dockerRun("stop", d.containerName)
+	_ = dockerRun("rm", "-f", d.containerName)
+	return nil
+}
+
+// destroyWithImages removes the container and all snapshot images committed for
+// this profile. Called from DestroyAll during test cleanup.
+func (d *DockerVM) destroyWithImages() {
 	_ = dockerRun("stop", d.containerName)
 	_ = dockerRun("rm", "-f", d.containerName)
 
@@ -115,7 +124,6 @@ func (d *DockerVM) Destroy(_ context.Context) error {
 	for _, tag := range snaps {
 		_ = dockerRun("rmi", "-f", tag)
 	}
-	return nil
 }
 
 // Run executes script inside the container as the test user.
@@ -306,7 +314,7 @@ func (r *ContainerVMRegistry) DestroyAll() {
 	r.mu.Unlock()
 
 	for _, d := range vms {
-		_ = d.Destroy(context.Background())
+		d.destroyWithImages()
 	}
 }
 

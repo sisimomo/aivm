@@ -20,6 +20,7 @@ import (
 //  3. RebuildImage(force=true) — no prompts, immediate rebuild.
 //  4. VM is running again with a new base image (v2 ≠ v1).
 func TestRebuildImageForceNoSessions(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	var v1ID string
@@ -48,6 +49,7 @@ func TestRebuildImageForceNoSessions(t *testing.T) {
 // exit. In tests the "fake session" PID is the test process itself, which
 // survives SIGTERM; we verify the rebuild completed rather than session count.
 func TestRebuildImageForceWithSessions(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("force rebuild proceeds without prompts even when sessions are active").
@@ -70,6 +72,7 @@ func TestRebuildImageForceWithSessions(t *testing.T) {
 //  2. RebuildImage(force=false) in interactive mode, answer "y".
 //  3. VM is rebuilt; new base image saved.
 func TestRebuildImageInteractiveConfirm(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("y"), // "Proceed with base image rebuild? [y/N]"
 	)
@@ -95,6 +98,7 @@ func TestRebuildImageInteractiveConfirm(t *testing.T) {
 //  2. RebuildImage(force=false) in interactive mode, answer "n".
 //  3. VM is still running; base image is unchanged (still v1).
 func TestRebuildImageInteractiveCancel(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("n"), // "Proceed with base image rebuild? [y/N]"
 	)
@@ -120,6 +124,7 @@ func TestRebuildImageInteractiveCancel(t *testing.T) {
 //  2. Create a fake session.
 //  3. RebuildImage(force=false): "Kill all sessions? [y/N]" → "y" kills sessions and rebuilds.
 func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("y", "y"), // prompt 1: kill sessions, prompt 2: proceed with rebuild
 	)
@@ -154,6 +159,7 @@ func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 //  4. Transition state written; new VM profile created.
 //  5. Legacy VM (primary profile) is still running.
 func TestRebuildImageSoftRebuild(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("n", "y"), // prompt 1: n, prompt 2: y
 	)

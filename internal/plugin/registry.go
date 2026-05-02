@@ -12,6 +12,10 @@ type Registry struct {
 
 var global = &Registry{plugins: make(map[string]Plugin)}
 
+// NewRegistry returns a new empty plugin registry. Use this in tests so that
+// each test gets an isolated registry instead of sharing the global singleton.
+func NewRegistry() *Registry { return &Registry{plugins: make(map[string]Plugin)} }
+
 func Register(p Plugin) {
 	global.mu.Lock()
 	defer global.mu.Unlock()

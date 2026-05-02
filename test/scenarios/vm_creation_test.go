@@ -27,6 +27,7 @@ import (
 //
 // This confirms that the base image lifecycle works end-to-end.
 func TestVMCreationFromBaseImage(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	var firstImageID string

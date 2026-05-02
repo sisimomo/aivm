@@ -21,6 +21,7 @@ import (
 //  4. Run `aivm rebuild-image --force` — destroys VM, bootstrap, base image v2.
 //  5. Confirm the new VM uses base image v2.
 func TestBaseImageRebuildImpact(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	var v1ID, v2ID string

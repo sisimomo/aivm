@@ -22,6 +22,7 @@ import (
 //     "VM is 31 day(s) old — Delete and recreate? [y/N]" → y
 //  5. VM is destroyed and a new one is created; bootstrap runs again.
 func TestVMMaxAgeRecreationAccepted(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithMaxAgeDays(30),
 		framework.WithInteractive("y"), // "Delete and recreate for a clean slate? [y/N]"
@@ -53,6 +54,7 @@ func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 //     "VM is 31 day(s) old — Delete and recreate? [y/N]" → n
 //  5. VM is resumed (status Running); bootstrap state is unchanged.
 func TestVMMaxAgeRecreationDeclined(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithMaxAgeDays(30),
 		framework.WithInteractive("n"), // "Delete and recreate for a clean slate? [y/N]"
@@ -82,6 +84,7 @@ func TestVMMaxAgeRecreationDeclined(t *testing.T) {
 //  3. Backdate vm-created-at by 31 days.
 //  4. Start VM in non-interactive mode (default) — no prompt, VM resumed.
 func TestVMMaxAgeNonInteractiveSkipsPrompt(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t,
 		framework.WithMaxAgeDays(30),
 		// no WithInteractive — simulates CI / automated run

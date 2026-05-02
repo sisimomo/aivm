@@ -29,6 +29,7 @@ import (
 // After this test the agent should have been launched exactly once and the VM
 // should be running (DoLaunch does not stop the VM).
 func TestBareCommandFirstBoot(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("aivm (bare) — first boot: DoStart + DoLaunch").
@@ -47,6 +48,7 @@ func TestBareCommandFirstBoot(t *testing.T) {
 //  2. User runs `aivm` — DoStart detects the VM is already up and skips bootstrap.
 //  3. DoLaunch starts the agent directly.
 func TestBareCommandResume(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("aivm (bare) — VM already running: skip bootstrap, launch agent directly").
@@ -67,6 +69,7 @@ func TestBareCommandResume(t *testing.T) {
 // This protects against accidentally running an agent against a path that isn't
 // mounted in the VM.
 func TestBareCommandCWDOutsideDevRoot(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("aivm (bare) — CWD outside DevRoot returns error before launching agent").
@@ -85,6 +88,7 @@ func TestBareCommandCWDOutsideDevRoot(t *testing.T) {
 // TestBareCommandMultipleSessions verifies that each `aivm` invocation creates
 // exactly one agent session. Running it twice results in two Launch calls.
 func TestBareCommandMultipleSessions(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("aivm (bare) invoked twice — two independent agent sessions").
@@ -107,6 +111,7 @@ func TestBareCommandMultipleSessions(t *testing.T) {
 //  4. Run `aivm` bare — DoLaunch must see the transition, switch to the new VM,
 //     verify it is running, and launch the agent.
 func TestBareCommandWithTransitionState(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	h.Scenario("aivm (bare) — transition active: agent routed to new VM profile").
