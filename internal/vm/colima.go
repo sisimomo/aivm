@@ -188,10 +188,13 @@ func (c *ColimaVM) Run(ctx context.Context, script string, env map[string]string
 		full = sb.String() + script
 	}
 	encoded := base64.StdEncoding.EncodeToString([]byte(full))
-	cmdStr := "echo " + encoded + " | base64 -d | bash -l"
+	// Pass as separate args so colima/SSH runs them as distinct tokens.
+	// A single-string argument is passed verbatim by SSH exec without shell
+	// interpretation (pipes become literal arguments to the first command).
+	bashScript := "echo " + encoded + " | base64 -d | bash -l"
 
 	w := aivmlog.Writer("vm")
-	cmd := exec.CommandContext(ctx, "colima", "ssh", "--profile", c.profile, "--", cmdStr)
+	cmd := exec.CommandContext(ctx, "colima", "ssh", "--profile", c.profile, "--", "bash", "-lc", bashScript)
 	cmd.Stdout = w
 	cmd.Stderr = w
 	return cmd.Run()
