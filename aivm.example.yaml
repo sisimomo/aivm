@@ -1,0 +1,56 @@
+# aivm configuration
+# Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
+# Then set auth.claude_token before first use.
+
+vm:
+  cpus: 4
+  memory: 8         # GiB
+  disk: 60          # GiB
+  type: vz          # vz (Apple Silicon, macOS 13+) | qemu (Intel/fallback)
+  max_age_days: 7   # days before prompting to recreate VM
+  dev_root: ~/dev   # host dev root mounted in VM at same path
+  profile: aivm     # Colima profile name
+
+mcp:
+  port: 8080
+  data_dir: ~/.aivm/mcpjungle-data
+  image_tag: latest-stdio
+  server_mode: development
+
+idle:
+  timeout: 5m   # auto-shutdown after this idle duration
+
+auth:
+  # Claude Code OAuth token.
+  # Can also be set via AIVM_AUTH_CLAUDE_TOKEN env var (preferred for security).
+  claude_token: ""
+
+plugins:
+  enabled:
+    - system
+    - java
+    - maven
+    - nodejs
+    - python
+    - rtk
+    - claude
+
+  config:
+    java:
+      version: "25"
+      distribution: temurin
+    nodejs:
+      version: lts
+    python:
+      tool: uv
+
+  # Define or override plugins — same format as defaults, merged field-by-field.
+  # Use to add custom plugins or tweak a built-in plugin's scripts.
+  # define:
+  #   my-tool:
+  #     description: "My custom tool"
+  #     dependencies: [system]
+  #     check: |
+  #       my-tool --version >/dev/null 2>&1
+  #     install: |
+  #       curl -fsSL https://example.com/install.sh | sh

@@ -1,0 +1,122 @@
+system:
+  description: "System packages (apt: git, curl, jq, etc.)"
+  check: |
+    which jq >/dev/null 2>&1
+  install: |
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt-get update -qq
+    sudo apt-get install -y --no-install-recommends \
+      git curl wget unzip zip ca-certificates gnupg lsb-release \
+      bash-completion jq htop python3
+  configure: |
+    printf 'export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"\n' | sudo tee /etc/profile.d/aivm.sh > /dev/null
+    sudo chmod 0644 /etc/profile.d/aivm.sh
+
+java:
+  description: "Temurin JDK via Adoptium apt repo"
+  dependencies:
+    - system
+  defaults:
+    version: "25"
+  check: |
+    java -version 2>&1 | grep -qE 'version "{{ .version }}|"{{ .version }}\.'
+  install: |
+    export DEBIAN_FRONTEND=noninteractive
+    sudo mkdir -p /etc/apt/keyrings
+    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
+      | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -sc) main" \
+      | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
+    sudo apt-get update -qq
+    sudo apt-get install -y temurin-{{ .version }}-jdk
+
+maven:
+  description: "Apache Maven (latest 3.x)"
+  dependencies:
+    - java
+  check: |
+    mvn --version >/dev/null 2>&1
+  install: |
+    MAVEN_INSTALL_DIR="/opt/maven"
+    MAVEN_VERSION=$(curl -s "https://dlcdn.apache.org/maven/maven-3/" \
+      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | sort -V | tail -1 | tr -d '/')
+    if [[ -z "$MAVEN_VERSION" ]]; then
+      echo "Could not resolve Maven version"; exit 1
+    fi
+    echo "Installing Maven ${MAVEN_VERSION}"
+    MAVEN_URL="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+    TMP=$(mktemp -d)
+    curl -fsSL "$MAVEN_URL" -o "$TMP/maven.tar.gz"
+    sudo mkdir -p "$MAVEN_INSTALL_DIR"
+    sudo tar -xzf "$TMP/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
+    sudo ln -sf "$MAVEN_INSTALL_DIR/bin/mvn" /usr/local/bin/mvn
+    rm -rf "$TMP"
+
+nodejs:
+  description: "Node.js LTS (via NodeSource apt repo)"
+  dependencies:
+    - system
+  check: |
+    node --version >/dev/null 2>&1
+  install: |
+    export DEBIAN_FRONTEND=noninteractive
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
+python:
+  description: "Python (via uv)"
+  dependencies:
+    - system
+  check: |
+    uv --version >/dev/null 2>&1
+  install: |
+    INSTALLER_NO_MODIFY_PATH=1 curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    uv python install
+
+rtk:
+  description: "rtk (Rust Token Killer) — Claude Code hook"
+  dependencies:
+    - system
+  check: |
+    rtk --version >/dev/null 2>&1
+  install: |
+    curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+
+claude:
+  description: "Claude Code CLI + MCP config"
+  dependencies:
+    - nodejs
+    - rtk
+  defaults:
+    mcp_port: "8080"
+    host_home: ""
+  check: |
+    claude --version >/dev/null 2>&1
+  install: |
+    curl -fsSL https://claude.ai/install.sh | bash
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "Claude Code CLI not found after install"; exit 1
+    fi
+  configure: |
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+    echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
+    {{ if .host_home }}
+    mkdir -p "$HOME/.claude"
+    PROJECTS_MOUNT="{{ .host_home }}/.aivm/.claude/projects"
+    mkdir -p "$PROJECTS_MOUNT"
+    ln -sfn "$PROJECTS_MOUNT" "$HOME/.claude/projects"
+    {{ end }}
+    mkdir -p "$HOME/.claude"
+    cat > "$HOME/.claude/mcp-config.json" <<'AIVM_EOF'
+    {
+      "mcpServers": {
+        "mcpjungle": {
+          "type": "http",
+          "url": "http://host.lima.internal:{{ .mcp_port }}/mcp"
+        }
+      }
+    }
+    AIVM_EOF
+    rtk init -g --auto-patch 2>/dev/null || true

@@ -1,0 +1,151 @@
+package plugin
+
+import (
+	"bytes"
+	"context"
+	_ "embed"
+	"text/template"
+
+	"gopkg.in/yaml.v3"
+
+	"aivm/internal/run"
+)
+
+//go:embed defaults.yaml
+var defaultsYAML []byte
+
+// PluginDef is the definition of a plugin as expressed in YAML.
+// It is used both for the embedded defaults.yaml and for user-defined plugins
+// in aivm.yaml (plugins.define).
+type PluginDef struct {
+	Description  string         `yaml:"description"  mapstructure:"description"`
+	Dependencies []string       `yaml:"dependencies" mapstructure:"dependencies"`
+	Defaults     map[string]any `yaml:"defaults"     mapstructure:"defaults"`
+	Check        string         `yaml:"check"        mapstructure:"check"`
+	Install      string         `yaml:"install"      mapstructure:"install"`
+	Configure    string         `yaml:"configure"    mapstructure:"configure"`
+}
+
+// LoadDefaults parses the embedded defaults.yaml and returns plugin definitions keyed by name.
+func LoadDefaults() (map[string]PluginDef, error) {
+	var defs map[string]PluginDef
+	if err := yaml.Unmarshal(defaultsYAML, &defs); err != nil {
+		return nil, err
+	}
+	return defs, nil
+}
+
+// MergePluginDef merges override into base field-by-field; non-zero override fields win.
+// Defaults maps are merged key-by-key so individual default values can be overridden.
+func MergePluginDef(base, override PluginDef) PluginDef {
+	result := base
+	if override.Description != "" {
+		result.Description = override.Description
+	}
+	if len(override.Dependencies) > 0 {
+		result.Dependencies = override.Dependencies
+	}
+	if override.Check != "" {
+		result.Check = override.Check
+	}
+	if override.Install != "" {
+		result.Install = override.Install
+	}
+	if override.Configure != "" {
+		result.Configure = override.Configure
+	}
+	if len(override.Defaults) > 0 {
+		merged := make(map[string]any, len(result.Defaults)+len(override.Defaults))
+		for k, v := range result.Defaults {
+			merged[k] = v
+		}
+		for k, v := range override.Defaults {
+			merged[k] = v
+		}
+		result.Defaults = merged
+	}
+	return result
+}
+
+// YAMLPlugin is a plugin defined entirely by inline scripts in YAML.
+type YAMLPlugin struct {
+	name string
+	def  PluginDef
+}
+
+// NewYAMLPlugin creates a Plugin from a name and a PluginDef.
+func NewYAMLPlugin(name string, def PluginDef) *YAMLPlugin {
+	return &YAMLPlugin{name: name, def: def}
+}
+
+func (p *YAMLPlugin) Name()         string   { return p.name }
+func (p *YAMLPlugin) Description()  string   { return p.def.Description }
+func (p *YAMLPlugin) Dependencies() []string { return p.def.Dependencies }
+
+// effectiveConfig merges the plugin's bundled default config values with
+// per-plugin config from the user's aivm.yaml (user values win).
+func (p *YAMLPlugin) effectiveConfig(env InstallEnv) map[string]any {
+	cfg := make(map[string]any, len(p.def.Defaults)+len(env.Config))
+	for k, v := range p.def.Defaults {
+		cfg[k] = v
+	}
+	for k, v := range env.Config {
+		cfg[k] = v
+	}
+	return cfg
+}
+
+func (p *YAMLPlugin) render(src string, data map[string]any) (string, error) {
+	t, err := template.New("").Parse(src)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func (p *YAMLPlugin) Check(ctx context.Context, env InstallEnv) (bool, error) {
+	if p.def.Check == "" {
+		return false, nil
+	}
+	script, err := p.render(p.def.Check, p.effectiveConfig(env))
+	if err != nil {
+		return false, err
+	}
+	if env.VM != nil {
+		return env.VM.Run(ctx, script, nil) == nil, nil
+	}
+	_, err = run.Output(ctx, "bash", "-lc", script)
+	return err == nil, nil
+}
+
+func (p *YAMLPlugin) Install(ctx context.Context, env InstallEnv) error {
+	if p.def.Install == "" {
+		return nil
+	}
+	script, err := p.render(p.def.Install, p.effectiveConfig(env))
+	if err != nil {
+		return err
+	}
+	if env.VM != nil {
+		return env.VM.Run(ctx, script, nil)
+	}
+	return run.Run(ctx, env.Log, "bash", "-c", script)
+}
+
+func (p *YAMLPlugin) Configure(ctx context.Context, env InstallEnv) error {
+	if p.def.Configure == "" {
+		return nil
+	}
+	script, err := p.render(p.def.Configure, p.effectiveConfig(env))
+	if err != nil {
+		return err
+	}
+	if env.VM != nil {
+		return env.VM.Run(ctx, script, nil)
+	}
+	return run.Run(ctx, env.Log, "bash", "-c", script)
+}
