@@ -132,7 +132,7 @@ func doHardRebuild(ctx context.Context, app *App, imgMgr *vm.ImageManager) error
 func doSoftRebuild(ctx context.Context, app *App, imgMgr *vm.ImageManager) error {
 	cfg := app.Config
 	tempProfile := cfg.VM.Profile + "-rebuild"
-	tempVM := vm.NewColima(tempProfile, cfg.StateDir)
+	tempVM := app.VMFactory(tempProfile, cfg.StateDir)
 
 	// Clean up any leftover rebuild VM from a previous attempt.
 	_ = tempVM.Destroy(ctx)

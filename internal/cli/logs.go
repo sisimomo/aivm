@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"aivm/internal/mcp"
 	aivmlog "aivm/internal/log"
 )
 
@@ -31,9 +32,13 @@ func DoLogs(_ context.Context, app *App, service string) error {
 	stateDir := app.Config.StateDir
 	switch service {
 	case "mcpjungle":
+		mgr, ok := app.MCP.(*mcp.Manager)
+		if !ok {
+			return fmt.Errorf("MCP logs are only available with the real MCPJungle manager")
+		}
 		aivmlog.Info("MCPJungle container logs (Ctrl-C to stop):")
-		cmd := exec.Command("docker", "compose", "-f", app.MCP.ComposeFile, "logs", "-f")
-		cmd.Env = append(os.Environ(), "DOCKER_HOST="+app.MCP.DockerHost)
+		cmd := exec.Command("docker", "compose", "-f", mgr.ComposeFile, "logs", "-f")
+		cmd.Env = append(os.Environ(), "DOCKER_HOST="+mgr.DockerHost)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()

@@ -193,7 +193,6 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	vmInst := vm.NewColima(cfg.VM.Profile, cfg.StateDir)
-
 	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile)
 	if err != nil {
 		aivmlog.Warn("Docker socket: %v", err)
@@ -218,6 +217,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	sessions := session.NewStore(cfg.StateDir)
 	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.Timeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
+	mon.VMFactory = vm.ColimaFactory
 
 	reg := plugin.Global()
 
@@ -235,14 +235,15 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	return &cli.App{
-		Config:   cfg,
-		VM:       vmInst,
-		MCP:      mcpMgr,
-		Sessions: sessions,
-		Monitor:  mon,
-		Registry: reg,
-		Agents:   agentReg,
-		Provider: prov,
+		Config:    cfg,
+		VM:        vmInst,
+		MCP:       mcpMgr,
+		Sessions:  sessions,
+		Monitor:   mon,
+		Registry:  reg,
+		Agents:    agentReg,
+		Provider:  prov,
+		VMFactory: vm.ColimaFactory,
 	}, nil
 }
 

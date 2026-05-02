@@ -13,11 +13,15 @@ import (
 type App struct {
 	Config   *config.Config
 	VM       vm.VM
-	MCP      *mcp.Manager
+	MCP      mcp.MCPManager
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
 	Agents   *agent.Registry
 	// Provider is the active AI agent provider selected from the config.
 	Provider agent.Provider
+	// VMFactory creates VM instances for profiles other than the primary VM
+	// (e.g. the temporary rebuild VM in doSoftRebuild). In production this is
+	// vm.NewColima; tests substitute a mock factory via the test harness.
+	VMFactory vm.VMFactory
 }

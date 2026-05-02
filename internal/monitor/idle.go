@@ -17,15 +17,23 @@ import (
 type IdleMonitor struct {
 	Sessions      *session.Store
 	VM            vm.VM
-	MCP           *mcp.Manager
+	MCP           mcp.MCPManager
 	Timeout       time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
 	PIDFile       string
 	StateDir      string
+	// VMFactory creates VM instances for secondary profiles (e.g. the legacy VM
+	// in RunLegacyMonitor). In production this is vm.NewColima; tests substitute
+	// a mock factory via the test harness.
+	VMFactory vm.VMFactory
+	// DisableDaemonLaunch prevents EnsureRunning and EnsureLegacyMonitorRunning
+	// from spawning subprocess daemons. Set to true in tests where the monitor
+	// is driven in-process via RunMonitorInProcess instead.
+	DisableDaemonLaunch bool
 }
 
-func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
+func NewIdleMonitor(sessions *session.Store, v vm.VM, m mcp.MCPManager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
 	return &IdleMonitor{
 		Sessions:      sessions,
 		VM:            v,
@@ -39,6 +47,9 @@ func NewIdleMonitor(sessions *session.Store, v vm.VM, m *mcp.Manager, timeout, d
 }
 
 func (m *IdleMonitor) EnsureRunning() error {
+	if m.DisableDaemonLaunch {
+		return nil
+	}
 	if m.isRunning() {
 		aivmlog.Debug("idle monitor already running")
 		return nil
@@ -203,6 +214,9 @@ func (m *IdleMonitor) Stop() {
 // It is called after initiating a two-VM transition so that the old VM is automatically
 // destroyed once all sessions that pre-date the transition have ended.
 func (m *IdleMonitor) EnsureLegacyMonitorRunning() error {
+	if m.DisableDaemonLaunch {
+		return nil
+	}
 	pidFile := filepath.Join(m.StateDir, "legacy-monitor.pid")
 	if data, err := os.ReadFile(pidFile); err == nil {
 		if pid, err := strconv.Atoi(string(data)); err == nil && pid > 0 {
@@ -240,7 +254,7 @@ func (m *IdleMonitor) RunLegacyMonitor(ctx context.Context, ts *vm.TransitionSta
 	os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
 	defer os.Remove(pidFile)
 
-	legacyVM := vm.NewColima(ts.LegacyProfile, m.StateDir)
+	legacyVM := m.VMFactory(ts.LegacyProfile, m.StateDir)
 
 	aivmlog.Info("legacy monitor started (pid=%d, legacy=%s, new=%s)",
 		os.Getpid(), ts.LegacyProfile, ts.NewProfile)

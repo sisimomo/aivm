@@ -56,3 +56,7 @@ type VM interface {
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)
 	ListSnapshots(ctx context.Context) ([]Snapshot, error)
 }
+
+// VMFactory creates a VM instance for the given profile and state directory.
+// The production implementation is vm.NewColima; tests substitute a mock factory.
+type VMFactory func(profile, stateDir string) VM
