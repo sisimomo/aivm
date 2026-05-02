@@ -4,9 +4,11 @@ package assertions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"aivm/internal/vm"
 	fw "aivm/test/framework"
@@ -135,4 +137,177 @@ func VMRunOutput(script, contains string) fw.AssertFunc {
 		_ = contains // future: add output capture if needed
 		return nil
 	}
+}
+
+// BaseImageIs asserts that the current base image ID equals *want.
+// The pointer form allows the expected value to be captured in a previous step.
+func BaseImageIs(want *string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		img := h.ImageManager().LoadBaseImage()
+		if img == nil {
+			return fmt.Errorf("no base image recorded")
+		}
+		if img.ID != *want {
+			return fmt.Errorf("base image ID: got %q, want %q", img.ID, *want)
+		}
+		return nil
+	}
+}
+
+// BaseImageIsNot asserts that the current base image ID has changed from *prev.
+// The pointer form allows the previous value to be captured in an earlier step.
+func BaseImageIsNot(prev *string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		img := h.ImageManager().LoadBaseImage()
+		if img == nil {
+			return fmt.Errorf("no base image recorded")
+		}
+		if img.ID == *prev {
+			return fmt.Errorf("base image ID did not change from %q after rebuild", *prev)
+		}
+		return nil
+	}
+}
+
+// VMRunCountIs asserts that the primary mock VM's Run() was called exactly n
+// times since the last ResetMockVMRunCount.
+func VMRunCountIs(n int) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		m := h.MockVMs.Get(h.Profile)
+		if m == nil {
+			return fmt.Errorf("mock VM not found for profile %q", h.Profile)
+		}
+		got := m.RunCount()
+		if got != n {
+			return fmt.Errorf("VM run count: got %d, want %d", got, n)
+		}
+		return nil
+	}
+}
+
+// VMRunCountAtLeast asserts that the primary mock VM's Run() was called at
+// least n times since the last ResetMockVMRunCount.
+func VMRunCountAtLeast(n int) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		m := h.MockVMs.Get(h.Profile)
+		if m == nil {
+			return fmt.Errorf("mock VM not found for profile %q", h.Profile)
+		}
+		got := m.RunCount()
+		if got < n {
+			return fmt.Errorf("VM run count: got %d, want at least %d", got, n)
+		}
+		return nil
+	}
+}
+
+// (vm-transition.json exists in StateDir).
+func TransitionStateExists() fw.AssertFunc {
+	return StateFileExists("vm-transition.json")
+}
+
+// TransitionStateAbsent asserts that no VM transition is in progress
+// (vm-transition.json does NOT exist in StateDir).
+func TransitionStateAbsent() fw.AssertFunc {
+	return StateFileAbsent("vm-transition.json")
+}
+
+// SessionCount asserts that exactly n active sessions exist.
+func SessionCount(want int) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		got, err := h.App.Sessions.CountActive()
+		if err != nil {
+			return fmt.Errorf("count sessions: %w", err)
+		}
+		if got != want {
+			return fmt.Errorf("session count: got %d, want %d", got, want)
+		}
+		return nil
+	}
+}
+
+// BootstrapStateProviderIs asserts that the bootstrap state records the given
+// provider name.
+func BootstrapStateProviderIs(provider string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return fmt.Errorf("no bootstrap state found")
+		}
+		if state.Provider != provider {
+			return fmt.Errorf("bootstrap state provider: got %q, want %q", state.Provider, provider)
+		}
+		return nil
+	}
+}
+
+// BootstrapStateContainsPlugins asserts that all the given plugins appear in
+// the bootstrap state's installed list (may have others alongside them).
+func BootstrapStateContainsPlugins(plugins ...string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return fmt.Errorf("no bootstrap state found")
+		}
+		installed := make(map[string]bool, len(state.Installed))
+		for _, p := range state.Installed {
+			installed[p] = true
+		}
+		for _, want := range plugins {
+			if !installed[want] {
+				return fmt.Errorf("bootstrap state installed %v does not contain %q", state.Installed, want)
+			}
+		}
+		return nil
+	}
+}
+
+// BootstrapStateInstalledExactly asserts that the bootstrap state's installed
+// plugin list matches plugins exactly (order-independent).
+func BootstrapStateInstalledExactly(plugins ...string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return fmt.Errorf("no bootstrap state found")
+		}
+		got := append([]string(nil), state.Installed...)
+		want := append([]string(nil), plugins...)
+		sort.Strings(got)
+		sort.Strings(want)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			return fmt.Errorf("bootstrap state installed: got %v, want %v", got, want)
+		}
+		return nil
+	}
+}
+
+// bootstrapState mirrors cli.BootstrapState for JSON decoding inside the assertions package.
+type bootstrapState struct {
+	Version   string   `json:"version"`
+	Provider  string   `json:"provider"`
+	Installed []string `json:"installed"`
+}
+
+func loadBootstrapState(stateDir string) (*bootstrapState, error) {
+	data, err := os.ReadFile(filepath.Join(stateDir, "bootstrap-state.json"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var s bootstrapState
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("parse bootstrap-state.json: %w", err)
+	}
+	return &s, nil
 }

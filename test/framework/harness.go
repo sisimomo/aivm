@@ -147,9 +147,9 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	agentReg.Register(claude.New())
 	agentReg.Register(copilot.New())
 
-	prov, ok := agentReg.Get("claude")
+	prov, ok := agentReg.Get(tc.Provider)
 	if !ok {
-		t.Fatal("harness: claude provider not registered")
+		t.Fatalf("harness: provider %q not registered", tc.Provider)
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
@@ -171,7 +171,7 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		reg.Set(plugin.NewYAMLPlugin(name, def))
 	}
 
-	return &cli.App{
+	app := &cli.App{
 		Config:    cfg,
 		VM:        vmInst,
 		MCP:       mcpStub,
@@ -182,6 +182,15 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Provider:  prov,
 		VMFactory: factory,
 	}
+
+	// Wire injectable I/O: only active when Interactive=true so that
+	// non-interactive tests are not affected.
+	if tc.Interactive {
+		app.IsTerminal = func() bool { return true }
+		app.Stdin = stdinReader(tc)
+	}
+
+	return app
 }
 
 func mustRandomHex(n int) string {

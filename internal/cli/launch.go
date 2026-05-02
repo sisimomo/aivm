@@ -43,7 +43,7 @@ func DoLaunch(ctx context.Context, app *App) error {
 	// If a transition is already in progress, route this session to the new VM.
 	if ts := vm.LoadTransitionState(cfg.StateDir); ts != nil {
 		aivmlog.Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
-		app.VM = vm.NewColima(ts.NewProfile, cfg.StateDir)
+		app.VM = app.VMFactory(ts.NewProfile, cfg.StateDir)
 	} else if cfg.VM.BaseImageMaxAgeDays > 0 {
 		// Check if the base image needs rebuilding before starting a new session.
 		if err := checkBaseImageAge(ctx, app); err != nil {
@@ -102,7 +102,7 @@ func DoLaunch(ctx context.Context, app *App) error {
 func checkBaseImageAge(ctx context.Context, app *App) error {
 	cfg := app.Config
 
-	if !isTerminal() {
+	if !interactive(app) {
 		return nil
 	}
 
@@ -126,8 +126,7 @@ func checkBaseImageAge(ctx context.Context, app *App) error {
 	aivmlog.Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, cfg.VM.BaseImageMaxAgeDays)
 	aivmlog.Warn("Created: %s", img.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
 	fmt.Printf("  → Rebuild base image for a clean environment? [y/N] ")
-	var answer string
-	fmt.Scanln(&answer)
+	answer := readAnswer(app)
 	if answer != "y" && answer != "Y" {
 		return nil
 	}
@@ -142,8 +141,7 @@ func checkBaseImageAge(ctx context.Context, app *App) error {
 	fmt.Printf("    1. Kill all sessions and rebuild now (sessions will be lost)\n")
 	fmt.Printf("    2. Start a new VM with the fresh image; old VM runs until sessions end, then auto-deletes\n")
 	fmt.Printf("  Choice [1/2]: ")
-	var choice string
-	fmt.Scanln(&choice)
+	choice := readAnswer(app)
 
 	switch choice {
 	case "1":
@@ -191,7 +189,10 @@ func startTransitionVM(ctx context.Context, app *App) error {
 
 	aivmlog.Step("Creating new VM '%s' with fresh base image...", newProfile)
 
-	newVM := vm.NewColima(newProfile, cfg.StateDir)
+	newVM := app.VMFactory(newProfile, cfg.StateDir)
+
+	// Destroy any stale -next VM from a previous interrupted transition.
+	_ = newVM.Destroy(ctx)
 
 	opts := vm.StartOptions{
 		CPUs:      cfg.VM.CPUs,

@@ -47,6 +47,21 @@ func StateFileExists(relPath string) fw.ConditionFunc {
 	}
 }
 
+// StateFileAbsent returns a ConditionFunc that resolves to true when the file
+// at path (relative to the harness StateDir) does NOT exist.
+func StateFileAbsent(relPath string) fw.ConditionFunc {
+	return func(_ context.Context, h *fw.Harness) (bool, error) {
+		_, err := os.Stat(filepath.Join(h.StateDir, relPath))
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+}
+
 // BaseImageExists returns a ConditionFunc that resolves to true when a base
 // image has been saved in the harness StateDir.
 func BaseImageExists() fw.ConditionFunc {
@@ -57,4 +72,28 @@ func BaseImageExists() fw.ConditionFunc {
 // bootstrap state file exists in the harness StateDir.
 func BootstrapComplete() fw.ConditionFunc {
 	return StateFileExists("bootstrap-state.json")
+}
+
+// TransitionStateExists returns a ConditionFunc that resolves to true when a
+// VM transition is in progress (vm-transition.json exists).
+func TransitionStateExists() fw.ConditionFunc {
+	return StateFileExists("vm-transition.json")
+}
+
+// TransitionStateAbsent returns a ConditionFunc that resolves to true when no
+// VM transition is in progress (vm-transition.json does not exist).
+func TransitionStateAbsent() fw.ConditionFunc {
+	return StateFileAbsent("vm-transition.json")
+}
+
+// SessionCount returns a ConditionFunc that resolves to true when exactly n
+// active sessions exist.
+func SessionCount(want int) fw.ConditionFunc {
+	return func(_ context.Context, h *fw.Harness) (bool, error) {
+		got, err := h.App.Sessions.CountActive()
+		if err != nil {
+			return false, err
+		}
+		return got == want, nil
+	}
 }

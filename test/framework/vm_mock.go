@@ -20,6 +20,7 @@ type MockVM struct {
 	stateDir  string
 	status    vm.Status
 	snapshots map[string]vm.Status
+	runCount  int // number of vm.Run() calls since last ResetRunCount
 }
 
 func newMockVM(profile, stateDir string) *MockVM {
@@ -68,9 +69,26 @@ func (m *MockVM) Destroy(_ context.Context) error {
 
 // Run returns nil immediately — all scripts are treated as successful.
 // MockVM tests the AIVM lifecycle logic, not the scripts themselves
-// (those require a real VM).
+// (those require a real VM). Each call increments RunCount.
 func (m *MockVM) Run(_ context.Context, _ string, _ map[string]string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runCount++
 	return nil
+}
+
+// RunCount returns the number of vm.Run() calls since the last ResetRunCount.
+func (m *MockVM) RunCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.runCount
+}
+
+// ResetRunCount sets the run counter back to zero.
+func (m *MockVM) ResetRunCount() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runCount = 0
 }
 
 func (m *MockVM) SSH(_ context.Context) error { return nil }

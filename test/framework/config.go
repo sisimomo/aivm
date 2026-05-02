@@ -2,6 +2,7 @@ package framework
 
 import (
 	"path/filepath"
+	"strings"
 	"time"
 
 	"aivm/internal/config"
@@ -19,6 +20,16 @@ type testConfig struct {
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
 	Plugins       []string
+	// MaxAgeDays sets VM.MaxAgeDays (how old a VM is before the user is asked to recreate it).
+	MaxAgeDays int
+	// BaseImageMaxAgeDays sets VM.BaseImageMaxAgeDays (how old a base image is before rebuild prompt).
+	BaseImageMaxAgeDays int
+	// Provider selects the AI agent provider name (default "claude").
+	Provider string
+	// Interactive, when true, sets App.IsTerminal=true so interactive code paths run.
+	Interactive bool
+	// StdinAnswers is fed to App.Stdin, one answer per prompt (newline-separated).
+	StdinAnswers []string
 }
 
 func defaultTestConfig() testConfig {
@@ -32,6 +43,7 @@ func defaultTestConfig() testConfig {
 		DeleteTimeout: 10 * time.Second,
 		PollInterval:  1 * time.Second,
 		Plugins:       []string{},
+		Provider:      "claude",
 	}
 }
 
@@ -69,6 +81,37 @@ func WithPlugins(names ...string) Option {
 	return func(c *testConfig) { c.Plugins = names }
 }
 
+// WithMaxAgeDays configures the VM.MaxAgeDays threshold. When the VM is older
+// than this many days, DoStart will prompt the user to recreate it.
+// Set to 0 (default) to disable the age check.
+func WithMaxAgeDays(days int) Option {
+	return func(c *testConfig) { c.MaxAgeDays = days }
+}
+
+// WithBaseImageMaxAgeDays configures the BaseImageMaxAgeDays threshold.
+// When the base image is older than this many days, DoLaunch will prompt the
+// user to rebuild. Set to 0 (default) to disable.
+func WithBaseImageMaxAgeDays(days int) Option {
+	return func(c *testConfig) { c.BaseImageMaxAgeDays = days }
+}
+
+// WithProvider selects the AI agent provider by name (e.g. "claude", "copilot").
+// Defaults to "claude".
+func WithProvider(name string) Option {
+	return func(c *testConfig) { c.Provider = name }
+}
+
+// WithInteractive simulates running in an interactive terminal.
+// The provided answers are fed to stdin prompts in order (one per prompt).
+// Without this option the CLI behaves non-interactively (all prompt code paths
+// are bypassed).
+func WithInteractive(answers ...string) Option {
+	return func(c *testConfig) {
+		c.Interactive = true
+		c.StdinAnswers = answers
+	}
+}
+
 func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 	return &config.Config{
 		VM: config.VMConfig{
@@ -76,8 +119,8 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			MemoryGiB:           tc.MemoryGiB,
 			DiskGiB:             tc.DiskGiB,
 			Type:                tc.VMType,
-			MaxAgeDays:          0,
-			BaseImageMaxAgeDays: 0,
+			MaxAgeDays:          tc.MaxAgeDays,
+			BaseImageMaxAgeDays: tc.BaseImageMaxAgeDays,
 			DevRoot:             tc.DevRoot,
 			Profile:             profile,
 		},
@@ -92,11 +135,20 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			DeleteTimeout: tc.DeleteTimeout,
 		},
 		Agent: config.AgentConfig{
-			Provider: "claude",
+			Provider: tc.Provider,
 		},
 		Plugins: config.PluginsConfig{
 			Enabled: tc.Plugins,
 		},
 		StateDir: stateDir,
 	}
+}
+
+// stdinReader returns a strings.Reader built from the test answers joined by newlines,
+// or nil when no answers are configured.
+func stdinReader(tc testConfig) *strings.Reader {
+	if len(tc.StdinAnswers) == 0 {
+		return strings.NewReader("")
+	}
+	return strings.NewReader(strings.Join(tc.StdinAnswers, "\n") + "\n")
 }

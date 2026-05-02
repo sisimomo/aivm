@@ -61,8 +61,7 @@ func DoRebuildImage(ctx context.Context, app *App, force bool) error {
 			aivmlog.Info("Sent SIGTERM to %d session(s).", len(killed))
 		} else {
 			fmt.Printf("\n  Kill all active sessions now? [y/N] ")
-			var ans string
-			fmt.Scanln(&ans)
+			ans := readAnswer(app)
 			if ans == "y" || ans == "Y" {
 				killed := app.Sessions.KillAll()
 				aivmlog.Info("Sent SIGTERM to %d session(s).", len(killed))
@@ -72,7 +71,7 @@ func DoRebuildImage(ctx context.Context, app *App, force bool) error {
 				aivmlog.Warn("The current VM becomes legacy and will be automatically")
 				aivmlog.Warn("deleted once all its sessions close (no timer).")
 				fmt.Printf("\n  Proceed with soft rebuild? [y/N] ")
-				fmt.Scanln(&ans)
+				ans = readAnswer(app)
 				if ans != "y" && ans != "Y" {
 					aivmlog.Info("Rebuild cancelled.")
 					return nil
@@ -84,8 +83,7 @@ func DoRebuildImage(ctx context.Context, app *App, force bool) error {
 
 	if !softTransition && !force {
 		fmt.Printf("\n  Proceed with base image rebuild? [y/N] ")
-		var ans string
-		fmt.Scanln(&ans)
+		ans := readAnswer(app)
 		if ans != "y" && ans != "Y" {
 			aivmlog.Info("Rebuild cancelled.")
 			return nil

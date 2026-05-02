@@ -200,7 +200,7 @@ func resolveAgentMismatch(ctx context.Context, app *App, state *BootstrapState, 
 	}
 	aivmlog.Warn("Configured agent: %s", configured)
 
-	if !isTerminal() {
+	if !interactive(app) {
 		return false, fmt.Errorf(
 			"VM %q was created for %s, but config selects %s; rerun interactively to choose whether to install %s into the existing VM or recreate it with only %s",
 			app.VM.Profile(),
@@ -223,9 +223,7 @@ func resolveAgentMismatch(ctx context.Context, app *App, state *BootstrapState, 
 	fmt.Printf("    1. Install %s in the existing VM and keep the current agent(s)\n", configured)
 	fmt.Printf("    2. Delete the VM and recreate it with only %s\n", configured)
 	fmt.Printf("  Choice [1/2]: ")
-
-	var choice string
-	fmt.Scanln(&choice)
+	choice := readAnswer(app)
 
 	switch choice {
 	case "1":

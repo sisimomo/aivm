@@ -4,7 +4,13 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"time"
 
 	"aivm/internal/cli"
 	"aivm/internal/vm"
@@ -33,8 +39,169 @@ func Destroy() fw.StepFunc {
 	}
 }
 
-// RunInVM executes a shell script inside the VM and returns an error if the
-// script exits non-zero.
+// RebuildImage calls cli.DoRebuildImage. When force is true the rebuild
+// proceeds without prompting; when false the user must confirm interactively.
+func RebuildImage(force bool) fw.StepFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		return cli.DoRebuildImage(ctx, h.App, force)
+	}
+}
+
+// Bootstrap calls cli.DoBootstrap, which runs (or re-runs) bootstrap on the VM.
+// Set force=true to re-run all plugins even if they are already installed.
+// Set plugin="" to run all enabled plugins.
+func Bootstrap(force bool, plugin string) fw.StepFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		return cli.DoBootstrap(ctx, h.App, plugin, force)
+	}
+}
+
+// ChangeProvider switches the active AI agent provider. It updates both the
+// app config and the active provider reference so subsequent calls (e.g. Start)
+// use the new provider.
+func ChangeProvider(name string) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		prov, ok := h.App.Agents.Get(name)
+		if !ok {
+			return fmt.Errorf("provider %q not registered", name)
+		}
+		h.App.Config.Agent.Provider = name
+		h.App.Provider = prov
+		return nil
+	}
+}
+
+// ChangePlugins replaces the list of enabled plugins in the app config.
+// The change takes effect on the next DoStart / DoBootstrap call.
+func ChangePlugins(plugins ...string) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		h.App.Config.Plugins.Enabled = plugins
+		return nil
+	}
+}
+
+// SetVMCreatedDaysAgo backdates the vm-created-at state file so the CLI thinks
+// the VM is <days> days old. Use together with WithMaxAgeDays to exercise the
+// "VM too old" interactive prompt.
+func SetVMCreatedDaysAgo(days int) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		ts := time.Now().AddDate(0, 0, -days).Unix()
+		path := filepath.Join(h.StateDir, "vm-created-at")
+		return os.WriteFile(path, []byte(strconv.FormatInt(ts, 10)), 0644)
+	}
+}
+
+// SetBaseImageDaysAgo backdates the base-image.json CreatedAt field so the CLI
+// thinks the base image is <days> days old. Use with WithBaseImageMaxAgeDays
+// to exercise the "image too old" prompt in DoLaunch.
+func SetBaseImageDaysAgo(days int) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		imgPath := filepath.Join(h.StateDir, "base-image.json")
+		data, err := os.ReadFile(imgPath)
+		if err != nil {
+			return fmt.Errorf("base-image.json not found (run Start first): %w", err)
+		}
+		var img struct {
+			ID           string    `json:"id"`
+			SnapshotName string    `json:"snapshot_name"`
+			CreatedAt    time.Time `json:"created_at"`
+		}
+		if err := json.Unmarshal(data, &img); err != nil {
+			return fmt.Errorf("parse base-image.json: %w", err)
+		}
+		img.CreatedAt = time.Now().AddDate(0, 0, -days).UTC()
+		out, err := json.MarshalIndent(img, "", "  ")
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(imgPath, out, 0644)
+	}
+}
+
+// CreateFakeSession writes a session lock file for a spawned child process.
+// The child process (sleep 300) is alive, so session.Store.List() and
+// session.Store.CountActive() report this as an active session.
+// KillAll() sends SIGTERM to the child, not to the test process, so the
+// test binary stays alive after force-rebuild scenarios.
+func CreateFakeSession() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		sessDir := filepath.Join(h.StateDir, "sessions")
+		if err := os.MkdirAll(sessDir, 0755); err != nil {
+			return err
+		}
+		// Use a real child process so KillAll() kills the child rather than the
+		// test binary itself.
+		cmd := exec.Command("sleep", "300")
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start fake session process: %w", err)
+		}
+		pid := cmd.Process.Pid
+		lockFile := filepath.Join(sessDir, fmt.Sprintf("%d.lock", pid))
+		content := fmt.Sprintf("%d %d\n%s\n", pid, time.Now().Unix(), h.StateDir)
+		if err := os.WriteFile(lockFile, []byte(content), 0644); err != nil {
+			_ = cmd.Process.Kill()
+			return err
+		}
+		return nil
+	}
+}
+
+// RemoveFakeSessions removes all *.lock files from the sessions directory,
+// clearing any fake sessions created by CreateFakeSession.
+func RemoveFakeSessions() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		sessDir := filepath.Join(h.StateDir, "sessions")
+		entries, err := os.ReadDir(sessDir)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if filepath.Ext(e.Name()) == ".lock" {
+				_ = os.Remove(filepath.Join(sessDir, e.Name()))
+			}
+		}
+		return nil
+	}
+}
+
+// CorruptBootstrapVersion overwrites the "version" field in bootstrap-state.json
+// with a stale value. On the next DoStart, the version mismatch triggers a full
+// re-bootstrap instead of the incremental sync path.
+func CorruptBootstrapVersion() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		path := filepath.Join(h.StateDir, "bootstrap-state.json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("bootstrap-state.json not found (run Start first): %w", err)
+		}
+		var state map[string]interface{}
+		if err := json.Unmarshal(data, &state); err != nil {
+			return fmt.Errorf("parse bootstrap-state.json: %w", err)
+		}
+		state["version"] = "old-incompatible-version"
+		out, err := json.MarshalIndent(state, "", "  ")
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(path, out, 0644)
+	}
+}
+
+// ResetMockVMRunCount resets the primary mock VM's run counter to zero.
+// Use this before a step where you want to assert that no (or some) scripts
+// were run by bootstrap.
+func ResetMockVMRunCount() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		if m := h.MockVMs.Get(h.Profile); m != nil {
+			m.ResetRunCount()
+		}
+		return nil
+	}
+}
+
 func RunInVM(script string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
 		return h.App.VM.Run(ctx, script, nil)

@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"aivm/internal/config"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/vm"
 )
@@ -51,7 +50,7 @@ func DoStart(ctx context.Context, app *App) error {
 		return err
 	}
 
-	if status == vm.StatusStopped && shouldRecreateVM(cfg, app.VM) {
+	if status == vm.StatusStopped && shouldRecreateVM(app) {
 		aivmlog.Step("Deleting aged VM profile '%s'", cfg.VM.Profile)
 		if err := app.VM.Destroy(ctx); err != nil {
 			return err
@@ -127,11 +126,9 @@ ready:
 	return nil
 }
 
-func shouldRecreateVM(cfg *config.Config, v vm.VM) bool {
+func shouldRecreateVM(app *App) bool {
+	cfg := app.Config
 	if cfg.VM.MaxAgeDays <= 0 {
-		return false
-	}
-	if _, ok := v.(*vm.ColimaVM); !ok {
 		return false
 	}
 	data, err := os.ReadFile(filepath.Join(cfg.StateDir, "vm-created-at"))
@@ -146,14 +143,13 @@ func shouldRecreateVM(cfg *config.Config, v vm.VM) bool {
 	if age < cfg.VM.MaxAgeDays {
 		return false
 	}
-	if !isTerminal() {
+	if !interactive(app) {
 		aivmlog.Info("VM is %d days old but running non-interactively — keeping", age)
 		return false
 	}
 	aivmlog.Warn("VM '%s' is %d day(s) old (threshold: %d)", cfg.VM.Profile, age, cfg.VM.MaxAgeDays)
 	fmt.Printf("  → Delete and recreate for a clean slate? [y/N] ")
-	var answer string
-	fmt.Scanln(&answer)
+	answer := readAnswer(app)
 	return answer == "y" || answer == "Y"
 }
 
