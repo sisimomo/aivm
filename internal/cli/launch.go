@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	aivmlog "aivm/internal/log"
-	"aivm/internal/run"
 	"aivm/internal/vm"
 )
 
@@ -96,9 +96,6 @@ func shellescape(s string) string {
 }
 
 func interactiveSsh(ctx context.Context, profile string, env map[string]string, script string) error {
-	// limactl shell allocates a PTY when stdin is a terminal (unlike colima ssh -- CMD).
-	// This is required for TUI applications like claude.
-	limaInstance := "colima-" + profile
 	envParts := []string{}
 	for k, v := range env {
 		envParts = append(envParts, k+"="+shellescape(v))
@@ -107,5 +104,20 @@ func interactiveSsh(ctx context.Context, profile string, env map[string]string, 
 	if len(envParts) > 0 {
 		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
 	}
-	return run.Interactive(ctx, "limactl", "shell", limaInstance, bashCmd)
+
+	// limactl shell allocates a PTY when stdin+stdout are terminals (unlike colima ssh -- CMD).
+	// colima stores its Lima instances at ~/.colima/_lima (not ~/.lima), so we set LIMA_HOME accordingly.
+	home, _ := os.UserHomeDir()
+	colimaHome := os.Getenv("COLIMA_HOME")
+	if colimaHome == "" {
+		colimaHome = filepath.Join(home, ".colima")
+	}
+	limaHome := filepath.Join(colimaHome, "_lima")
+
+	cmd := exec.CommandContext(ctx, "limactl", "shell", "colima-"+profile, bashCmd)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "LIMA_HOME="+limaHome)
+	return cmd.Run()
 }
