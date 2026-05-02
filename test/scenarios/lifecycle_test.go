@@ -22,21 +22,21 @@ func TestStopDestroyRestart(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("full VM lifecycle: start → stop → resume → destroy → recreate").
-		Step("Start VM (first boot — bootstrap runs)", actions.Start()).
+		Step("Start VM (first boot — bootstrap runs)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Assert("Base image saved", assertions.BaseImageExists()).
-		Step("Stop VM", actions.Stop()).
+		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
-		Step("Resume VM via Start (no bootstrap — VM was not destroyed)", actions.Start()).
+		Step("Resume VM via Start (no bootstrap — VM was not destroyed)", actions.CLI("start")).
 		Wait("VM is running again", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM is running after resume", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Bootstrap state still intact", assertions.BootstrapComplete()).
-		Step("Destroy VM entirely", actions.Destroy()).
+		Step("Destroy VM entirely", actions.CLI("destroy")).
 		Wait("VM is gone", conditions.VMStatus(vm.StatusNotFound), 2*time.Minute).
 		Assert("VM is not found", assertions.VMStatus(vm.StatusNotFound)).
-		Step("Recreate VM from scratch via Start", actions.Start()).
+		Step("Recreate VM from scratch via Start", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap ran again on new VM", assertions.BootstrapComplete()).
 		Assert("New base image saved", assertions.BaseImageExists()).
@@ -53,11 +53,11 @@ func TestBootstrapCommandForce(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("bootstrap --force re-runs all plugins on an already-bootstrapped VM").
-		Step("Start VM (first boot — bootstrap installs plugins)", actions.Start()).
+		Step("Start VM (first boot — bootstrap installs plugins)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Run bootstrap --force (re-runs everything)", actions.Bootstrap(true, "")).
+		Step("Run bootstrap --force (re-runs everything)", actions.CLI("bootstrap", "--force")).
 		Assert("Scripts ran again (force=true bypasses up-to-date check)",
 			assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state still valid", assertions.BootstrapComplete()).
@@ -74,11 +74,11 @@ func TestBootstrapCommandSinglePlugin(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("bootstrap --plugin runs only the specified plugin").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
-		Step("Run bootstrap --plugin java (only java plugin)", actions.Bootstrap(false, "java")).
+		Step("Run bootstrap --plugin java (only java plugin)", actions.CLI("bootstrap", "--plugin", "java")).
 		Assert("At least one script ran (the java plugin's steps)", assertions.VMRunCountAtLeast(1)).
 		Run()
 }
@@ -93,11 +93,11 @@ func TestBootstrapCommandSync(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("bootstrap sync on up-to-date VM — no scripts run").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
-		Step("Run bootstrap (sync — no flags)", actions.Bootstrap(false, "")).
+		Step("Run bootstrap (sync — no flags)", actions.CLI("bootstrap")).
 		Assert("No scripts ran — VM was already up to date", assertions.VMRunCountIs(0)).
 		Run()
 }

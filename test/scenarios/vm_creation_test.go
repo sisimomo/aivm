@@ -32,7 +32,7 @@ func TestVMCreationFromBaseImage(t *testing.T) {
 	var firstImageID string
 
 	h.Scenario("VM creation from base image").
-		Step("Start VM (first boot — full bootstrap)", actions.Start()).
+		Step("Start VM (first boot — full bootstrap)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Assert("Base image saved", assertions.BaseImageExists()).
@@ -46,9 +46,9 @@ func TestVMCreationFromBaseImage(t *testing.T) {
 			return nil
 		}).
 		Assert("VM image ref is current", assertions.VMImageRefCurrent()).
-		Step("Destroy VM", actions.Destroy()).
+		Step("Destroy VM", actions.CLI("destroy")).
 		Wait("VM is gone", conditions.VMStatus(vm.StatusNotFound), 2*time.Minute).
-		Step("Start VM (second boot — restore from base image)", actions.Start()).
+		Step("Start VM (second boot — restore from base image)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM is running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("VM image ref matches saved base image", func(ctx context.Context, h *framework.Harness) error {

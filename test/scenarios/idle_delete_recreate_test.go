@@ -29,7 +29,7 @@ func TestIdleDeleteRecreate(t *testing.T) {
 	)
 
 	h.Scenario("idle → stop → delete → recreate").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image saved", assertions.BaseImageExists()).
 		Step("Start idle monitor (in-process)", actions.StartMonitor(nil)).
@@ -39,7 +39,7 @@ func TestIdleDeleteRecreate(t *testing.T) {
 		// Phase 2: delete timeout elapses → VM destroyed.
 		Wait("VM auto-deleted (Phase 2)", conditions.VMStatus(vm.StatusNotFound), 60*time.Second).
 		Assert("VM is gone", assertions.VMStatus(vm.StatusNotFound)).
-		Step("Recreate VM via Start", actions.Start()).
+		Step("Recreate VM via Start", actions.CLI("start")).
 		Wait("VM is running again", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("VM is running after recreate", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Bootstrap complete after recreate", assertions.BootstrapComplete()).

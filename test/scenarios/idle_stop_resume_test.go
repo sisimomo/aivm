@@ -29,14 +29,14 @@ func TestIdleStopResume(t *testing.T) {
 	)
 
 	h.Scenario("idle → stop → resume").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("VM is running", assertions.VMStatus(vm.StatusRunning)).
 		Step("Start idle monitor (in-process)", actions.StartMonitor(nil)).
 		// Monitor polls every 1s; after 10s idle it stops the VM.
 		Wait("VM auto-stopped by idle monitor", conditions.VMStatus(vm.StatusStopped), 60*time.Second).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
-		Step("Resume VM via Start", actions.Start()).
+		Step("Resume VM via Start", actions.CLI("start")).
 		Wait("VM is running again", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM is running after resume", assertions.VMStatus(vm.StatusRunning)).
 		Run()

@@ -25,13 +25,13 @@ func TestRebuildImageForceNoSessions(t *testing.T) {
 	var v1ID string
 
 	h.Scenario("force rebuild with no sessions — no prompts, new base image").
-		Step("Start VM (creates base image v1)", actions.Start()).
+		Step("Start VM (creates base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v1 saved", assertions.BaseImageExists()).
 		Step("Capture base image v1 ID", captureBaseImageID(t, &v1ID)).
 		Step("Wait 1s to ensure new image gets a different timestamp",
 			sleepStep(1100*time.Millisecond)).
-		Step("Force rebuild with no active sessions (no prompts)", actions.RebuildImage(true)).
+		Step("Force rebuild with no active sessions (no prompts)", actions.CLI("rebuild-image", "--force")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("New base image saved", assertions.BaseImageExists()).
 		Assert("Base image ID changed after rebuild",
@@ -51,11 +51,11 @@ func TestRebuildImageForceWithSessions(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("force rebuild proceeds without prompts even when sessions are active").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Step("Create a fake active session", actions.CreateFakeSession()).
 		Assert("One session is active before rebuild", assertions.SessionCount(1)).
-		Step("Force rebuild — SIGTERM sent to sessions, rebuild proceeds", actions.RebuildImage(true)).
+		Step("Force rebuild — SIGTERM sent to sessions, rebuild proceeds", actions.CLI("rebuild-image", "--force")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Rebuild succeeded — VM is running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("New base image saved after rebuild", assertions.BaseImageExists()).
@@ -75,13 +75,13 @@ func TestRebuildImageInteractiveConfirm(t *testing.T) {
 	)
 
 	h.Scenario("interactive rebuild — user confirms with 'y'").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("No active sessions", assertions.SessionCount(0)).
 		Step("Wait 1s to ensure new image gets a different timestamp",
 			sleepStep(1100*time.Millisecond)).
 		Step("Rebuild image (non-force) — prompt shown, answered 'y'",
-			actions.RebuildImage(false)).
+			actions.CLI("rebuild-image")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("New base image saved", assertions.BaseImageExists()).
 		Assert("VM image ref is current", assertions.VMImageRefCurrent()).
@@ -102,12 +102,12 @@ func TestRebuildImageInteractiveCancel(t *testing.T) {
 	var v1ID string
 
 	h.Scenario("interactive rebuild — user cancels with 'n'").
-		Step("Start VM (creates base image v1)", actions.Start()).
+		Step("Start VM (creates base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v1 saved", assertions.BaseImageExists()).
 		Step("Capture base image v1 ID", captureBaseImageID(t, &v1ID)).
 		Step("Rebuild image (non-force) — prompt shown, answered 'n'",
-			actions.RebuildImage(false)).
+			actions.CLI("rebuild-image")).
 		Assert("VM still running (rebuild was cancelled)", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Base image unchanged (still v1)", assertions.BaseImageIs(&v1ID)).
 		Run()
@@ -125,12 +125,12 @@ func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 	)
 
 	h.Scenario("interactive rebuild with sessions — kill sessions and rebuild").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Step("Create a fake active session", actions.CreateFakeSession()).
 		Assert("One session is active", assertions.SessionCount(1)).
 		Step("Rebuild image (non-force) — asked to kill sessions, answer 'y'",
-			actions.RebuildImage(false)).
+			actions.CLI("rebuild-image")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("New base image saved", assertions.BaseImageExists()).
 		// KillAll sends SIGTERM but does not remove lock files — processes clean
@@ -159,12 +159,12 @@ func TestRebuildImageSoftRebuild(t *testing.T) {
 	)
 
 	h.Scenario("soft rebuild — keep sessions on legacy VM, bootstrap new VM in parallel").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Step("Create a fake active session", actions.CreateFakeSession()).
 		Assert("One active session", assertions.SessionCount(1)).
 		Step("Rebuild image — keep sessions, approve soft rebuild",
-			actions.RebuildImage(false)).
+			actions.CLI("rebuild-image")).
 		Assert("Transition state written (new VM ready)", assertions.TransitionStateExists()).
 		Assert("Legacy VM still running for active sessions",
 			assertions.VMStatus(vm.StatusRunning)).

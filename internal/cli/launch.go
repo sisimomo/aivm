@@ -18,11 +18,15 @@ import (
 	"aivm/internal/vm"
 )
 
-func LaunchCmd(app *App) *cobra.Command {
+func LaunchCmd(getApp func() (*App, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "launch [directory]",
 		Short: "Launch Claude Code in the VM (default command)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := getApp()
+			if err != nil {
+				return err
+			}
 			return DoLaunch(cmd.Context(), app)
 		},
 	}

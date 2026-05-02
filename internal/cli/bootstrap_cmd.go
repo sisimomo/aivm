@@ -9,7 +9,7 @@ import (
 	"aivm/internal/vm"
 )
 
-func BootstrapCmd(app *App) *cobra.Command {
+func BootstrapCmd(getApp func() (*App, error)) *cobra.Command {
 	var listOnly bool
 	var forcePlugin string
 	var force bool
@@ -18,6 +18,10 @@ func BootstrapCmd(app *App) *cobra.Command {
 		Use:   "bootstrap",
 		Short: "Run VM bootstrap (installs all tools)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := getApp()
+			if err != nil {
+				return err
+			}
 			if listOnly {
 				return ListPlugins(app)
 			}

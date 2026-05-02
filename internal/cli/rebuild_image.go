@@ -14,7 +14,7 @@ import (
 	"aivm/internal/vm"
 )
 
-func RebuildImageCmd(app *App) *cobra.Command {
+func RebuildImageCmd(getApp func() (*App, error)) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "rebuild-image",
@@ -29,6 +29,10 @@ rebuild: destroy & recreate the current VM) or keep them alive (soft rebuild:
 bootstrap a temporary second VM, mark the current one as legacy, and let it
 auto-delete once all sessions close).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := getApp()
+			if err != nil {
+				return err
+			}
 			return DoRebuildImage(cmd.Context(), app, force)
 		},
 	}

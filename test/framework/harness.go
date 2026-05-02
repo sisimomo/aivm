@@ -114,6 +114,24 @@ func New(t *testing.T, opts ...Option) *Harness {
 	return h
 }
 
+// RunCLI executes an aivm CLI command through the real Cobra entry point,
+// using the harness's pre-built mock App. This is the preferred way to invoke
+// commands in tests — it exercises the same code path as a real user invocation,
+// including flag parsing and cobra routing.
+//
+// Example:
+//
+//	h.RunCLI(ctx, "start")
+//	h.RunCLI(ctx, "bootstrap", "--force")
+//	h.RunCLI(ctx, "bootstrap", "--plugin", "java")
+func (h *Harness) RunCLI(ctx context.Context, args ...string) error {
+	root := cli.NewRootCmd("test", func(_ string) (*cli.App, error) {
+		return h.App, nil
+	})
+	root.SetArgs(args)
+	return root.ExecuteContext(ctx)
+}
+
 // Scenario creates a new Scenario builder attached to this Harness.
 func (h *Harness) Scenario(name string) *Scenario {
 	return newScenario(name, h)

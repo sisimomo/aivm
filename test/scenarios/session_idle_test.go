@@ -27,7 +27,7 @@ func TestSessionBlocksIdleMonitor(t *testing.T) {
 	)
 
 	h.Scenario("active session blocks idle monitor from stopping the VM").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Step("Launch idle monitor (in-process)", actions.StartMonitor(nil)).
 		Step("Create a fake active session", actions.CreateFakeSession()).
@@ -58,7 +58,7 @@ func TestNoSessionsStopsVM(t *testing.T) {
 	)
 
 	h.Scenario("no sessions — idle monitor stops VM after timeout").
-		Step("Start VM", actions.Start()).
+		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("No sessions at startup", assertions.SessionCount(0)).
 		Step("Launch idle monitor (in-process)", actions.StartMonitor(nil)).

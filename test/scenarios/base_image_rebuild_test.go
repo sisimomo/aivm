@@ -18,17 +18,15 @@ import (
 //  1. Start the VM — full bootstrap runs, base image v1 is saved.
 //  2. Destroy the VM.
 //  3. Start again — VM is restored from base image v1 (no bootstrap).
-//  4. Trigger a hard rebuild via DoRebuildImage — new VM, bootstrap, base image v2.
+//  4. Run `aivm rebuild-image --force` — destroys VM, bootstrap, base image v2.
 //  5. Confirm the new VM uses base image v2.
-//
-// This mirrors the real rebuild-image command with force=true (non-interactive).
 func TestBaseImageRebuildImpact(t *testing.T) {
 	h := framework.New(t)
 
 	var v1ID, v2ID string
 
 	h.Scenario("base image rebuild impact").
-		Step("Start VM (first boot — creates base image v1)", actions.Start()).
+		Step("Start VM (first boot — creates base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v1 saved", assertions.BaseImageExists()).
 		Step("Capture base image v1 ID", func(_ context.Context, h *framework.Harness) error {
@@ -40,9 +38,9 @@ func TestBaseImageRebuildImpact(t *testing.T) {
 			t.Logf("base image v1: id=%s snapshot=%q", img.ID, img.SnapshotName)
 			return nil
 		}).
-		Step("Destroy VM", actions.Destroy()).
+		Step("Destroy VM", actions.CLI("destroy")).
 		Wait("VM is gone", conditions.VMStatus(vm.StatusNotFound), 2*time.Minute).
-		Step("Start VM (restores from base image v1)", actions.Start()).
+		Step("Start VM (restores from base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM image ref is v1", func(_ context.Context, h *framework.Harness) error {
 			return assertions.VMImageRefIs(v1ID)(context.Background(), h)
@@ -51,9 +49,7 @@ func TestBaseImageRebuildImpact(t *testing.T) {
 			time.Sleep(1100 * time.Millisecond)
 			return nil
 		}).
-		Step("Rebuild base image (force — no interactive prompt)", func(ctx context.Context, h *framework.Harness) error {
-			return rebuildForceNoSessions(ctx, h)
-		}).
+		Step("Rebuild base image (force — no interactive prompt)", actions.CLI("rebuild-image", "--force")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v2 exists", assertions.BaseImageExists()).
 		Step("Capture base image v2 ID", func(_ context.Context, h *framework.Harness) error {
@@ -72,34 +68,4 @@ func TestBaseImageRebuildImpact(t *testing.T) {
 		Run()
 }
 
-// rebuildForceNoSessions runs the hard-rebuild path directly, bypassing the
-// interactive prompts. It destroys the current VM, starts a new one, runs
-// bootstrap, and saves a new base image.
-func rebuildForceNoSessions(ctx context.Context, h *framework.Harness) error {
-	imgMgr := h.ImageManager()
 
-	if err := h.App.VM.Destroy(ctx); err != nil {
-		return fmt.Errorf("destroy VM: %w", err)
-	}
-
-	opts := vm.StartOptions{
-		CPUs:      h.App.Config.VM.CPUs,
-		MemoryGiB: h.App.Config.VM.MemoryGiB,
-		DiskGiB:   h.App.Config.VM.DiskGiB,
-		VMType:    h.App.Config.VM.Type,
-	}
-	if err := h.App.VM.Start(ctx, opts); err != nil {
-		return fmt.Errorf("start new VM: %w", err)
-	}
-	if err := h.App.VM.WaitReady(ctx, 3*time.Minute); err != nil {
-		return fmt.Errorf("wait VM ready: %w", err)
-	}
-
-	img, err := imgMgr.SaveBaseImage(ctx)
-	if err != nil {
-		return fmt.Errorf("save base image: %w", err)
-	}
-	imgMgr.RecordVMImageRef(img.ID)
-	vm.ClearTransitionState(h.StateDir)
-	return nil
-}

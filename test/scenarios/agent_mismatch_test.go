@@ -30,7 +30,7 @@ func TestAgentMismatchInstallIntoExistingVM(t *testing.T) {
 	)
 
 	h.Scenario("agent mismatch — install new provider into existing VM").
-		Step("Start VM with claude provider (first boot)", actions.Start()).
+		Step("Start VM with claude provider (first boot)", actions.CLI("start")).
 		Wait("VM is running with claude", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state records claude provider",
 			assertions.BootstrapStateProviderIs("claude")).
@@ -39,7 +39,7 @@ func TestAgentMismatchInstallIntoExistingVM(t *testing.T) {
 		Step("Switch config to copilot provider", actions.ChangeProvider("copilot")).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
 		Step("Start VM again — mismatch detected, choose to install into existing VM",
-			actions.Start()).
+			actions.CLI("start")).
 		Assert("VM still running (was not destroyed)", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Copilot plugin was installed (one new script ran)", assertions.VMRunCountAtLeast(1)).
 		Assert("Both agent plugins now in bootstrap state",
@@ -64,7 +64,7 @@ func TestAgentMismatchRecreateVM(t *testing.T) {
 	)
 
 	h.Scenario("agent mismatch — destroy and recreate VM with new provider only").
-		Step("Start VM with claude provider (first boot)", actions.Start()).
+		Step("Start VM with claude provider (first boot)", actions.CLI("start")).
 		Wait("VM is running with claude", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state records claude provider",
 			assertions.BootstrapStateProviderIs("claude")).
@@ -72,7 +72,7 @@ func TestAgentMismatchRecreateVM(t *testing.T) {
 			assertions.BootstrapStateContainsPlugins("claude")).
 		Step("Switch config to copilot provider", actions.ChangeProvider("copilot")).
 		Step("Start VM again — mismatch detected, choose to destroy and recreate",
-			actions.Start()).
+			actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state updated to copilot provider",
 			assertions.BootstrapStateProviderIs("copilot")).

@@ -24,12 +24,12 @@ func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("second start skips bootstrap when config is unchanged").
-		Step("Start VM (first boot — bootstrap runs provider plugin)", actions.Start()).
+		Step("Start VM (first boot — bootstrap runs provider plugin)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Assert("At least one script ran during bootstrap", assertions.VMRunCountAtLeast(1)).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Start VM again with identical config", actions.Start()).
+		Step("Start VM again with identical config", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("No scripts ran — bootstrap was skipped", assertions.VMRunCountIs(0)).
 		Assert("Bootstrap state still complete", assertions.BootstrapComplete()).
@@ -51,14 +51,14 @@ func TestStartInstallsNewPluginsIncrementally(t *testing.T) {
 	)
 
 	h.Scenario("second start installs only newly-added plugins").
-		Step("Start VM (first boot — installs claude + java)", actions.Start()).
+		Step("Start VM (first boot — installs claude + java)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Assert("Bootstrap includes claude and java",
 			assertions.BootstrapStateContainsPlugins("claude", "java")).
 		Step("Reset VM run counter after first boot", actions.ResetMockVMRunCount()).
 		Step("Add nodejs to plugin list", actions.ChangePlugins("java", "nodejs")).
-		Step("Start VM again — only nodejs should be installed", actions.Start()).
+		Step("Start VM again — only nodejs should be installed", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("At least one script ran for the new nodejs plugin", assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state now includes all three plugins",
@@ -77,12 +77,12 @@ func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
 	h := framework.New(t)
 
 	h.Scenario("stale bootstrap version triggers full re-bootstrap").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Corrupt bootstrap state version to simulate an upgrade", actions.CorruptBootstrapVersion()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Start VM again — version mismatch triggers full re-bootstrap", actions.Start()).
+		Step("Start VM again — version mismatch triggers full re-bootstrap", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Re-bootstrap ran at least one script", assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state is valid again", assertions.BootstrapComplete()).

@@ -28,14 +28,14 @@ func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 	)
 
 	h.Scenario("VM too old — user accepts recreation").
-		Step("Start VM (first boot, vm-created-at written)", actions.Start()).
+		Step("Start VM (first boot, vm-created-at written)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image saved after first boot", assertions.BaseImageExists()).
-		Step("Stop VM", actions.Stop()).
+		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days (exceeds 30-day threshold)",
 			actions.SetVMCreatedDaysAgo(31)).
-		Step("Start VM — age check triggers, user accepts recreation", actions.Start()).
+		Step("Start VM — age check triggers, user accepts recreation", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap ran on new VM", assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state valid after recreation", assertions.BootstrapComplete()).
@@ -59,14 +59,14 @@ func TestVMMaxAgeRecreationDeclined(t *testing.T) {
 	)
 
 	h.Scenario("VM too old — user declines recreation, VM resumed as-is").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Step("Stop VM", actions.Stop()).
+		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days", actions.SetVMCreatedDaysAgo(31)).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
-		Step("Start VM — user declines recreation", actions.Start()).
+		Step("Start VM — user declines recreation", actions.CLI("start")).
 		Wait("VM is running (resumed, not recreated)", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("No new bootstrap ran (VM was not recreated)", assertions.VMRunCountIs(0)).
 		Assert("Bootstrap state unchanged", assertions.BootstrapComplete()).
@@ -88,12 +88,12 @@ func TestVMMaxAgeNonInteractiveSkipsPrompt(t *testing.T) {
 	)
 
 	h.Scenario("VM too old but non-interactive — age prompt skipped, VM resumed").
-		Step("Start VM (first boot)", actions.Start()).
+		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Stop VM", actions.Stop()).
+		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days", actions.SetVMCreatedDaysAgo(31)).
-		Step("Start VM — non-interactive, age prompt silently skipped", actions.Start()).
+		Step("Start VM — non-interactive, age prompt silently skipped", actions.CLI("start")).
 		Wait("VM is running (resumed without prompt)", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM is running after silent resume", assertions.VMStatus(vm.StatusRunning)).
 		Run()

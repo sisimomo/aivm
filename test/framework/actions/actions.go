@@ -12,47 +12,24 @@ import (
 	"strconv"
 	"time"
 
-	"aivm/internal/cli"
 	"aivm/internal/vm"
 	fw "aivm/test/framework"
 )
 
-// Start calls cli.DoStart on the test App, which creates or resumes the VM,
-// runs bootstrap (if needed), and saves a base image on first creation.
-func Start() fw.StepFunc {
+// CLI invokes an aivm command through the real Cobra CLI entry point, identical
+// to how a user runs the tool from a terminal. Use this in preference to the
+// individual Do* actions when you want to test flag parsing, cobra routing, or
+// the full execution path from entry point to infrastructure.
+//
+// Examples:
+//
+//	actions.CLI("start")
+//	actions.CLI("bootstrap", "--force")
+//	actions.CLI("bootstrap", "--plugin", "java")
+//	actions.CLI("rebuild-image", "--force")
+func CLI(args ...string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		return cli.DoStart(ctx, h.App)
-	}
-}
-
-// Stop calls cli.DoStop, which stops the VM and halts the monitor.
-func Stop() fw.StepFunc {
-	return func(ctx context.Context, h *fw.Harness) error {
-		return cli.DoStop(ctx, h.App)
-	}
-}
-
-// Destroy calls cli.DoDestroy, which deletes the VM entirely.
-func Destroy() fw.StepFunc {
-	return func(ctx context.Context, h *fw.Harness) error {
-		return cli.DoDestroy(ctx, h.App)
-	}
-}
-
-// RebuildImage calls cli.DoRebuildImage. When force is true the rebuild
-// proceeds without prompting; when false the user must confirm interactively.
-func RebuildImage(force bool) fw.StepFunc {
-	return func(ctx context.Context, h *fw.Harness) error {
-		return cli.DoRebuildImage(ctx, h.App, force)
-	}
-}
-
-// Bootstrap calls cli.DoBootstrap, which runs (or re-runs) bootstrap on the VM.
-// Set force=true to re-run all plugins even if they are already installed.
-// Set plugin="" to run all enabled plugins.
-func Bootstrap(force bool, plugin string) fw.StepFunc {
-	return func(ctx context.Context, h *fw.Harness) error {
-		return cli.DoBootstrap(ctx, h.App, plugin, force)
+		return h.RunCLI(ctx, args...)
 	}
 }
 

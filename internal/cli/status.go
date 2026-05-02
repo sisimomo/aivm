@@ -12,11 +12,15 @@ import (
 	"aivm/internal/vm"
 )
 
-func StatusCmd(app *App) *cobra.Command {
+func StatusCmd(getApp func() (*App, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show VM and service status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := getApp()
+			if err != nil {
+				return err
+			}
 			return DoStatus(cmd.Context(), app)
 		},
 	}
