@@ -23,13 +23,8 @@ type IdleMonitor struct {
 	PollInterval  time.Duration
 	PIDFile       string
 	StateDir      string
-	// VMFactory creates VM instances for secondary profiles (e.g. the legacy VM
-	// in RunLegacyMonitor). In production this is vm.NewColima; tests substitute
-	// a mock factory via the test harness.
-	VMFactory vm.VMFactory
-	// DisableDaemonLaunch prevents EnsureRunning and EnsureLegacyMonitorRunning
-	// from spawning subprocess daemons. Set to true in tests where the monitor
-	// is driven in-process via RunMonitorInProcess instead.
+	// DisableDaemonLaunch prevents EnsureRunning from spawning subprocess daemons.
+	// Set to true in tests where the monitor is driven in-process via RunMonitorInProcess instead.
 	DisableDaemonLaunch bool
 }
 
@@ -210,81 +205,3 @@ func (m *IdleMonitor) Stop() {
 	os.Remove(m.PIDFile)
 }
 
-// EnsureLegacyMonitorRunning starts the legacy VM monitor daemon in the background.
-// It is called after initiating a two-VM transition so that the old VM is automatically
-// destroyed once all sessions that pre-date the transition have ended.
-func (m *IdleMonitor) EnsureLegacyMonitorRunning() error {
-	if m.DisableDaemonLaunch {
-		return nil
-	}
-	pidFile := filepath.Join(m.StateDir, "legacy-monitor.pid")
-	if data, err := os.ReadFile(pidFile); err == nil {
-		if pid, err := strconv.Atoi(string(data)); err == nil && pid > 0 {
-			if proc, err := os.FindProcess(pid); err == nil {
-				if proc.Signal(syscall.Signal(0)) == nil {
-					aivmlog.Debug("legacy monitor already running")
-					return nil
-				}
-			}
-		}
-		os.Remove(pidFile)
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	proc, err := os.StartProcess(exe, []string{exe, "__legacy-monitor"},
-		&os.ProcAttr{
-			Files: []*os.File{nil, nil, nil},
-			Sys:   daemonSysProcAttr(),
-		})
-	if err != nil {
-		return err
-	}
-	proc.Release()
-	aivmlog.Info("legacy monitor started (pid=%d)", proc.Pid)
-	return nil
-}
-
-// RunLegacyMonitor polls until all sessions that pre-date the transition have ended,
-// then destroys the legacy VM and clears the transition state.
-func (m *IdleMonitor) RunLegacyMonitor(ctx context.Context, ts *vm.TransitionState) error {
-	pidFile := filepath.Join(m.StateDir, "legacy-monitor.pid")
-	os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
-	defer os.Remove(pidFile)
-
-	legacyVM := m.VMFactory(ts.LegacyProfile, m.StateDir)
-
-	aivmlog.Info("legacy monitor started (pid=%d, legacy=%s, new=%s)",
-		os.Getpid(), ts.LegacyProfile, ts.NewProfile)
-
-	ticker := time.NewTicker(m.PollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			count, err := m.Sessions.CountLegacy(ts.StartedAt)
-			if err != nil {
-				aivmlog.Warn("legacy session count error: %v", err)
-				continue
-			}
-
-			if count > 0 {
-				aivmlog.Debug("legacy VM '%s': %d session(s) still active", ts.LegacyProfile, count)
-				continue
-			}
-
-			aivmlog.Step("All legacy sessions ended — removing legacy VM '%s'", ts.LegacyProfile)
-			if err := legacyVM.Destroy(ctx); err != nil {
-				aivmlog.Warn("legacy VM destroy error: %v", err)
-			}
-			vm.ClearTransitionState(m.StateDir)
-			aivmlog.Success("Legacy VM '%s' removed — transition complete", ts.LegacyProfile)
-			return nil
-		}
-	}
-}

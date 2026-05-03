@@ -16,10 +16,8 @@ func RebuildImageCmd(getApp func() (*App, error)) *cobra.Command {
 Bootstrap runs on a brand-new blank VM (not restored from a previous image)
 so every plugin executes unconditionally from a clean slate.
 
-If active sessions exist you will be asked whether to stop them first (hard
-rebuild: destroy & recreate the current VM) or keep them alive (soft rebuild:
-bootstrap a temporary second VM, mark the current one as legacy, and let it
-auto-delete once all sessions close).`,
+If active sessions exist you will be asked to confirm stopping them before
+the rebuild proceeds.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {

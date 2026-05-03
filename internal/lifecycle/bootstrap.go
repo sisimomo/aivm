@@ -47,17 +47,6 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context, targetVM vm.VM, 
 	return svc.runIntegrationsFromState(ctx, targetVM)
 }
 
-// rebuildBootstrap runs every plugin unconditionally on v (force=true skips
-// per-plugin Check). Does not update the host-side bootstrap state — the caller
-// is responsible for that when appropriate.
-func (svc *LifecycleService) rebuildBootstrap(ctx context.Context, v vm.VM) error {
-	eng := svc.newBootstrapEngine(v, nil)
-	if err := eng.Run(ctx, true); err != nil {
-		return fmt.Errorf("bootstrap: %w", err)
-	}
-	return nil
-}
-
 // runIntegrationsFromState executes integrations whose From/To conditions are
 // satisfied. InstalledPlugins is derived from the current enabled plugin list
 // (all enabled plugins are considered set up after a successful full bootstrap).

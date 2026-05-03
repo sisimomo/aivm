@@ -271,9 +271,3 @@ func (c *ColimaVM) AgeFile() string {
 	return filepath.Join(c.stateDir, "vm-created-at")
 }
 
-// ColimaFactory is the production VMFactory that wraps NewColima.
-// Use this wherever a vm.VMFactory value is needed, because Go does not
-// allow assigning func(...)*ColimaVM directly to a func(...)VM variable.
-var ColimaFactory VMFactory = func(profile, stateDir string) VM {
-	return NewColima(profile, stateDir)
-}

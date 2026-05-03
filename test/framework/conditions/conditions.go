@@ -74,18 +74,6 @@ func BootstrapComplete() fw.ConditionFunc {
 	return StateFileExists("bootstrap-state.json")
 }
 
-// TransitionStateExists returns a ConditionFunc that resolves to true when a
-// VM transition is in progress (vm-transition.json exists).
-func TransitionStateExists() fw.ConditionFunc {
-	return StateFileExists("vm-transition.json")
-}
-
-// TransitionStateAbsent returns a ConditionFunc that resolves to true when no
-// VM transition is in progress (vm-transition.json does not exist).
-func TransitionStateAbsent() fw.ConditionFunc {
-	return StateFileAbsent("vm-transition.json")
-}
-
 // SessionCount returns a ConditionFunc that resolves to true when exactly n
 // active sessions exist.
 func SessionCount(want int) fw.ConditionFunc {

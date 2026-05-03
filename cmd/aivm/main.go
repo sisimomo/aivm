@@ -89,7 +89,6 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	sessions := session.NewStore(cfg.StateDir)
 	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
-	mon.VMFactory = vm.ColimaFactory
 
 	return &cli.App{
 		Lifecycle: &lifecycle.LifecycleService{
@@ -103,7 +102,6 @@ func buildApp(cfgPath string) (*cli.App, error) {
 			Provider:     compResult.ActiveProvider,
 			AgentDefs:    map[string]agent.Def{compResult.ActiveProvider.Name(): compResult.ActiveAgentDef},
 			PluginDefs:   compResult.PluginDefs,
-			VMFactory:    vm.ColimaFactory,
 			Integrations: compResult.Integrations,
 			Confirmer:    lifecycle.NewTTYConfirmer(),
 		},

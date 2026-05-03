@@ -56,10 +56,6 @@ type Harness struct {
 	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
 	// between RunCLI calls when per-command isolation matters.
 	Output *OutputBuffer
-	// ContainerVMs provides access to all DockerVM instances created during the
-	// test, keyed by profile name. Use this to inspect secondary VMs (e.g. the
-	// new VM profile bootstrapped during a soft rebuild).
-	ContainerVMs *ContainerVMRegistry
 }
 
 // New creates a new Harness for the calling test.
@@ -114,19 +110,17 @@ func New(t *testing.T, opts ...Option) *Harness {
 	containerVMs := NewContainerVMRegistry()
 	primaryVM := newDockerVM(cfg.VM.ColimaProfile, cfg.StateDir)
 	containerVMs.Register(primaryVM)
-	factory := containerVMs.Factory()
 
 	output := &OutputBuffer{}
-	app := buildTestApp(t, cfg, tc, primaryVM, factory, output)
+	app := buildTestApp(t, cfg, tc, primaryVM, output)
 
 	h := &Harness{
-		t:            t,
-		tc:           tc,
-		StateDir:     stateDir,
-		Profile:      profile,
-		App:          app,
-		Output:       output,
-		ContainerVMs: containerVMs,
+		t:        t,
+		tc:       tc,
+		StateDir: stateDir,
+		Profile:  profile,
+		App:      app,
+		Output:   output,
 	}
 
 	t.Cleanup(func() {
@@ -137,13 +131,6 @@ func New(t *testing.T, opts ...Option) *Harness {
 	})
 
 	return h
-}
-
-// GetOrCreateSecondaryVM returns the DockerVM for the given profile, creating a
-// new container if one does not already exist. Use this in tests that need to
-// inspect or control a secondary VM (e.g. the "-next" profile in a soft rebuild).
-func (h *Harness) GetOrCreateSecondaryVM(profile string) vm.VM {
-	return h.ContainerVMs.GetOrCreate(profile, h.StateDir)
 }
 
 // RunCLI executes an aivm CLI command through the real Cobra entry point,
@@ -200,7 +187,7 @@ func (h *Harness) ImageManager() *vm.ImageManager {
 	return vm.NewImageManager(h.App.Lifecycle.VM, h.StateDir)
 }
 
-func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, factory vm.VMFactory, output *OutputBuffer) *cli.App {
+func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, output *OutputBuffer) *cli.App {
 	t.Helper()
 
 	agentReg := agent.NewRegistry()
@@ -219,7 +206,6 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		tc.IdleTimeout, tc.DeleteTimeout, cfg.StateDir,
 	)
 	mon.PollInterval = tc.PollInterval
-	mon.VMFactory = factory
 	mon.DisableDaemonLaunch = true
 
 	// Create a per-test plugin registry so parallel tests don't share global state.
@@ -267,7 +253,6 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Provider:     prov,
 		AgentDefs:    agentDefs,
 		PluginDefs:   stubDefs,
-		VMFactory:    factory,
 		// Integrations: replace production scripts with lightweight marker-file
 		// stubs so tests don't run real tool setup inside the container.
 		Integrations: buildTestIntegrations(tc),

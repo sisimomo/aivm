@@ -70,14 +70,16 @@ func BootstrapComplete() fw.AssertFunc {
 	}
 }
 
-// VMImageRefCurrent asserts that the VM was created from the current base image
-// (not a legacy one).
+// VMImageRefCurrent asserts that the VM was created from the current base image.
 func VMImageRefCurrent() fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		imgMgr := h.ImageManager()
-		if imgMgr.IsVMLegacy() {
-			img := imgMgr.LoadBaseImage()
-			ref := imgMgr.GetVMImageRef()
+		img := imgMgr.LoadBaseImage()
+		if img == nil {
+			return fmt.Errorf("no base image found")
+		}
+		ref := imgMgr.GetVMImageRef()
+		if ref != "" && ref != img.ID {
 			return fmt.Errorf("VM image ref %q does not match current base image %q", ref, img.ID)
 		}
 		return nil
@@ -207,17 +209,6 @@ func VMRunCountAtLeast(n int) fw.AssertFunc {
 		}
 		return nil
 	}
-}
-
-// (vm-transition.json exists in StateDir).
-func TransitionStateExists() fw.AssertFunc {
-	return StateFileExists("vm-transition.json")
-}
-
-// TransitionStateAbsent asserts that no VM transition is in progress
-// (vm-transition.json does NOT exist in StateDir).
-func TransitionStateAbsent() fw.AssertFunc {
-	return StateFileAbsent("vm-transition.json")
 }
 
 // SessionCount asserts that exactly n active sessions exist.

@@ -273,10 +273,7 @@ func (d *DockerVM) snapshotTag(name string) string {
 
 // ── ContainerVMRegistry ────────────────────────────────────────────────────
 
-// ContainerVMRegistry is a per-profile store of DockerVM instances, mirroring
-// the role of MockVMRegistry. It serves as the VMFactory for the test harness
-// so that secondary VMs (e.g. soft-rebuild profiles) are created as Docker
-// containers automatically.
+// ContainerVMRegistry is a per-profile store of DockerVM instances.
 type ContainerVMRegistry struct {
 	mu  sync.Mutex
 	vms map[string]*DockerVM
@@ -311,20 +308,6 @@ func (r *ContainerVMRegistry) GetOrCreate(profile, stateDir string) *DockerVM {
 	d := newDockerVM(profile, stateDir)
 	r.vms[profile] = d
 	return d
-}
-
-// Factory returns a vm.VMFactory that creates or retrieves a DockerVM per profile.
-func (r *ContainerVMRegistry) Factory() vm.VMFactory {
-	return func(profile, stateDir string) vm.VM {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		if d, ok := r.vms[profile]; ok {
-			return d
-		}
-		d := newDockerVM(profile, stateDir)
-		r.vms[profile] = d
-		return d
-	}
 }
 
 // DestroyAll removes all containers and snapshot images tracked in this registry.

@@ -165,7 +165,6 @@ return err
 }
 
 svc.Sessions.ClearVMStoppedAt()
-svc.clearTransition()
 
 svc.log().Success("VM recreated with only %s", svc.Provider.Description())
 return nil

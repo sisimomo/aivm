@@ -106,28 +106,8 @@ func TestBareCommandMultipleSessions(t *testing.T) {
 		Run()
 }
 
-// TestBareCommandWithTransitionState verifies that when a soft-rebuild
-// transition is in progress, `aivm` bare routes the new session to the new VM
-// profile rather than the legacy one.
-//
-//  1. Start VM (creates base image v1, primary profile).
-//  2. Manually write a transition state pointing to a "-next" profile.
-//  3. Register the "-next" profile so the factory can create its container.
-//  4. Run `aivm` bare — DoLaunch must see the transition, switch to the new VM,
-//     verify it is running, and launch the agent.
-func TestBareCommandWithTransitionState(t *testing.T) {
-	t.Parallel()
-	h := framework.New(t)
-
-	h.Scenario("aivm (bare) — transition active: agent routed to new VM profile").
-		Step("Start primary VM (legacy profile)", actions.CLI("start")).
-		Wait("Primary VM running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Prepare new VM and write transition state",
-			prepareTransition(t, h)).
-		Step("Run: aivm (bare) — must use new VM", actions.CLI()).
-		Assert("Agent was launched (on the new VM)", assertions.AgentLaunched()).
-		Run()
-}
+// TestBareCommandWithTransitionState is removed — the legacy VM / transition
+// state feature has been deleted.
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -151,30 +131,6 @@ func assertStepFails(step framework.StepFunc, wantSubstr string) framework.StepF
 		if wantSubstr != "" && !contains(err.Error(), wantSubstr) {
 			return fmt.Errorf("expected error containing %q, got: %v", wantSubstr, err)
 		}
-		return nil
-	}
-}
-
-// prepareTransition starts the "-next" VM profile and writes a transition state
-// file so that DoLaunch will route the next session to the new profile.
-func prepareTransition(t *testing.T, h *framework.Harness) framework.StepFunc {
-	return func(ctx context.Context, _ *framework.Harness) error {
-		nextProfile := h.Profile + "-next"
-
-		nextVM := h.GetOrCreateSecondaryVM(nextProfile)
-
-		if err := nextVM.Start(ctx, vm.StartOptions{}); err != nil {
-			return fmt.Errorf("start next VM: %w", err)
-		}
-
-		ts := &vm.TransitionState{
-			LegacyProfile: h.Profile,
-			NewProfile:    nextProfile,
-		}
-		if err := vm.SaveTransitionState(h.StateDir, ts); err != nil {
-			return fmt.Errorf("save transition state: %w", err)
-		}
-		t.Logf("transition state written: legacy=%s new=%s", h.Profile, nextProfile)
 		return nil
 	}
 }

@@ -43,8 +43,6 @@ type LifecycleService struct {
 	Provider agent.Provider
 	// Integrations is the complete list of integrations to evaluate during bootstrap.
 	Integrations []integration.IntegrationDef
-	// VMFactory creates VM instances for secondary profiles (e.g. rebuild VMs).
-	VMFactory vm.VMFactory
 	// Confirmer handles interactive terminal I/O. Use NewTTYConfirmer() in production,
 	// NewScriptedConfirmer() in tests, or &SilentConfirmer{} for non-interactive daemons.
 	Confirmer Confirmer
@@ -66,26 +64,6 @@ func (svc *LifecycleService) log() *aivmlog.Logger {
 // imageManager returns an ImageManager scoped to the service's VM and state dir.
 func (svc *LifecycleService) imageManager() *vm.ImageManager {
 	return vm.NewImageManager(svc.VM, svc.Config.StateDir)
-}
-
-// imageManagerFor returns an ImageManager scoped to a specific VM and state dir.
-func (svc *LifecycleService) imageManagerFor(v vm.VM) *vm.ImageManager {
-	return vm.NewImageManager(v, svc.Config.StateDir)
-}
-
-// loadTransition loads the active VM transition state, or nil if none.
-func (svc *LifecycleService) loadTransition() *vm.TransitionState {
-	return vm.LoadTransitionState(svc.Config.StateDir)
-}
-
-// saveTransition persists a VM transition state to disk.
-func (svc *LifecycleService) saveTransition(ts *vm.TransitionState) error {
-	return vm.SaveTransitionState(svc.Config.StateDir, ts)
-}
-
-// clearTransition removes any persisted VM transition state.
-func (svc *LifecycleService) clearTransition() {
-	vm.ClearTransitionState(svc.Config.StateDir)
 }
 
 // Start starts the VM and all services, then runs bootstrap if needed.
@@ -246,16 +224,10 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 		return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
 	}
 
-	// If a transition is already in progress, route this session to the new VM.
-	if ts := svc.loadTransition(); ts != nil {
-		svc.log().Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
-		svc.VM = svc.VMFactory(ts.NewProfile, cfg.StateDir)
-	} else {
-		threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
-		if threshold != config.DisabledDuration && threshold > 0 {
-			if err := svc.checkBaseImageAge(ctx); err != nil {
-				return err
-			}
+	threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
+	if threshold != config.DisabledDuration && threshold > 0 {
+		if err := svc.checkBaseImageAge(ctx); err != nil {
+			return err
 		}
 	}
 
@@ -309,7 +281,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 }
 
 // checkBaseImageAge prompts the user when the base image is older than the configured
-// threshold. It may rebuild the current VM (option 1) or start a parallel transition (option 2).
+// threshold. It may rebuild the current VM after confirming with the user.
 func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 	cfg := svc.Config
 
@@ -347,23 +319,21 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		return svc.rebuildCurrentVM(ctx)
 	}
 
-	switch promptBaseImageRebuildWithSessions(svc.log().Out, svc.Confirmer, len(sessions)) {
-	case baseImageRebuildNow:
-		svc.log().Step("Killing %d active session(s)...", len(sessions))
-		for _, s := range sessions {
-			proc, err := os.FindProcess(s.PID)
-			if err == nil {
-				proc.Signal(syscall.SIGTERM)
-			}
-			s.Remove()
-		}
-		return svc.rebuildCurrentVM(ctx)
-	case baseImageTransition:
-		return svc.startTransitionVM(ctx)
-	default:
+	fmt.Fprintf(svc.log().Out, "\n  You have %d active session(s).\n", len(sessions))
+	if !promptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and rebuild now? [y/N] ") {
 		svc.log().Info("Skipping base image rebuild.")
 		return nil
 	}
+
+	svc.log().Step("Killing %d active session(s)...", len(sessions))
+	for _, s := range sessions {
+		proc, err := os.FindProcess(s.PID)
+		if err == nil {
+			proc.Signal(syscall.SIGTERM)
+		}
+		s.Remove()
+	}
+	return svc.rebuildCurrentVM(ctx)
 }
 
 // rebuildCurrentVM destroys the current VM, recreates it, and runs full bootstrap.
@@ -380,46 +350,6 @@ func (svc *LifecycleService) rebuildCurrentVM(ctx context.Context) error {
 
 	svc.log().Step("Creating new VM and rebuilding base image...")
 	return svc.Start(ctx)
-}
-
-// startTransitionVM creates a second VM with a fresh bootstrap while the current VM
-// keeps running for existing sessions. Future launch sessions use the new VM.
-func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
-	cfg := svc.Config
-	newProfile := cfg.VM.ColimaProfile + "-next"
-	transitionStart := time.Now()
-
-	svc.log().Step("Creating new VM '%s' with fresh base image...", newProfile)
-
-	newVM := svc.VMFactory(newProfile, cfg.StateDir)
-	_ = newVM.Destroy(ctx)
-
-	imgMgr := svc.imageManagerFor(newVM)
-	img, err := svc.bootstrapFreshVM(ctx, newVM, imgMgr)
-	if err != nil {
-		return err
-	}
-	if img != nil {
-		svc.log().Success("New base image saved: id=%s", img.ID)
-	}
-
-	ts := &vm.TransitionState{
-		LegacyProfile: cfg.VM.ColimaProfile,
-		NewProfile:    newProfile,
-		StartedAt:     transitionStart,
-	}
-	if err := svc.saveTransition(ts); err != nil {
-		return fmt.Errorf("saving transition state: %w", err)
-	}
-
-	if err := svc.Monitor.EnsureLegacyMonitorRunning(); err != nil {
-		svc.log().Warn("could not start legacy monitor: %v", err)
-	}
-
-	svc.log().Success("Transition started: new sessions use '%s', old VM '%s' drains automatically", newProfile, cfg.VM.ColimaProfile)
-
-	svc.VM = newVM
-	return nil
 }
 
 // Bootstrap runs the bootstrap process. When force is true all plugins are re-run.
@@ -478,8 +408,6 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error
 			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
 		}
 		return svc.doHardRebuild(ctx, imgMgr)
-	case imageRebuildSoft:
-		return svc.doSoftRebuild(ctx, imgMgr)
 	default:
 		return nil
 	}
@@ -515,53 +443,8 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 		return err
 	}
 
-	svc.clearTransition()
 	svc.log().Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
 	svc.log().Info("Future VMs will start from this image.")
 	return nil
 }
 
-// doSoftRebuild bootstraps a temporary second VM so active sessions are not disrupted.
-func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
-	cfg := svc.Config
-	tempProfile := cfg.VM.ColimaProfile + "-rebuild"
-	tempVM := svc.VMFactory(tempProfile, cfg.StateDir)
-
-	_ = tempVM.Destroy(ctx)
-
-	svc.log().Step("Starting temporary rebuild VM '%s'", tempProfile)
-	if err := startFreshVM(ctx, tempVM, cfg); err != nil {
-		return err
-	}
-
-	svc.log().Step("Bootstrapping rebuild VM from scratch")
-	if err := svc.rebuildBootstrap(ctx, tempVM); err != nil {
-		_ = tempVM.Destroy(ctx)
-		return err
-	}
-
-	if _, err := imgMgr.SaveBaseImageMetadataOnly(); err != nil {
-		_ = tempVM.Destroy(ctx)
-		return fmt.Errorf("saving base image metadata: %w", err)
-	}
-
-	svc.log().Step("Destroying temporary rebuild VM")
-	_ = tempVM.Destroy(ctx)
-
-	ts := &vm.TransitionState{
-		LegacyProfile: cfg.VM.ColimaProfile,
-		NewProfile:    cfg.VM.ColimaProfile,
-		StartedAt:     time.Now(),
-	}
-	if err := svc.saveTransition(ts); err != nil {
-		svc.log().Warn("could not save transition state: %v", err)
-	}
-	if err := svc.Monitor.EnsureLegacyMonitorRunning(); err != nil {
-		svc.log().Warn("could not start legacy monitor: %v", err)
-	}
-
-	svc.log().Success("New base image recorded.")
-	svc.log().Info("Legacy VM '%s' will be removed once all sessions close.", cfg.VM.ColimaProfile)
-	svc.log().Info("Run 'aivm start' after that to apply the new image.")
-	return nil
-}

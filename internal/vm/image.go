@@ -101,22 +101,6 @@ func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 	return true
 }
 
-// SaveBaseImageMetadataOnly records a new base image version without creating a VM snapshot.
-// Used during soft-transition rebuilds where bootstrap runs on a temporary VM.
-// The VM snapshot will be created on the next fresh VM start.
-func (m *ImageManager) SaveBaseImageMetadataOnly() (*BaseImage, error) {
-	id := strconv.FormatInt(time.Now().Unix(), 10)
-	img := &BaseImage{
-		ID:        id,
-		CreatedAt: time.Now().UTC(),
-		// SnapshotName intentionally empty; TryRestoreBaseImage will fall through to bootstrap.
-	}
-	if err := m.writeBaseImage(img); err != nil {
-		return nil, fmt.Errorf("recording base image metadata: %w", err)
-	}
-	aivmlog.Info("base image version recorded: id=%s (snapshot will be created on next start)", id)
-	return img, nil
-}
 
 
 func (m *ImageManager) RecordVMImageRef(imageID string) {
@@ -130,17 +114,6 @@ func (m *ImageManager) GetVMImageRef() string {
 		return ""
 	}
 	return string(data)
-}
-
-// IsVMLegacy returns true when the running VM was created from an older base image
-// than the current one, making it a legacy instance.
-func (m *ImageManager) IsVMLegacy() bool {
-	img := m.LoadBaseImage()
-	if img == nil {
-		return false
-	}
-	ref := m.GetVMImageRef()
-	return ref != "" && ref != img.ID
 }
 
 // RecordCreation writes the VM creation timestamp used for age-based rotation.

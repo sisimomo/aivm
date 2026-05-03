@@ -85,7 +85,6 @@ Examples:
 		RebuildImageCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),
-		legacyMonitorCmd(getApp),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print version",
@@ -113,19 +112,3 @@ func monitorCmd(getApp func() (*App, error)) *cobra.Command {
 	}
 }
 
-// legacyMonitorCmd destroys the legacy VM once all pre-transition sessions drain.
-// It is hidden from help output and intended for fork-exec by the monitor package.
-func legacyMonitorCmd(getApp func() (*App, error)) *cobra.Command {
-	return &cobra.Command{
-		Use:    "__legacy-monitor",
-		Short:  "Internal: destroy legacy VM once its sessions drain",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := getApp()
-			if err != nil {
-				return err
-			}
-			return app.Lifecycle.RunLegacyMonitor(cmd.Context())
-		},
-	}
-}

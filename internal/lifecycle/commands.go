@@ -35,35 +35,11 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 		vmRef := imgMgr.GetVMImageRef()
 		if vmRef == "" {
 			fmt.Fprintf(out, "  │  VM image ref:      (unknown)\n")
-		} else if imgMgr.IsVMLegacy() {
-			fmt.Fprintf(out, "  │  VM image ref:      id=%s ⚠️  legacy\n", vmRef)
 		} else {
-			fmt.Fprintf(out, "  │  VM image ref:      id=%s ✅ current\n", vmRef)
+			fmt.Fprintf(out, "  │  VM image ref:      id=%s\n", vmRef)
 		}
 	} else {
 		fmt.Fprintf(out, "  │  Base image:        (none — run 'aivm start' to create)\n")
-	}
-
-	if ts := svc.loadTransition(); ts != nil {
-		legacyVM := svc.VMFactory(ts.LegacyProfile, cfg.StateDir)
-		legacyStatus, _ := legacyVM.Status(ctx)
-		legacyIcon := "❌"
-		if legacyStatus == vm.StatusRunning {
-			legacyIcon = "🔄"
-		}
-		legacySessions, _ := svc.Sessions.CountLegacy(ts.StartedAt)
-		fmt.Fprintf(out, "  │  ─────────────────────────────────────────────\n")
-		fmt.Fprintf(out, "  │  Legacy VM (%s): %s %s\n", ts.LegacyProfile, legacyIcon, legacyStatus)
-		fmt.Fprintf(out, "  │  Legacy sessions:   %d remaining (auto-delete when done)\n", legacySessions)
-
-		legacyPID := filepath.Join(cfg.StateDir, "legacy-monitor.pid")
-		legacyMonIcon := "❌"
-		if _, err := os.Stat(legacyPID); err == nil {
-			legacyMonIcon = "✅"
-		}
-		fmt.Fprintf(out, "  │  Legacy monitor:    %s\n", legacyMonIcon)
-		fmt.Fprintf(out, "  │  Transition since:  %s\n", ts.StartedAt.Local().Format("2006-01-02 15:04 MST"))
-		fmt.Fprintf(out, "  │  ─────────────────────────────────────────────\n")
 	}
 
 	mcpIcon := "❌"
@@ -195,14 +171,4 @@ func (svc *LifecycleService) ListPlugins() error {
 // RunMonitor runs the idle monitor daemon in the current process.
 func (svc *LifecycleService) RunMonitor(ctx context.Context) error {
 	return svc.Monitor.Run(ctx)
-}
-
-// RunLegacyMonitor runs the legacy VM monitor: destroys the legacy VM once all
-// pre-transition sessions drain. No-op if no transition is active.
-func (svc *LifecycleService) RunLegacyMonitor(ctx context.Context) error {
-	ts := svc.loadTransition()
-	if ts == nil {
-		return nil
-	}
-	return svc.Monitor.RunLegacyMonitor(ctx, ts)
 }

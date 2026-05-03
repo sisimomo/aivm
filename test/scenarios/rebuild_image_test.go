@@ -126,7 +126,7 @@ func TestRebuildImageInteractiveCancel(t *testing.T) {
 func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
-		framework.WithInteractive("y", "y"), // prompt 1: kill sessions, prompt 2: proceed with rebuild
+		framework.WithInteractive("y"), // prompt: kill sessions and rebuild
 	)
 
 	h.Scenario("interactive rebuild with sessions — kill sessions and rebuild").
@@ -146,34 +146,4 @@ func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 		Run()
 }
 
-// TestRebuildImageSoftRebuild verifies the soft-rebuild flow: when the user has
-// active sessions and declines to kill them, then agrees to a soft rebuild, a
-// second VM is bootstrapped, a transition state is written, and the legacy monitor
-// is started. The legacy VM remains until the old sessions drain.
-//
-//  1. Start VM.
-//  2. Create a fake active session.
-//  3. RebuildImage(force=false):
-//     Prompt 1 "Kill all sessions? [y/N]" → "n"
-//     Prompt 2 "Proceed with soft rebuild? [y/N]" → "y"
-//  4. Transition state written; new VM profile created.
-//  5. Legacy VM (primary profile) is still running.
-func TestRebuildImageSoftRebuild(t *testing.T) {
-	t.Parallel()
-	h := framework.New(t,
-		framework.WithInteractive("n", "y"), // prompt 1: n, prompt 2: y
-	)
 
-	h.Scenario("soft rebuild — keep sessions on legacy VM, bootstrap new VM in parallel").
-		Step("Start VM", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Create a fake active session", actions.CreateFakeSession()).
-		Assert("One active session", assertions.SessionCount(1)).
-		Step("Rebuild image — keep sessions, approve soft rebuild",
-			actions.CLI("rebuild-image")).
-		Assert("Transition state written (new VM ready)", assertions.TransitionStateExists()).
-		Assert("Legacy VM still running for active sessions",
-			assertions.VMStatus(vm.StatusRunning)).
-		Step("Remove fake session (simulates session ending)", actions.RemoveFakeSessions()).
-		Run()
-}
