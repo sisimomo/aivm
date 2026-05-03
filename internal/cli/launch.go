@@ -90,7 +90,11 @@ func DoLaunch(ctx context.Context, app *App) error {
 	aivmlog.Info("VM:   %s", vmDir)
 	aivmlog.Step("Launching %s in VM", app.Provider.Description())
 
-	providerCfg := cfg.Agent.Providers[app.Provider.Name()]
+	providerDef := app.AgentDefs[app.Provider.Name()]
+	providerCfg := make(map[string]any)
+	if providerDef.LaunchCommand != "" {
+		providerCfg["launch_command"] = providerDef.LaunchCommand
+	}
 	env := agent.LaunchEnv{
 		VMProfile: app.VM.Profile(),
 		WorkDir:   vmDir,

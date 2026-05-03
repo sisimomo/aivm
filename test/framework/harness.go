@@ -26,11 +26,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"aivm/internal/agent"
 	"aivm/internal/cli"
 	"aivm/internal/config"
+	"aivm/internal/integration"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
 	"aivm/internal/providers/claude"
@@ -221,6 +223,13 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	if err != nil {
 		t.Fatalf("harness: load plugin defaults: %v", err)
 	}
+	agentDefs, err := agent.LoadDefs()
+	if err != nil {
+		t.Fatalf("harness: load agent defaults: %v", err)
+	}
+	for name, def := range agentDefs {
+		defs[name] = def.ToPluginDef()
+	}
 	for name := range defs {
 		stub := plugin.PluginDef{
 			Description: name + " (test stub)",
@@ -239,7 +248,11 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Registry:  reg,
 		Agents:    agentReg,
 		Provider:  prov,
+		AgentDefs: agentDefs,
 		VMFactory: factory,
+		// Integrations: replace production scripts with lightweight marker-file
+		// stubs so tests don't run real tool setup inside the container.
+		Integrations: buildTestIntegrations(tc),
 		// DoLaunch uses GetWorkDir to resolve the working directory.
 		// In tests, return DevRoot so the CWD-under-DevRoot check always passes
 		// without needing os.Chdir (which is process-global and unsafe in tests).
@@ -269,5 +282,30 @@ func mustRandomHex(n int) string {
 		panic(fmt.Sprintf("random hex: %v", err))
 	}
 	return hex.EncodeToString(b)
+}
+
+// buildTestIntegrations replaces production integration scripts with stub
+// marker-file commands so tests don't invoke real toolchain setup. For each
+// built-in integration a stub is created that writes a marker file to /tmp
+// named after the integration's key (colons replaced with underscores). Any
+// tc.Integrations are appended verbatim (caller-supplied).
+func buildTestIntegrations(tc testConfig) []integration.IntegrationDef {
+	defaults, err := integration.LoadDefaults()
+	if err != nil {
+		panic(fmt.Sprintf("harness: load integration defaults: %v", err))
+	}
+	stubs := make([]integration.IntegrationDef, 0, len(defaults)+len(tc.Integrations))
+	for _, d := range defaults {
+		key := strings.ReplaceAll(d.Key(), ":", "_")
+		stubs = append(stubs, integration.IntegrationDef{
+			Name:      d.Name,
+			From:      d.From,
+			To:        d.To,
+			When:      d.When,
+			Configure: "touch /tmp/.aivm_test_integ_" + key,
+		})
+	}
+	stubs = append(stubs, tc.Integrations...)
+	return stubs
 }
 

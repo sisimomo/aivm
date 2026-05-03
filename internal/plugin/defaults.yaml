@@ -83,51 +83,6 @@ rtk:
   install: |
     curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
 
-claude:
-  description: "Claude Code CLI + MCP config"
-  agents: [claude]
-  dependencies:
-    - nodejs
-    - rtk
-  defaults:
-    mcp_port: "8080"
-    host_home: ""
-  check: |
-    claude --version >/dev/null 2>&1
-  install: |
-    curl -fsSL https://claude.ai/install.sh | bash
-    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
-    if ! command -v claude >/dev/null 2>&1; then
-      echo "Claude Code CLI not found after install"; exit 1
-    fi
-  configure: |
-    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
-
-    echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
-
-    {{ if .host_home }}
-    mkdir -p "$HOME/.claude"
-    PROJECTS_MOUNT="{{ .host_home }}/.aivm/.claude/projects"
-    mkdir -p "$PROJECTS_MOUNT"
-    ln -sfn "$PROJECTS_MOUNT" "$HOME/.claude/projects"
-    {{ end }}
-
-    MCP_FILE="$HOME/.claude/mcp-config.json"
-    mkdir -p "$(dirname "$MCP_FILE")"
-
-    # Ensure base file exists
-    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
-
-    # Inject/merge mcpjungle via jq (idempotent)
-    jq '
-      .mcpServers.mcpjungle = {
-        type: "http",
-        url: "http://host.lima.internal:{{ .mcp_port }}/mcp"
-      }
-    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"
-
-    rtk init -g --auto-patch 2>/dev/null || true
-
 golang:
   description: "Go (Golang) programming language"
   dependencies:
@@ -139,24 +94,21 @@ golang:
     sudo apt-get update -qq
     sudo apt-get install -y golang-go
 
-copilot:
-  description: "GitHub Copilot CLI (gh + copilot extension)"
-  agents: [copilot]
+gh:
+  description: "GitHub CLI (gh) for interacting with GitHub from the command line"
   dependencies:
     - system
-  defaults:
-    launch_command: "gh copilot"
   check: |
-    gh extension list 2>/dev/null | grep -q 'github/gh-copilot'
-  configure: |
-    MCP_FILE="$HOME/.config/gh-copilot/mcp-config.json"
-    mkdir -p "$(dirname "$MCP_FILE")"
-
-    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
-
-    jq '
-      .mcpServers.mcpjungle = {
-        type: "http",
-        url: "http://host.lima.internal:8080/mcp"
-      }
-    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"
+    gh --version >/dev/null 2>&1
+  install: |
+    export DEBIAN_FRONTEND=noninteractive
+    
+    (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+      && sudo mkdir -p -m 755 /etc/apt/keyrings \
+      && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+      && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+      && sudo apt update \
+      && sudo apt install gh -y

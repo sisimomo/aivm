@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
+	"aivm/internal/agent"
+	"aivm/internal/integration"
 	"aivm/internal/plugin"
 )
 
@@ -18,12 +20,13 @@ import (
 var defaultsYAML []byte
 
 type Config struct {
-	VM      VMConfig      `mapstructure:"vm"`
-	MCP     MCPConfig     `mapstructure:"mcp"`
-	Idle    IdleConfig    `mapstructure:"idle"`
-	Agent   AgentConfig   `mapstructure:"agent"`
-	Plugins PluginsConfig `mapstructure:"plugins"`
-	Debug   bool          `mapstructure:"debug"`
+	VM           VMConfig                      `mapstructure:"vm"`
+	MCP          MCPConfig                     `mapstructure:"mcp"`
+	Idle         IdleConfig                    `mapstructure:"idle"`
+	Agents       AgentsConfig                  `mapstructure:"agents"`
+	Plugins      PluginsConfig                 `mapstructure:"plugins"`
+	Integrations []integration.IntegrationDef  `mapstructure:"integrations"`
+	Debug        bool                          `mapstructure:"debug"`
 
 	StateDir string `mapstructure:"-"`
 }
@@ -51,13 +54,17 @@ type IdleConfig struct {
 	DeleteTimeout time.Duration `mapstructure:"delete_timeout"`
 }
 
-// AgentConfig configures which AI agent provider is active and holds
-// provider-specific settings.
-type AgentConfig struct {
-	// Provider is the name of the active agent provider (e.g. "claude", "copilot").
-	Provider  string                    `mapstructure:"provider"`
-	// Providers holds per-provider configuration keyed by provider name.
-	Providers map[string]map[string]any `mapstructure:"providers"`
+// AgentsConfig is the top-level agents registry. It is independent of plugins.
+// Only one agent may be active at a time; set agents.enabled to its name.
+type AgentsConfig struct {
+	// Enabled is the name of the active agent (e.g. "claude" or "copilot").
+	// Exactly one agent is supported at a time. To switch agents, change this
+	// value — the existing VM will be updated or recreated as needed.
+	Enabled string `mapstructure:"enabled"`
+	// Define holds optional per-agent definition overrides keyed by agent name.
+	// Use this to override an agent's install scripts or runtime defaults
+	// (e.g. agents.define.copilot.defaults.launch_command).
+	Define map[string]agent.Def `mapstructure:"define"`
 }
 
 type PluginsConfig struct {
@@ -77,6 +84,15 @@ type Defaults struct {
 	VMProfile string
 	// MCPPort is the default port for the MCP/mcpjungle service.
 	MCPPort int
+}
+
+// ActiveAgents returns the active agent as a single-element slice, or nil if
+// no agent is configured. The slice form is used by the integration executor.
+func (c *Config) ActiveAgents() []string {
+	if c.Agents.Enabled != "" {
+		return []string{c.Agents.Enabled}
+	}
+	return nil
 }
 
 // Load reads aivm.yaml from the given path (or searches standard locations).

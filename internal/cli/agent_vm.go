@@ -13,6 +13,7 @@ import (
 
 	"aivm/internal/agent"
 	"aivm/internal/bootstrap"
+	"aivm/internal/integration"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/plugin"
 	"aivm/internal/vm"
@@ -23,9 +24,10 @@ import (
 // compare the desired plugin list against this state and skip bootstrap entirely
 // when nothing has changed.
 type BootstrapState struct {
-	Version   string   `json:"version"`
-	Provider  string   `json:"provider"`
-	Installed []string `json:"installed"`
+	Version      string   `json:"version"`
+	Provider     string   `json:"provider"`
+	Installed    []string `json:"installed"`
+	Integrations []string `json:"integrations,omitempty"` // "from:to" keys of executed integrations
 }
 
 func bootstrapStatePath(stateDir string) string {
@@ -81,19 +83,17 @@ func newBootstrapEngine(app *App, targetVM vm.VM, plugins []string) *bootstrap.E
 	return &bootstrap.Engine{
 		VM: targetVM,
 		Executor: &plugin.Executor{
-			Registry:       app.Registry,
-			Enabled:        enabled,
-			PluginConfig:   app.Config.Plugins.Config,
-			StateDir:       app.Config.StateDir,
-			ActiveProvider: app.Provider.Name(),
-			VMInst:         targetVM,
+			Registry:     app.Registry,
+			Enabled:      enabled,
+			PluginConfig: app.Config.Plugins.Config,
+			StateDir:     app.Config.StateDir,
+			VMInst:       targetVM,
 		},
 		StateDir: app.Config.StateDir,
 	}
 }
 
 func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, configured []string) []string {
-	active := provider.Name()
 	enabled := make([]string, 0, len(configured)+len(provider.RequiredPlugins()))
 	seen := make(map[string]bool, len(configured)+len(provider.RequiredPlugins()))
 
@@ -106,11 +106,6 @@ func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, conf
 	}
 
 	for _, name := range configured {
-		if p, ok := reg.Get(name); ok {
-			if agents := p.Agents(); len(agents) > 0 && !containsString(agents, active) {
-				continue
-			}
-		}
 		add(name)
 	}
 
@@ -130,7 +125,10 @@ func fullBootstrap(ctx context.Context, app *App, targetVM vm.VM, force bool) er
 	if err := eng.Run(ctx, force); err != nil {
 		return err
 	}
-	return recordBootstrapState(app)
+	if err := recordBootstrapState(app); err != nil {
+		return err
+	}
+	return runIntegrationsFromState(ctx, app, targetVM)
 }
 
 // syncBootstrap is the main entry point called on every aivm invocation.
@@ -174,7 +172,7 @@ func syncBootstrap(ctx context.Context, app *App) (bool, error) {
 
 	if len(newPlugins) == 0 {
 		aivmlog.Info("VM is up to date — skipping bootstrap")
-		return false, nil
+		return false, runIntegrationsFromState(ctx, app, app.VM)
 	}
 
 	aivmlog.Step("Installing %d new plugin(s): %s", len(newPlugins), strings.Join(newPlugins, ", "))
@@ -184,7 +182,10 @@ func syncBootstrap(ctx context.Context, app *App) (bool, error) {
 	}
 	state.Installed = mergeStrings(state.Installed, newPlugins)
 	state.Provider = app.Provider.Name()
-	return false, saveBootstrapState(app.Config.StateDir, state)
+	if err := saveBootstrapState(app.Config.StateDir, state); err != nil {
+		return false, err
+	}
+	return false, runIntegrationsFromState(ctx, app, app.VM)
 }
 
 func resolveAgentMismatch(ctx context.Context, app *App, state *BootstrapState, otherInstalled map[string]bool) (bool, error) {
@@ -242,7 +243,10 @@ func resolveAgentMismatch(ctx context.Context, app *App, state *BootstrapState, 
 		}
 		state.Installed = mergeStrings(state.Installed, newPlugins)
 		state.Provider = app.Provider.Name()
-		return false, saveBootstrapState(app.Config.StateDir, state)
+		if err := saveBootstrapState(app.Config.StateDir, state); err != nil {
+			return false, err
+		}
+		return false, runIntegrationsFromState(ctx, app, app.VM)
 	case "2":
 		return true, recreateVMForConfiguredAgent(ctx, app)
 	default:
@@ -380,4 +384,55 @@ func mergeStrings(base, additions []string) []string {
 		}
 	}
 	return result
+}
+
+// runIntegrationsFromState loads the current bootstrap state and executes any
+// integrations that are newly applicable (installed plugin + active agent, not
+// yet tracked in state). It saves updated state when integrations run.
+func runIntegrationsFromState(ctx context.Context, app *App, targetVM vm.VM) error {
+	if len(app.Integrations) == 0 {
+		return nil
+	}
+	state, err := loadBootstrapState(app.Config.StateDir)
+	if err != nil {
+		aivmlog.Warn("could not read bootstrap state for integrations: %v", err)
+		return nil
+	}
+	if state == nil {
+		return nil
+	}
+
+	exec := &integration.Executor{
+		Integrations:     app.Integrations,
+		InstalledPlugins: stringSet(state.Installed),
+		ActiveAgents:     app.Config.ActiveAgents(),
+		AlreadyRan:       stringSet(state.Integrations),
+		VM:               targetVM,
+		Log:              aivmlog.Writer("integration"),
+		TemplateVars: map[string]any{
+			"mcp_port": fmt.Sprintf("%d", app.Config.MCP.Port),
+		},
+	}
+
+	matching := exec.Matching()
+	if len(matching) == 0 {
+		return nil
+	}
+
+	for _, integ := range matching {
+		aivmlog.Step("Integration: %s → %s", integ.Key(), integ.To)
+	}
+
+	ran, err := exec.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("running integrations: %w", err)
+	}
+
+	if len(ran) > 0 {
+		state.Integrations = mergeStrings(state.Integrations, ran)
+		if saveErr := saveBootstrapState(app.Config.StateDir, state); saveErr != nil {
+			aivmlog.Warn("could not save bootstrap state after integrations: %v", saveErr)
+		}
+	}
+	return nil
 }

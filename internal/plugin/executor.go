@@ -10,44 +10,17 @@ import (
 
 // Executor runs plugins in DAG order.
 type Executor struct {
-	Registry       *Registry
-	Enabled        []string
-	PluginConfig   map[string]map[string]any
-	StateDir       string
-	// ActiveProvider, when set, filters out plugins whose Agents list does not
-	// include this provider name. Plugins with an empty Agents list run for all providers.
-	ActiveProvider string
+	Registry     *Registry
+	Enabled      []string
+	PluginConfig map[string]map[string]any
+	StateDir     string
 	// VMInst is passed as InstallEnv.VM so plugins can run commands in the VM.
 	VMInst VMRunner
 }
 
-// Ordered returns the enabled plugins in topological order, filtered by ActiveProvider.
-// Plugins whose Agents list is non-empty and does not contain ActiveProvider are excluded.
+// Ordered returns the enabled plugins in topological order.
 func (e *Executor) Ordered() ([]Plugin, error) {
-	ordered, err := e.Registry.Resolve(e.Enabled)
-	if err != nil {
-		return nil, err
-	}
-	if e.ActiveProvider == "" {
-		return ordered, nil
-	}
-	out := make([]Plugin, 0, len(ordered))
-	for _, p := range ordered {
-		agents := p.Agents()
-		if len(agents) == 0 || containsString(agents, e.ActiveProvider) {
-			out = append(out, p)
-		}
-	}
-	return out, nil
-}
-
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return e.Registry.Resolve(e.Enabled)
 }
 
 func (e *Executor) Run(ctx context.Context) error {

@@ -9,6 +9,7 @@ import (
 	"aivm/internal/agent"
 	"aivm/internal/cli"
 	"aivm/internal/config"
+	"aivm/internal/integration"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
@@ -60,7 +61,11 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	agentReg.Register(claude.New())
 	agentReg.Register(copilot.New())
 
-	providerName := cfg.Agent.Provider
+	activeAgents := cfg.ActiveAgents()
+	if len(activeAgents) == 0 {
+		return nil, fmt.Errorf("no agent configured — set agents.enabled in aivm.yaml")
+	}
+	providerName := cfg.Agents.Enabled
 	prov, ok := agentReg.Get(providerName)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent provider %q — supported: claude, copilot", providerName)
@@ -89,29 +94,51 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	reg := plugin.Global()
 
-	// Load bundled plugin definitions, then merge any user overrides from plugins.define.
+	// Load bundled plugin definitions, then merge agent-specific plugin defs,
+	// then apply any user overrides from plugins.define.
 	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		return nil, fmt.Errorf("loading plugin defaults: %w", err)
 	}
+	// Load built-in agent defs, merge user overrides from cfg.Agents.Define,
+	// then register the install lifecycle scripts in the plugin registry.
+	agentDefs, err := agent.LoadDefs()
+	if err != nil {
+		return nil, fmt.Errorf("loading agent defaults: %w", err)
+	}
+	for name, override := range cfg.Agents.Define {
+		base := agentDefs[name]
+		agentDefs[name] = agent.MergeDef(base, override)
+	}
+	for name, def := range agentDefs {
+		base := defs[name]
+		defs[name] = plugin.MergePluginDef(base, def.ToPluginDef())
+	}
 	for name, override := range cfg.Plugins.Define {
-		base := defs[name] // zero value if not in defaults (new plugin)
+		base := defs[name]
 		defs[name] = plugin.MergePluginDef(base, override)
 	}
 	for name, def := range defs {
 		reg.Set(plugin.NewYAMLPlugin(name, def))
 	}
 
+	integDefs, err := integration.LoadDefaults()
+	if err != nil {
+		return nil, fmt.Errorf("loading integration defaults: %w", err)
+	}
+
 	return &cli.App{
-		Config:    cfg,
-		VM:        vmInst,
-		MCP:       mcpMgr,
-		Sessions:  sessions,
-		Monitor:   mon,
-		Registry:  reg,
-		Agents:    agentReg,
-		Provider:  prov,
-		VMFactory: vm.ColimaFactory,
+		Config:       cfg,
+		VM:           vmInst,
+		MCP:          mcpMgr,
+		Sessions:     sessions,
+		Monitor:      mon,
+		Registry:     reg,
+		Agents:       agentReg,
+		Provider:     prov,
+		AgentDefs:    agentDefs,
+		VMFactory:    vm.ColimaFactory,
+		Integrations: append(integDefs, cfg.Integrations...),
 	}, nil
 }
 

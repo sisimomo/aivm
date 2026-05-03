@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aivm/internal/config"
+	"aivm/internal/integration"
 )
 
 // testConfig holds configuration for a test Harness. It uses small defaults
@@ -26,6 +27,9 @@ type testConfig struct {
 	BaseImageMaxAgeDays int
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
+	// Integrations is an optional list of additional integrations to include alongside
+	// the built-in test stubs.
+	Integrations []integration.IntegrationDef
 	// Interactive, when true, sets App.IsTerminal=true so interactive code paths run.
 	Interactive bool
 	// StdinAnswers is fed to App.Stdin, one answer per prompt (newline-separated).
@@ -112,6 +116,14 @@ func WithInteractive(answers ...string) Option {
 	}
 }
 
+// WithIntegrations appends extra integrations to the test harness alongside the
+// default stub integrations. Use this to test custom user-defined integrations.
+func WithIntegrations(defs ...integration.IntegrationDef) Option {
+	return func(c *testConfig) {
+		c.Integrations = append(c.Integrations, defs...)
+	}
+}
+
 func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 	return &config.Config{
 		VM: config.VMConfig{
@@ -134,8 +146,8 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			Timeout:       tc.IdleTimeout,
 			DeleteTimeout: tc.DeleteTimeout,
 		},
-		Agent: config.AgentConfig{
-			Provider: tc.Provider,
+		Agents: config.AgentsConfig{
+			Enabled: tc.Provider,
 		},
 		Plugins: config.PluginsConfig{
 			Enabled: tc.Plugins,

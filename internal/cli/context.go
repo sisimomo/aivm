@@ -5,6 +5,7 @@ import (
 
 	"aivm/internal/agent"
 	"aivm/internal/config"
+	"aivm/internal/integration"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
@@ -20,8 +21,16 @@ type App struct {
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
 	Agents   *agent.Registry
+	// AgentDefs is the effective set of agent definitions, merging built-in
+	// defaults with any user overrides from agents.define in aivm.yaml.
+	// Used by DoLaunch to pass runtime defaults (e.g. launch_command) to the provider.
+	AgentDefs map[string]agent.Def
 	// Provider is the active AI agent provider selected from the config.
 	Provider agent.Provider
+	// Integrations is the complete list of integrations to evaluate during
+	// bootstrap. It combines built-in defaults with any user-defined integrations
+	// from aivm.yaml. Tests substitute lightweight stub scripts.
+	Integrations []integration.IntegrationDef
 	// VMFactory creates VM instances for profiles other than the primary VM
 	// (e.g. the temporary rebuild VM in doSoftRebuild). In production this is
 	// vm.NewColima; tests substitute a mock factory via the test harness.

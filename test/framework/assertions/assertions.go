@@ -316,10 +316,95 @@ func AgentLaunchCount(want int) fw.AssertFunc {
 	}
 }
 
+// BootstrapStateContainsIntegrations asserts that all the given integration
+// keys (in "from:to" format) appear in the bootstrap state's integrations list.
+func BootstrapStateContainsIntegrations(keys ...string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return fmt.Errorf("no bootstrap state found")
+		}
+		ran := make(map[string]bool, len(state.Integrations))
+		for _, k := range state.Integrations {
+			ran[k] = true
+		}
+		for _, want := range keys {
+			if !ran[want] {
+				return fmt.Errorf("bootstrap state integrations %v does not contain %q", state.Integrations, want)
+			}
+		}
+		return nil
+	}
+}
+
+// BootstrapStateIntegrationsEmpty asserts that no integrations have been
+// recorded in bootstrap state.
+func BootstrapStateIntegrationsEmpty() fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state != nil && len(state.Integrations) > 0 {
+			return fmt.Errorf("expected no integrations in bootstrap state, got %v", state.Integrations)
+		}
+		return nil
+	}
+}
+
+// BootstrapStateNotContainsIntegrations asserts that none of the given integration
+// keys appear in the bootstrap state's integrations list.
+func BootstrapStateNotContainsIntegrations(keys ...string) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return nil
+		}
+		ran := make(map[string]bool, len(state.Integrations))
+		for _, k := range state.Integrations {
+			ran[k] = true
+		}
+		for _, unwanted := range keys {
+			if ran[unwanted] {
+				return fmt.Errorf("bootstrap state integrations %v unexpectedly contains %q", state.Integrations, unwanted)
+			}
+		}
+		return nil
+	}
+}
+
+// VMFileExists asserts that a file exists inside the VM at the given path.
+// The path must be absolute (e.g. "/tmp/.aivm_test_integ_rtk_claude").
+func VMFileExists(path string) fw.AssertFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		if err := h.App.VM.Run(ctx, "test -f "+path, nil); err != nil {
+			return fmt.Errorf("expected file %q to exist in VM: %w", path, err)
+		}
+		return nil
+	}
+}
+
+// VMFileAbsent asserts that a file does NOT exist inside the VM at the given path.
+func VMFileAbsent(path string) fw.AssertFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		if err := h.App.VM.Run(ctx, "test ! -f "+path, nil); err != nil {
+			return fmt.Errorf("expected file %q to be absent in VM: %w", path, err)
+		}
+		return nil
+	}
+}
+
 type bootstrapState struct {
-	Version   string   `json:"version"`
-	Provider  string   `json:"provider"`
-	Installed []string `json:"installed"`
+	Version      string   `json:"version"`
+	Provider     string   `json:"provider"`
+	Installed    []string `json:"installed"`
+	Integrations []string `json:"integrations"`
 }
 
 func loadBootstrapState(stateDir string) (*bootstrapState, error) {

@@ -1,0 +1,34 @@
+claude:
+  description: "Claude Code CLI"
+  dependencies:
+    - nodejs
+  check: |
+    claude --version >/dev/null 2>&1
+  install: |
+    curl -fsSL https://claude.ai/install.sh | bash
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "Claude Code CLI not found after install"; exit 1
+    fi
+  configure: |
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+
+    echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
+
+    {{ if .host_home }}
+    mkdir -p "$HOME/.claude"
+    PROJECTS_MOUNT="{{ .host_home }}/.aivm/.claude/projects"
+    mkdir -p "$PROJECTS_MOUNT"
+    ln -sfn "$PROJECTS_MOUNT" "$HOME/.claude/projects"
+    {{ end }}
+
+copilot:
+  description: "GitHub Copilot CLI (copilot cli)"
+  dependencies:
+    - system
+    - gh
+  launch_command: "gh copilot"
+  check: |
+    gh extension list 2>/dev/null | grep -q 'github/gh-copilot'
+  install: |
+    gh extension install github/gh-copilot 2>/dev/null || true

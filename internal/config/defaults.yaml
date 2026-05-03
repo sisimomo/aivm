@@ -15,8 +15,8 @@ idle:
   timeout: 5m
   delete_timeout: 5m
 
-agent:
-  provider: claude
+agents:
+  enabled: claude
 
 plugins:
   enabled:

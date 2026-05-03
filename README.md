@@ -19,8 +19,10 @@ MCP Gateway  →  port 7593               MCP client → host.lima.internal:7593
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Concepts: Plugins, Agents, Integrations](#concepts-plugins-agents-integrations)
 - [Choosing an Agent](#choosing-an-agent)
 - [Plugin System](#plugin-system)
+- [Integration System](#integration-system)
 - [MCP / MCPJungle](#mcp--mcpjungle)
 - [Idle Monitor & VM Lifecycle](#idle-monitor--vm-lifecycle)
 - [Base Image System](#base-image-system)
@@ -92,7 +94,7 @@ Every key can be overridden via environment variables using the `AIVM_` prefix w
 ```bash
 export AIVM_VM_CPUS=8
 export AIVM_IDLE_TIMEOUT=10m
-export AIVM_AGENT_PROVIDER=copilot
+export AIVM_AGENTS_ENABLED=copilot
 ```
 
 ### Full reference
@@ -117,11 +119,11 @@ idle:
   timeout: 5m        # suspend VM after this idle duration (Phase 1)
   delete_timeout: 5m # delete suspended VM after this additional duration (Phase 2)
 
-agent:
-  provider: claude   # claude | copilot
+agents:
+  enabled: claude    # claude | copilot  (exactly one agent at a time)
 
-  # Optional per-provider overrides:
-  # providers:
+  # Optional per-agent configuration:
+  # config:
   #   copilot:
   #     launch_command: "gh copilot"
 
@@ -212,6 +214,56 @@ Multiple `aivm` invocations can run simultaneously in the same VM — each gets 
 
 ---
 
+## Concepts: Plugins, Agents, Integrations
+
+aivm is built around three cleanly separated concepts:
+
+### Plugins — capabilities
+
+A **plugin** installs a tool or configures the VM environment. Plugins are independent of agents — they know nothing about Claude, Copilot, or any other AI provider. Each plugin declares:
+
+- A `check` script (idempotency: skip if already installed)
+- An `install` script (run once)
+- Optional `dependencies` (resolved automatically)
+- Optional `configure` script (post-install)
+
+Examples: `java`, `nodejs`, `rtk`, `claude`, `copilot`
+
+### Agents — runtime identities
+
+An **agent** is an AI coding assistant (Claude Code, GitHub Copilot, etc.). Agents are fully decoupled from plugins. You configure the active agent via `agent.provider`. Each provider:
+
+- Identifies itself by name (`claude`, `copilot`)
+- Declares its required VM plugin (e.g. the `claude` plugin)
+- Handles its own launch command
+
+Agents have no knowledge of which plugins are installed.
+
+### Integrations — cross-cutting configuration
+
+An **integration** bridges a plugin and an agent. It runs a `configure` script when:
+
+1. The specified plugin is **installed**
+2. The specified agent is **active**
+3. The `when` condition is satisfied (currently `installed`)
+
+Integrations are the *only* mechanism for agent-specific plugin configuration. Plugins never contain agent-specific logic; agents never contain plugin-specific logic.
+
+Built-in example: when `rtk` is installed *and* `claude` (or `copilot`) is active, the rtk→claude (or rtk→copilot) integration runs `rtk init -g --auto-patch` to wire rtk into the agent's global config.
+
+### Execution model
+
+```
+1. Install plugins   — resolve dependency graph, run check+install for each
+2. Initialize agents — select active provider from agent.provider
+3. Resolve integrations — find matching (installed plugin × active agent) pairs
+4. Execute integrations — run configure scripts for each match
+```
+
+Integrations are **idempotent**: each `from:to` pair runs exactly once, tracked in bootstrap state.
+
+---
+
 ## Choosing an Agent
 
 Set `agent.provider` in `aivm.yaml` (or `AIVM_AGENT_PROVIDER` env var):
@@ -242,12 +294,14 @@ All plugins are defined in YAML — no Go code required.
 | `python` | Python via `uv` | `system` |
 | `golang` | Go via apt | `system` |
 | `rtk` | rtk (token optimizer CLI) | `system` |
-| `claude` | Claude Code CLI + MCP config | `nodejs`, `rtk` |
+| `claude` | Claude Code CLI + MCP config | `nodejs` |
 | `copilot` | GitHub CLI + Copilot extension + MCP config | `system` |
 
 Enable or disable plugins under `plugins.enabled`. Dependency order is handled automatically.
 
 Each plugin is **idempotent**: it checks whether the tool is already installed before running.
+
+> **Note:** Agent-specific setup (e.g. wiring rtk into Claude's config) is handled by [integrations](#integration-system), not by the plugin itself.
 
 ### Custom plugins
 
@@ -283,6 +337,44 @@ aivm bootstrap                 # install all missing plugins
 Plugin scripts run **inside the Colima VM**, so you can freely install system packages, compile from source, etc.
 
 You can also use Go template syntax in scripts. Values from `plugins.config.<name>` are available as template variables (e.g. `{{ .version }}`).
+
+---
+
+## Integration System
+
+Integrations apply cross-cutting configuration when a plugin is installed *and* an agent is active. They run after all plugins are installed.
+
+### Built-in integrations
+
+| Integration | Runs when | Effect |
+|---|---|---|
+| `rtk → claude` | rtk installed + claude active | `rtk init -g --auto-patch` |
+| `rtk → copilot` | rtk installed + copilot active | `rtk init -g --auto-patch` |
+
+### Custom integrations
+
+Add your own in `aivm.yaml`:
+
+```yaml
+integrations:
+  - from: rtk
+    to: claude
+    when: installed
+    configure: |
+      rtk init -g --auto-patch 2>/dev/null || true
+  - from: rtk
+    to: copilot
+    when: installed
+    configure: |
+      rtk init -g --auto-patch 2>/dev/null || true
+```
+
+- `from`: plugin name that must be installed
+- `to`: agent name that must be active
+- `when`: condition — currently only `installed` is supported
+- `configure`: shell script run inside the VM when the condition is satisfied
+
+Integrations are **idempotent**: each `from:to` pair is tracked in bootstrap state and runs exactly once.
 
 ---
 
