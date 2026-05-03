@@ -136,6 +136,7 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			Profile:             profile,
 		},
 		MCP: config.MCPConfig{
+			Enable:     true,
 			Port:       19999, // unused — MCP is stubbed
 			DataDir:    filepath.Join(stateDir, "mcpjungle-data"),
 			ImageTag:   "latest",

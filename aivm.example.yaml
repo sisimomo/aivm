@@ -11,7 +11,8 @@ vm:
   dev_root: ~/dev   # host dev root mounted in VM at same path
   profile: aivm     # Colima profile name
 
-mcp:
+mcp_jungle:
+  enable: true
   port: 7593
   data_dir: ~/.aivm/mcpjungle-data
   image_tag: latest-stdio

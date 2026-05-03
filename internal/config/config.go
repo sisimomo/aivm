@@ -21,7 +21,7 @@ var defaultsYAML []byte
 
 type Config struct {
 	VM           VMConfig                      `mapstructure:"vm"`
-	MCP          MCPConfig                     `mapstructure:"mcp"`
+	MCP          MCPConfig                     `mapstructure:"mcp_jungle"`
 	Idle         IdleConfig                    `mapstructure:"idle"`
 	Agents       AgentsConfig                  `mapstructure:"agents"`
 	Plugins      PluginsConfig                 `mapstructure:"plugins"`
@@ -43,6 +43,7 @@ type VMConfig struct {
 }
 
 type MCPConfig struct {
+	Enable     bool   `mapstructure:"enable"`
 	Port       int    `mapstructure:"port"`
 	DataDir    string `mapstructure:"data_dir"`
 	ImageTag   string `mapstructure:"image_tag"`
@@ -74,16 +75,11 @@ type PluginsConfig struct {
 }
 
 // Defaults holds build-time-injectable values so that a dev build can use a
-// separate state directory, Colima profile, and MCP port without conflicting
-// with the production install.
+// separate state directory without conflicting with the production install.
 type Defaults struct {
 	// StateDir is the raw (unexpanded) path used as the home state directory,
 	// e.g. "~/.aivm" for prod or "~/.aivm-dev" for dev.
 	StateDir string
-	// VMProfile is the default Colima profile name, e.g. "aivm" or "aivm-dev".
-	VMProfile string
-	// MCPPort is the default port for the MCP/mcpjungle service.
-	MCPPort int
 }
 
 // ActiveAgents returns the active agent as a single-element slice, or nil if
@@ -96,16 +92,13 @@ func (c *Config) ActiveAgents() []string {
 }
 
 // Load reads aivm.yaml from the given path (or searches standard locations).
-// d provides build-time defaults so dev and prod builds stay isolated.
+// d provides build-time defaults (StateDir) so dev and prod builds stay isolated.
 func Load(cfgPath string, d Defaults) (*Config, error) {
 	v := viper.New()
 
 	if err := setDefaultsFromYAML(v, defaultsYAML); err != nil {
 		return nil, fmt.Errorf("loading config defaults: %w", err)
 	}
-	v.SetDefault("vm.profile", d.VMProfile)
-	v.SetDefault("mcp.port", d.MCPPort)
-	v.SetDefault("mcp.data_dir", d.StateDir+"/mcpjungle-data")
 
 	v.SetEnvPrefix("AIVM")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

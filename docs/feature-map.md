@@ -424,7 +424,7 @@ Each plugin is defined in `internal/plugin/defaults.yaml` or `internal/agent/def
 | Attribute | Detail |
 |---|---|
 | **Source** | `cmd/aivm/main.go`, `Makefile` |
-| **What it does** | Build-time linker flags (`-X main.defaultStateDir`, `-X main.defaultProfile`, `-X main.defaultMCPPort`) produce an isolated `aivm-dev` binary that uses `~/.aivm-dev/`, profile `aivm-dev`, and port `7594`, avoiding conflicts with the production install. The Makefile exposes `build-dev`, `install-dev`, `uninstall-dev` targets. |
+| **What it does** | Build-time linker flags (`-X main.defaultStateDir`) produce an isolated `aivm-dev` binary that uses `~/.aivm-dev/`, profile `aivm-dev`, and port `7594`, avoiding conflicts with the production install. The Makefile exposes `build-dev`, `install-dev`, `uninstall-dev` targets. |
 | **Dependencies** | Go linker flags, Makefile |
 | **Configuration** | Hardcoded in Makefile `DEV_*` variables |
 | **Complexity** | **Low** |

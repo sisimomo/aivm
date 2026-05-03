@@ -6,8 +6,11 @@ vm:
   max_age_days: 7
   base_image_max_age_days: 7
   dev_root: "~/dev"
+  profile: aivm
 
-mcp:
+mcp_jungle:
+  enable: true
+  port: 7593
   image_tag: latest-stdio
   server_mode: development
 

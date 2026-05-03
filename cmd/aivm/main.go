@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"strconv"
 
 	"aivm/internal/agent"
 	"aivm/internal/cli"
@@ -22,11 +21,9 @@ var version = "dev"
 
 // Build-time injectable defaults. Override via:
 //
-//	-ldflags "-X main.defaultStateDir=~/.aivm-dev -X main.defaultProfile=aivm-dev -X main.defaultMCPPort=7594"
+//	-ldflags "-X main.defaultStateDir=~/.aivm-dev"
 var (
 	defaultStateDir = "~/.aivm"
-	defaultProfile  = "aivm"
-	defaultMCPPort  = "7593"
 )
 
 func main() {
@@ -40,14 +37,8 @@ func main() {
 }
 
 func buildApp(cfgPath string) (*cli.App, error) {
-	port, _ := strconv.Atoi(defaultMCPPort)
-	if port == 0 {
-		port = 7593
-	}
 	d := config.Defaults{
 		StateDir:  defaultStateDir,
-		VMProfile: defaultProfile,
-		MCPPort:   port,
 	}
 
 	// Build the agent provider registry.
