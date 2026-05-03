@@ -2,19 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strconv"
 
 	"aivm/internal/agent"
 	"aivm/internal/cli"
 	"aivm/internal/config"
-	"aivm/internal/integration"
 	aivmlog "aivm/internal/log"
 	"aivm/internal/lifecycle"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
-	"aivm/internal/plugin"
 	"aivm/internal/providers/claude"
 	"aivm/internal/providers/copilot"
 	"aivm/internal/session"
@@ -52,26 +49,21 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		VMProfile: defaultProfile,
 		MCPPort:   port,
 	}
-	cfg, err := config.Load(cfgPath, d)
-	if err != nil {
-		return nil, fmt.Errorf("loading config: %w", err)
-	}
 
-	// Build the agent provider registry and select the active provider.
+	// Build the agent provider registry.
 	agentReg := agent.NewRegistry()
 	agentReg.Register(claude.New())
 	agentReg.Register(copilot.New())
 
-	activeAgents := cfg.ActiveAgents()
-	if len(activeAgents) == 0 {
-		return nil, fmt.Errorf("no agent configured — set agents.enabled in aivm.yaml")
-	}
-	providerName := cfg.Agents.Enabled
-	prov, ok := agentReg.Get(providerName)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent provider %q — supported: claude, copilot", providerName)
+	// Compose the full configuration: load config, merge agents, merge plugins,
+	// build the registry, and load integrations.
+	engine := &config.CompositionEngine{Defaults: d}
+	compResult, err := engine.Compose(cfgPath, agentReg)
+	if err != nil {
+		return nil, err
 	}
 
+	cfg := compResult.Config
 	vmInst := vm.NewColima(cfg.VM.Profile, cfg.StateDir)
 	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile)
 	if err != nil {
@@ -93,60 +85,25 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.Timeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 	mon.VMFactory = vm.ColimaFactory
 
-	reg := plugin.Global()
-
-	// Load bundled plugin definitions, then merge agent-specific plugin defs,
-	// then apply any user overrides from plugins.define.
-	defs, err := plugin.LoadDefaults()
-	if err != nil {
-		return nil, fmt.Errorf("loading plugin defaults: %w", err)
-	}
-	// Load built-in agent defs, merge user overrides from cfg.Agents.Define,
-	// then register the install lifecycle scripts in the plugin registry.
-	agentDefs, err := agent.LoadDefs()
-	if err != nil {
-		return nil, fmt.Errorf("loading agent defaults: %w", err)
-	}
-	for name, override := range cfg.Agents.Define {
-		base := agentDefs[name]
-		agentDefs[name] = agent.MergeDef(base, override)
-	}
-	for name, def := range agentDefs {
-		base := defs[name]
-		defs[name] = plugin.MergePluginDef(base, def.ToPluginDef())
-	}
-	for name, override := range cfg.Plugins.Define {
-		base := defs[name]
-		defs[name] = plugin.MergePluginDef(base, override)
-	}
-	for name, def := range defs {
-		reg.Set(plugin.NewYAMLPlugin(name, def))
-	}
-
-	integDefs, err := integration.LoadDefaults()
-	if err != nil {
-		return nil, fmt.Errorf("loading integration defaults: %w", err)
-	}
-
 	return &cli.App{
 		Config:   cfg,
 		VM:       vmInst,
 		MCP:      mcpMgr,
 		Sessions: sessions,
 		Monitor:  mon,
-		Agents:   agentReg,
+		Agents:   compResult.Agents,
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,
 			MCP:          mcpMgr,
 			Sessions:     sessions,
 			Monitor:      mon,
-			Registry:     reg,
-			Agents:       agentReg,
-			Provider:     prov,
-			AgentDefs:    agentDefs,
+			Registry:     compResult.Plugins,
+			Agents:       compResult.Agents,
+			Provider:     compResult.ActiveProvider,
+			AgentDefs:    map[string]agent.Def{compResult.ActiveProvider.Name(): compResult.ActiveAgentDef},
 			VMFactory:    vm.ColimaFactory,
-			Integrations: append(integDefs, cfg.Integrations...),
+			Integrations: compResult.Integrations,
 			Confirmer:    lifecycle.NewTTYConfirmer(),
 		},
 	}, nil
