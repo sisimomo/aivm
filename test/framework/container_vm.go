@@ -180,14 +180,12 @@ func buildBashCmd(script string, env map[string]string) string {
 	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\"; ec=$?; rm -f \"$t\"; exit $ec"
 }
 
-// SSH opens an interactive shell session in the container. Used only manually,
-// not called by automated tests.
+// SSH is a no-op for Docker-based test VMs. Interactive PTY sessions require
+// a real terminal, which automated tests do not have. TestSSHAutoStart exercises
+// the auto-start and bootstrap path inside LifecycleService.SSH; the shell
+// session itself is out of scope for automated tests.
 func (d *DockerVM) SSH(_ context.Context) error {
-	cmd := exec.Command("docker", "exec", "-it", "-u", testContainerUser, d.containerName, "bash", "-l")
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
+	return nil
 }
 
 // WaitReady polls until the container responds to a simple echo command.
