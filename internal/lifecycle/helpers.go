@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,75 +36,12 @@ func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, conf
 	return enabled
 }
 
-func requiredPluginsInstalled(provider agent.Provider, installed []string) bool {
-	set := stringSet(installed)
-	for _, p := range provider.RequiredPlugins() {
-		if !set[p] {
-			return false
-		}
-	}
-	return true
-}
-
-func installedProvidersFromState(svc *LifecycleService, state *BootstrapState) map[string]bool {
-	result := make(map[string]bool)
-	for name, provider := range svc.Agents.All() {
-		required := provider.RequiredPlugins()
-		if len(required) == 0 {
-			continue
-		}
-		allPresent := true
-		for _, p := range required {
-			if !state.IsInstalled(p) {
-				allPresent = false
-				break
-			}
-		}
-		if allPresent {
-			result[name] = true
-		}
-	}
-	return result
-}
-
-func installedProviderDescriptions(svc *LifecycleService, installed map[string]bool) []string {
-	providers := svc.Agents.All()
-	names := make([]string, 0, len(installed))
-	for name := range installed {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	out := make([]string, 0, len(names))
-	for _, name := range names {
-		if provider, ok := providers[name]; ok {
-			out = append(out, provider.Description())
-		} else {
-			out = append(out, name)
-		}
-	}
-	return out
-}
-
 func stringSet(items []string) map[string]bool {
 	m := make(map[string]bool, len(items))
 	for _, s := range items {
 		m[s] = true
 	}
 	return m
-}
-
-func mergeStrings(base, additions []string) []string {
-	set := stringSet(base)
-	result := make([]string, len(base))
-	copy(result, base)
-	for _, s := range additions {
-		if !set[s] {
-			result = append(result, s)
-			set[s] = true
-		}
-	}
-	return result
 }
 
 func vmCreatedRecently(stateDir string) bool {

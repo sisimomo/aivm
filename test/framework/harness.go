@@ -238,12 +238,14 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	for name, def := range agentDefs {
 		defs[name] = def.ToPluginDef()
 	}
+	stubDefs := make(map[string]plugin.PluginDef, len(defs))
 	for name := range defs {
 		stub := plugin.PluginDef{
 			Description: name + " (test stub)",
-			Check:       "[ -f /tmp/.aivm_test_" + name + "_installed ]",
-			Install:     "touch /tmp/.aivm_test_" + name + "_installed",
+			SkipIf:      "[ -f /tmp/.aivm_test_" + name + "_installed ]",
+			Setup:       "touch /tmp/.aivm_test_" + name + "_installed",
 		}
+		stubDefs[name] = stub
 		reg.Set(plugin.NewYAMLPlugin(name, stub))
 	}
 
@@ -264,6 +266,7 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Agents:       agentReg,
 		Provider:     prov,
 		AgentDefs:    agentDefs,
+		PluginDefs:   stubDefs,
 		VMFactory:    factory,
 		// Integrations: replace production scripts with lightweight marker-file
 		// stubs so tests don't run real tool setup inside the container.
@@ -314,7 +317,7 @@ func buildTestIntegrations(tc testConfig) []integration.IntegrationDef {
 			Name:      d.Name,
 			From:      d.From,
 			To:        d.To,
-			When:      d.When,
+			SkipIf:    "[ -f /tmp/.aivm_test_integ_" + key + " ]",
 			Configure: "touch /tmp/.aivm_test_integ_" + key,
 		})
 	}

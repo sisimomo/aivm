@@ -1,14 +1,13 @@
 system:
   description: "System packages (apt: git, curl, jq, etc.)"
-  check: |
+  skip_if: |
     which jq >/dev/null 2>&1
-  install: |
+  setup: |
     export DEBIAN_FRONTEND=noninteractive
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends \
       git curl wget unzip zip ca-certificates gnupg lsb-release \
       bash-completion jq htop python3
-  configure: |
     printf 'export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.claude/local/bin:$PATH"\n' | sudo tee /etc/profile.d/aivm.sh > /dev/null
     sudo chmod 0644 /etc/profile.d/aivm.sh
 
@@ -19,9 +18,9 @@ java:
   defaults:
     version: "25"
     distribution: temurin
-  check: |
+  skip_if: |
     java -version 2>&1 | grep -qE 'version "{{ .version }}|"{{ .version }}\.'
-  install: |
+  setup: |
     export DEBIAN_FRONTEND=noninteractive
     sudo mkdir -p /etc/apt/keyrings
     wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
@@ -35,9 +34,9 @@ maven:
   description: "Apache Maven (latest 3.x)"
   dependencies:
     - java
-  check: |
+  skip_if: |
     mvn --version >/dev/null 2>&1
-  install: |
+  setup: |
     MAVEN_INSTALL_DIR="/opt/maven"
     MAVEN_VERSION=$(curl -s "https://dlcdn.apache.org/maven/maven-3/" \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | sort -V | tail -1 | tr -d '/')
@@ -59,9 +58,9 @@ nodejs:
     - system
   defaults:
     version: lts
-  check: |
+  skip_if: |
     node --version >/dev/null 2>&1
-  install: |
+  setup: |
     export DEBIAN_FRONTEND=noninteractive
     curl -fsSL https://deb.nodesource.com/setup_{{ .version }}.x | sudo -E bash -
     sudo apt-get install -y nodejs
@@ -72,9 +71,9 @@ python:
     - system
   defaults:
     tool: uv
-  check: |
+  skip_if: |
     uv --version >/dev/null 2>&1
-  install: |
+  setup: |
     INSTALLER_NO_MODIFY_PATH=1 curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     uv python install
@@ -83,18 +82,18 @@ rtk:
   description: "rtk (Rust Token Killer)"
   dependencies:
     - system
-  check: |
+  skip_if: |
     rtk --version >/dev/null 2>&1
-  install: |
+  setup: |
     curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
 
 golang:
   description: "Go (Golang) programming language"
   dependencies:
     - system
-  check: |
+  skip_if: |
     go version >/dev/null 2>&1
-  install: |
+  setup: |
     export DEBIAN_FRONTEND=noninteractive
     sudo apt-get update -qq
     sudo apt-get install -y golang-go
@@ -103,9 +102,9 @@ gh:
   description: "GitHub CLI (gh) for interacting with GitHub from the command line"
   dependencies:
     - system
-  check: |
+  skip_if: |
     gh --version >/dev/null 2>&1
-  install: |
+  setup: |
     export DEBIAN_FRONTEND=noninteractive
     
     (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \

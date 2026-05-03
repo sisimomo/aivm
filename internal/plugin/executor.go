@@ -61,12 +61,12 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		}
 
 		if !force {
-			already, err := p.Check(ctx, env)
+			skip, err := p.SkipIf(ctx, env)
 			if err != nil {
-				e.log().Warn("check failed for plugin %s: %v", p.Name(), err)
+				e.log().Warn("skip_if failed for plugin %s: %v", p.Name(), err)
 			}
-			if already {
-				e.log().Info("skip %s (already installed)", p.Name())
+			if skip {
+				e.log().Info("skip %s (already set up)", p.Name())
 				continue
 			}
 		}
@@ -74,14 +74,11 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		e.log().Step("Plugin: %s", p.Name())
 		start := time.Now()
 
-		if err := p.Install(ctx, env); err != nil {
-			return fmt.Errorf("install %s: %w", p.Name(), err)
-		}
-		if err := p.Configure(ctx, env); err != nil {
-			return fmt.Errorf("configure %s: %w", p.Name(), err)
+		if err := p.Setup(ctx, env); err != nil {
+			return fmt.Errorf("setup %s: %w", p.Name(), err)
 		}
 
-		e.log().Success("%s installed (%s)", p.Name(), time.Since(start).Round(time.Second))
+		e.log().Success("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second))
 	}
 	return nil
 }

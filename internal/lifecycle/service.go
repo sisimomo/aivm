@@ -35,6 +35,10 @@ type LifecycleService struct {
 	// AgentDefs is the effective set of agent definitions (built-in defaults
 	// merged with user overrides). Used by Launch to pass runtime config to the provider.
 	AgentDefs map[string]agent.Def
+	// PluginDefs is the effective set of all plugin definitions after merging
+	// built-in defaults, agent definitions, and user overrides. Used for config
+	// hash computation (change detection).
+	PluginDefs map[string]plugin.PluginDef
 	// Provider is the active AI agent provider selected from the config.
 	Provider agent.Provider
 	// Integrations is the complete list of integrations to evaluate during bootstrap.
@@ -430,12 +434,7 @@ func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, f
 		if err := eng.Run(ctx, force); err != nil {
 			return err
 		}
-		state, _ := loadBootstrapState(svc.Config.StateDir)
-		if state != nil {
-			state.MarkInstalled([]string{onlyPlugin})
-			_ = saveBootstrapState(svc.Config.StateDir, state)
-		}
-		return nil
+		return svc.recordBootstrapState()
 	}
 
 	if force {

@@ -95,6 +95,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 			Agents:       compResult.Agents,
 			Provider:     compResult.ActiveProvider,
 			AgentDefs:    map[string]agent.Def{compResult.ActiveProvider.Name(): compResult.ActiveAgentDef},
+			PluginDefs:   compResult.PluginDefs,
 			VMFactory:    vm.ColimaFactory,
 			Integrations: compResult.Integrations,
 			Confirmer:    lifecycle.NewTTYConfirmer(),

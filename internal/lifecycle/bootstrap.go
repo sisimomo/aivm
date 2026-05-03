@@ -58,26 +58,21 @@ func (svc *LifecycleService) rebuildBootstrap(ctx context.Context, v vm.VM) erro
 	return nil
 }
 
-// runIntegrationsFromState loads the current bootstrap state and executes any
-// integrations that are newly applicable. It saves updated state when integrations run.
+// runIntegrationsFromState executes integrations whose From/To conditions are
+// satisfied. InstalledPlugins is derived from the current enabled plugin list
+// (all enabled plugins are considered set up after a successful full bootstrap).
+// Each integration's skip_if script gates whether it actually runs.
 func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targetVM vm.VM) error {
 	if len(svc.Integrations) == 0 {
 		return nil
 	}
-	state, err := loadBootstrapState(svc.Config.StateDir)
-	if err != nil {
-		svc.log().Warn("could not read bootstrap state for integrations: %v", err)
-		return nil
-	}
-	if state == nil {
-		return nil
-	}
+
+	enabledPlugins := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
 
 	exec := &integration.Executor{
 		Integrations:     svc.Integrations,
-		InstalledPlugins: stringSet(state.AllInstalled()),
+		InstalledPlugins: stringSet(enabledPlugins),
 		ActiveAgents:     svc.Config.ActiveAgents(),
-		AlreadyRan:       stringSet(state.AllIntegrations()),
 		VM:               targetVM,
 		Log:              svc.log().Writer("integration"),
 		TemplateVars: map[string]any{
@@ -94,16 +89,8 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 		svc.log().Step("Integration: %s → %s", integ.Key(), integ.To)
 	}
 
-	ran, err := exec.Run(ctx)
-	if err != nil {
+	if _, err := exec.Run(ctx); err != nil {
 		return fmt.Errorf("running integrations: %w", err)
-	}
-
-	if len(ran) > 0 {
-		state.MarkIntegrationRan(ran)
-		if saveErr := saveBootstrapState(svc.Config.StateDir, state); saveErr != nil {
-			svc.log().Warn("could not save bootstrap state after integrations: %v", saveErr)
-		}
 	}
 	return nil
 }

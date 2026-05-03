@@ -58,6 +58,11 @@ type CompositionResult struct {
 	// (built-in defaults merged with user overrides).
 	ActiveAgentDef agent.Def
 
+	// PluginDefs is the effective set of all plugin definitions after merging
+	// built-in defaults, agent definitions, and user overrides. Used for config
+	// hash computation.
+	PluginDefs map[string]plugin.PluginDef
+
 	// Integrations is the complete list of integrations (built-in + config overrides).
 	Integrations []integration.IntegrationDef
 }
@@ -154,11 +159,12 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	integDefs = append(integDefs, cfg.Integrations...)
 
 	return &CompositionResult{
-		Config:             cfg,
-		Plugins:            pluginReg,
-		Agents:             agents,
-		ActiveProvider:     prov,
-		ActiveAgentDef:     activeAgentDef,
-		Integrations:       integDefs,
+		Config:         cfg,
+		Plugins:        pluginReg,
+		Agents:         agents,
+		ActiveProvider: prov,
+		ActiveAgentDef: activeAgentDef,
+		PluginDefs:     pluginDefs,
+		Integrations:   integDefs,
 	}, nil
 }

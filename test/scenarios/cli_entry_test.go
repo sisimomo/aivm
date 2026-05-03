@@ -83,7 +83,7 @@ func TestCLIBootstrapPluginFlag(t *testing.T) {
 		Assert("At least one script ran (the java plugin's steps)",
 			assertions.VMRunCountAtLeast(1)).
 		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
-		Assert("User saw java installed confirmation", assertions.OutputContains("java installed")).
+		Assert("User saw java installed confirmation", assertions.OutputContains("java set up")).
 		Run()
 }
 

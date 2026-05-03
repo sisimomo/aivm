@@ -94,7 +94,7 @@ func TestBootstrapCommandSinglePlugin(t *testing.T) {
 		Step("Run bootstrap --plugin java (only java plugin)", actions.CLI("bootstrap", "--plugin", "java")).
 		Assert("At least one script ran (the java plugin's steps)", assertions.VMRunCountAtLeast(1)).
 		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
-		Assert("User saw java installed message", assertions.OutputContains("java installed")).
+		Assert("User saw java installed message", assertions.OutputContains("java set up")).
 		Run()
 }
 

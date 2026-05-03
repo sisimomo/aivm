@@ -45,9 +45,9 @@ idle:
 #     rust:
 #       description: "Rust toolchain via rustup"
 #       dependencies: [system]
-#       check: |
+#       skip_if: |
 #         rustc --version >/dev/null 2>&1
-#       install: |
+#       setup: |
 #         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # Override an agent's launch command or install steps.
@@ -60,5 +60,7 @@ idle:
 # integrations:
 #   - from: my-tool
 #     to: claude
+#     skip_if: |
+#       my-tool status --agent claude >/dev/null 2>&1
 #     configure: |
 #       my-tool configure --agent claude

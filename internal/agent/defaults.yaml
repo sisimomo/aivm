@@ -2,15 +2,15 @@ claude:
   description: "Claude Code CLI"
   dependencies:
     - nodejs
-  check: |
+  skip_if: |
     claude --version >/dev/null 2>&1
-  install: |
+  setup: |
     curl -fsSL https://claude.ai/install.sh | bash
     export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
     if ! command -v claude >/dev/null 2>&1; then
       echo "Claude Code CLI not found after install"; exit 1
     fi
-  configure: |
+
     export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
 
     echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
@@ -28,7 +28,7 @@ copilot:
     - system
     - gh
   launch_command: "gh copilot"
-  check: |
+  skip_if: |
     gh extension list 2>/dev/null | grep -q 'github/gh-copilot'
-  install: |
+  setup: |
     gh extension install github/gh-copilot 2>/dev/null || true

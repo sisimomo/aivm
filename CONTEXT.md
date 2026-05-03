@@ -16,17 +16,19 @@ This document defines key concepts used across the codebase. Consistent terminol
 
 ### Bootstrap & Installation
 
-**Plugin** — A piece of VM setup logic. Declares a `check` script (idempotency test), an `install` script, optional dependencies, and optional configuration. Examples: `java`, `nodejs`, `rtk`, `claude`, `copilot`.
+**Plugin** — A piece of VM setup logic. Declares a `skip_if` script (exit 0 = already set up, skip), a `setup` script, optional dependencies, and optional configuration. Examples: `java`, `nodejs`, `rtk`, `claude`, `copilot`.
 
 **Plugin Dependency Graph** — The set of `dependencies` declared by all plugins, resolved into a topological order so each plugin runs only after its dependencies are satisfied.
 
 **Plugin Registry** — The registry of all available plugins. Built-in plugins are loaded from YAML defaults; user overrides are merged in from the config file.
 
-**Bootstrap** — The process of ensuring the VM has all required tools installed. Runs the plugin DAG in order, checks each plugin's idempotency, and tracks completion.
+**Bootstrap** — The process of ensuring the VM has all required tools installed. Runs the plugin DAG in order, checks each plugin's `skip_if` script for idempotency, and saves bootstrap state on success.
 
-**Bootstrap State** — Persistent record of what has been bootstrapped. Includes bootstrap version (schema marker), timestamps, and per-plugin state. Used to detect when the schema has changed and triggers a reconcile.
+**Bootstrap State** — Persistent host-side record (`bootstrap-state.json`) containing the bootstrap schema version, active provider name, and a hash of all execution-relevant configuration (`config_hash`). Used for change detection: if the hash matches the current config, bootstrap is skipped entirely.
 
-**Reconcile** — Running bootstrap without forcing all plugins to reinstall. Each plugin's `check` script determines whether it runs; already-installed plugins are skipped.
+**Config Hash** — A SHA-256 digest computed over the enabled plugin list, effective plugin definitions, plugin config overrides, integration definitions, and active provider name. Stored in Bootstrap State. Any change to these inputs produces a different hash, triggering a full reconcile on next start.
+
+**Reconcile** — Running bootstrap without forcing all plugins to reinstall (`force=false`). Each plugin's `skip_if` script determines whether it runs; already-set-up plugins are skipped.
 
 ### Integration & Agent Setup
 
@@ -34,7 +36,7 @@ This document defines key concepts used across the codebase. Consistent terminol
 
 **Agent Provider** — The concrete implementation of an agent (e.g., `claude`, `copilot`). Handles authentication, launch command, and runtime configuration.
 
-**Integration** — A rule that applies plugin configuration when a specific agent becomes active. Runs after bootstrap completes. Example: "when `rtk` is installed and `claude` is active, run `rtk init -g --auto-patch`".
+**Integration** — A rule that applies plugin configuration when a specific agent becomes active. Runs after bootstrap completes. Has a `skip_if` script for idempotency. Example: "when `rtk` is installed and `claude` is active, run `rtk init -g --auto-patch`".
 
 **Agent Definition** — Metadata about an agent: its name, required plugin, bootstrap scripts, and MCP client config. Merges built-in defaults with user overrides from the config file.
 

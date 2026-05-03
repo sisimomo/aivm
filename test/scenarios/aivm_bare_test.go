@@ -83,7 +83,7 @@ func TestBareCommandCWDOutsideDevRoot(t *testing.T) {
 		Step("Override CWD to /tmp (outside DevRoot)", setCWD(h, "/tmp")).
 		Step("Run: aivm (bare) — expect error", assertStepFails(
 			actions.CLI(),
-			"not under AIVM_DEV_ROOT",
+			"not under any configured VM mount",
 		)).
 		Assert("Agent was NOT launched (error occurred before dispatch)",
 			assertions.AgentLaunchCount(0)).

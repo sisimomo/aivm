@@ -2,15 +2,14 @@ package agent
 
 import "aivm/internal/plugin"
 
-// Def is the definition of an AI agent: how to install it in the VM,
-// configure it, and its runtime launch settings.
+// Def is the definition of an AI agent: how to set it up in the VM
+// and its runtime launch settings.
 // This is semantically distinct from plugin.PluginDef — agents are not plugins.
 type Def struct {
 	Description  string `yaml:"description"  mapstructure:"description"`
 	Dependencies []string `yaml:"dependencies" mapstructure:"dependencies"`
-	Check        string `yaml:"check"        mapstructure:"check"`
-	Install      string `yaml:"install"      mapstructure:"install"`
-	Configure    string `yaml:"configure"    mapstructure:"configure"`
+	SkipIf       string `yaml:"skip_if"      mapstructure:"skip_if"`
+	Setup        string `yaml:"setup"        mapstructure:"setup"`
 	LaunchCommand string `yaml:"launch_command" mapstructure:"launch_command"`
 }
 
@@ -20,9 +19,8 @@ func (d Def) ToPluginDef() plugin.PluginDef {
 	return plugin.PluginDef{
 		Description:  d.Description,
 		Dependencies: d.Dependencies,
-		Check:        d.Check,
-		Install:      d.Install,
-		Configure:    d.Configure,
+		SkipIf:       d.SkipIf,
+		Setup:        d.Setup,
 	}
 }
 
@@ -35,14 +33,11 @@ func MergeDef(base, override Def) Def {
 	if len(override.Dependencies) > 0 {
 		result.Dependencies = override.Dependencies
 	}
-	if override.Check != "" {
-		result.Check = override.Check
+	if override.SkipIf != "" {
+		result.SkipIf = override.SkipIf
 	}
-	if override.Install != "" {
-		result.Install = override.Install
-	}
-	if override.Configure != "" {
-		result.Configure = override.Configure
+	if override.Setup != "" {
+		result.Setup = override.Setup
 	}
 	if override.LaunchCommand != "" {
 		result.LaunchCommand = override.LaunchCommand
