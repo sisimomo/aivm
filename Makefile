@@ -5,7 +5,7 @@ INSTALL_DIR := /usr/local/bin
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -ldflags="-s -w -X main.defaultStateDir=$(STATE_DIR) -X main.version=$(VERSION)"
 
-.PHONY: build install uninstall clean test test-integration build-test-image fmt vet
+.PHONY: build install uninstall clean test test-integration build-test-image fmt vet release-snapshot release-dry-run
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -44,3 +44,9 @@ fmt:
 
 vet:
 	go vet ./...
+
+release-snapshot:
+	goreleaser release --snapshot --clean
+
+release-dry-run:
+	goreleaser release --skip=publish --clean

@@ -1,0 +1,18 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+  exclusions:
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
