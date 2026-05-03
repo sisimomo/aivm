@@ -12,18 +12,21 @@ import (
 // suitable for tests (minimal VM resources, short idle timeouts).
 type testConfig struct {
 	CPUs          int
-	MemoryGiB     int
-	DiskGiB       int
+	MemoryBytes   int64
+	DiskBytes     int64
 	VMType        string
+	// DevRoot is a convenience field: if set, a single rw ParsedMount is created.
 	DevRoot       string
 	IdleTimeout   time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
 	Plugins       []string
-	// MaxAgeDays sets VM.MaxAgeDays (how old a VM is before the user is asked to recreate it).
-	MaxAgeDays int
-	// BaseImageMaxAgeDays sets VM.BaseImageMaxAgeDays (how old a base image is before rebuild prompt).
-	BaseImageMaxAgeDays int
+	// RecreatePromptAfter sets VM.RecreatePromptAfterDuration.
+	// Use config.DisabledDuration to disable. Zero means use default (disabled).
+	RecreatePromptAfter time.Duration
+	// BaseImageRebuildPromptAfter sets VM.BaseImageRebuildPromptAfterDuration.
+	// Use config.DisabledDuration to disable. Zero means use default (disabled).
+	BaseImageRebuildPromptAfter time.Duration
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
 	// Integrations is an optional list of additional integrations to include alongside
@@ -38,8 +41,8 @@ type testConfig struct {
 func defaultTestConfig() testConfig {
 	return testConfig{
 		CPUs:          1,
-		MemoryGiB:     2,
-		DiskGiB:       10,
+		MemoryBytes:   2 << 30, // 2 GiB
+		DiskBytes:     10 << 30, // 10 GiB
 		VMType:        "vz",
 		DevRoot:       "", // computed in New() as <testRunDir>/dev unless overridden
 		IdleTimeout:   10 * time.Second,
@@ -57,15 +60,15 @@ type Option func(*testConfig)
 func WithCPUs(n int) Option { return func(c *testConfig) { c.CPUs = n } }
 
 // WithMemoryGiB sets the RAM (GiB) for the test VM.
-func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.MemoryGiB = n } }
+func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.MemoryBytes = int64(n) << 30 } }
 
 // WithDiskGiB sets the disk size (GiB) for the test VM.
-func WithDiskGiB(n int) Option { return func(c *testConfig) { c.DiskGiB = n } }
+func WithDiskGiB(n int) Option { return func(c *testConfig) { c.DiskBytes = int64(n) << 30 } }
 
 // WithVMType overrides the VM hypervisor type (e.g. "vz", "qemu").
 func WithVMType(t string) Option { return func(c *testConfig) { c.VMType = t } }
 
-// WithDevRoot sets the dev root directory mounted into the VM.
+// WithDevRoot sets the dev root directory mounted into the VM (convenience — creates one rw mount).
 func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
 
 // WithIdleTimeout sets the idle-stop timeout for the monitor.
@@ -84,18 +87,26 @@ func WithPlugins(names ...string) Option {
 	return func(c *testConfig) { c.Plugins = names }
 }
 
-// WithMaxAgeDays configures the VM.MaxAgeDays threshold. When the VM is older
-// than this many days, DoStart will prompt the user to recreate it.
-// Set to 0 (default) to disable the age check.
-func WithMaxAgeDays(days int) Option {
-	return func(c *testConfig) { c.MaxAgeDays = days }
+// WithRecreatePromptAfter configures the VM age threshold after which the user is prompted.
+// Use config.DisabledDuration to disable the prompt entirely.
+func WithRecreatePromptAfter(d time.Duration) Option {
+	return func(c *testConfig) { c.RecreatePromptAfter = d }
 }
 
-// WithBaseImageMaxAgeDays configures the BaseImageMaxAgeDays threshold.
-// When the base image is older than this many days, DoLaunch will prompt the
-// user to rebuild. Set to 0 (default) to disable.
+// WithBaseImageRebuildPromptAfter configures the base image age threshold after which the user is prompted.
+// Use config.DisabledDuration to disable the prompt entirely.
+func WithBaseImageRebuildPromptAfter(d time.Duration) Option {
+	return func(c *testConfig) { c.BaseImageRebuildPromptAfter = d }
+}
+
+// WithMaxAgeDays is a convenience wrapper for WithRecreatePromptAfter using days.
+func WithMaxAgeDays(days int) Option {
+	return WithRecreatePromptAfter(time.Duration(days) * 24 * time.Hour)
+}
+
+// WithBaseImageMaxAgeDays is a convenience wrapper for WithBaseImageRebuildPromptAfter using days.
 func WithBaseImageMaxAgeDays(days int) Option {
-	return func(c *testConfig) { c.BaseImageMaxAgeDays = days }
+	return WithBaseImageRebuildPromptAfter(time.Duration(days) * 24 * time.Hour)
 }
 
 // WithProvider selects the AI agent provider by name (e.g. "claude", "copilot").
@@ -124,16 +135,30 @@ func WithIntegrations(defs ...integration.IntegrationDef) Option {
 }
 
 func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
+	var parsedMounts []config.Mount
+	if tc.DevRoot != "" {
+		parsedMounts = []config.Mount{{HostPath: tc.DevRoot, Writable: true}}
+	}
+
+	recreatePromptAfter := tc.RecreatePromptAfter
+	if recreatePromptAfter == 0 {
+		recreatePromptAfter = config.DisabledDuration
+	}
+	baseImageRebuildPromptAfter := tc.BaseImageRebuildPromptAfter
+	if baseImageRebuildPromptAfter == 0 {
+		baseImageRebuildPromptAfter = config.DisabledDuration
+	}
+
 	return &config.Config{
 		VM: config.VMConfig{
-			CPUs:                tc.CPUs,
-			MemoryGiB:           tc.MemoryGiB,
-			DiskGiB:             tc.DiskGiB,
-			Type:                tc.VMType,
-			MaxAgeDays:          tc.MaxAgeDays,
-			BaseImageMaxAgeDays: tc.BaseImageMaxAgeDays,
-			DevRoot:             tc.DevRoot,
-			Profile:             profile,
+			CPUs:                                 tc.CPUs,
+			MemoryBytes:                          tc.MemoryBytes,
+			DiskBytes:                            tc.DiskBytes,
+			Type:                                 tc.VMType,
+			RecreatePromptAfterDuration:          recreatePromptAfter,
+			BaseImageRebuildPromptAfterDuration:  baseImageRebuildPromptAfter,
+			ParsedMounts:                         parsedMounts,
+			ColimaProfile:                        profile,
 		},
 		MCP: config.MCPConfig{
 			Enable:     true,
@@ -143,7 +168,7 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			ServerMode: "development",
 		},
 		Idle: config.IdleConfig{
-			Timeout:       tc.IdleTimeout,
+			StopTimeout:   tc.IdleTimeout,
 			DeleteTimeout: tc.DeleteTimeout,
 		},
 		Agents: config.AgentsConfig{
@@ -155,3 +180,4 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 		StateDir: stateDir,
 	}
 }
+

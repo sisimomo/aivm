@@ -20,26 +20,48 @@ import (
 var defaultsYAML []byte
 
 type Config struct {
-	VM           VMConfig                      `mapstructure:"vm"`
-	MCP          MCPConfig                     `mapstructure:"mcp_jungle"`
-	Idle         IdleConfig                    `mapstructure:"idle"`
-	Agents       AgentsConfig                  `mapstructure:"agents"`
-	Plugins      PluginsConfig                 `mapstructure:"plugins"`
-	Integrations []integration.IntegrationDef  `mapstructure:"integrations"`
-	Debug        bool                          `mapstructure:"debug"`
+	VM           VMConfig                     `mapstructure:"vm"`
+	MCP          MCPConfig                    `mapstructure:"mcp_jungle"`
+	Idle         IdleConfig                   `mapstructure:"idle"`
+	Agents       AgentsConfig                 `mapstructure:"agents"`
+	Plugins      PluginsConfig                `mapstructure:"plugins"`
+	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
+	Debug        bool                         `mapstructure:"debug"`
 
 	StateDir string `mapstructure:"-"`
 }
 
+// Mount represents a single host directory mounted into the VM.
+type Mount struct {
+	HostPath string
+	Writable bool
+}
+
+// VMConfig holds VM configuration. String fields use human-readable units
+// (e.g. "8GB", "7d") and are validated and parsed into the Parsed* fields
+// during config loading via validateAndParse.
 type VMConfig struct {
-	CPUs                int    `mapstructure:"cpus"`
-	MemoryGiB           int    `mapstructure:"memory"`
-	DiskGiB             int    `mapstructure:"disk"`
-	Type                string `mapstructure:"type"`
-	MaxAgeDays          int    `mapstructure:"max_age_days"`
-	BaseImageMaxAgeDays int    `mapstructure:"base_image_max_age_days"`
-	DevRoot             string `mapstructure:"dev_root"`
-	Profile             string `mapstructure:"profile"`
+	CPUs          int      `mapstructure:"cpus"`
+	Memory        string   `mapstructure:"memory"`        // "8GB", "512MB", "1TB"
+	Disk          string   `mapstructure:"disk"`          // "60GB"
+	Type          string   `mapstructure:"type"`          // "vz", "qemu", or "" for auto-detect
+	Mounts        []string `mapstructure:"mounts"`        // ["~/dev:rw", "~/.ssh:ro"]
+	ColimaProfile string   `mapstructure:"colima_profile"`
+
+	// RecreatePromptAfter is the staleness threshold after which the user is
+	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
+	RecreatePromptAfter string `mapstructure:"recreate_prompt_after"`
+
+	// BaseImageRebuildPromptAfter is the staleness threshold after which the
+	// user is prompted to rebuild the base image. Format: "7d", "12h", "-1".
+	BaseImageRebuildPromptAfter string `mapstructure:"base_image_rebuild_prompt_after"`
+
+	// Parsed fields — populated by validateAndParse, never read from YAML.
+	MemoryBytes                         int64         `mapstructure:"-"`
+	DiskBytes                           int64         `mapstructure:"-"`
+	RecreatePromptAfterDuration         time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
+	BaseImageRebuildPromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
+	ParsedMounts                        []Mount       `mapstructure:"-"`
 }
 
 type MCPConfig struct {
@@ -51,7 +73,7 @@ type MCPConfig struct {
 }
 
 type IdleConfig struct {
-	Timeout       time.Duration `mapstructure:"timeout"`
+	StopTimeout   time.Duration `mapstructure:"stop_timeout"`
 	DeleteTimeout time.Duration `mapstructure:"delete_timeout"`
 }
 
@@ -130,11 +152,74 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	cfg.VM.DevRoot = expandPath(cfg.VM.DevRoot, home)
 	cfg.MCP.DataDir = expandPath(cfg.MCP.DataDir, home)
 	cfg.StateDir = stateDir
 
+	if err := validateAndParse(&cfg, home); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// validateAndParse validates raw config values and populates all Parsed* fields
+// on VMConfig. Hard errors are returned immediately — no silent coercion.
+func validateAndParse(cfg *Config, home string) error {
+	vm := &cfg.VM
+
+	// --- memory ---
+	memBytes, err := ParseResourceBytes(vm.Memory)
+	if err != nil {
+		return fmt.Errorf("vm.memory: %w", err)
+	}
+	vm.MemoryBytes = memBytes
+
+	// --- disk ---
+	diskBytes, err := ParseResourceBytes(vm.Disk)
+	if err != nil {
+		return fmt.Errorf("vm.disk: %w", err)
+	}
+	vm.DiskBytes = diskBytes
+
+	// --- vm type ---
+	switch vm.Type {
+	case "", "vz", "qemu":
+		// valid (empty = auto-detect at runtime)
+	default:
+		return fmt.Errorf("vm.type: unsupported value %q — use \"vz\", \"qemu\", or omit for auto-detection", vm.Type)
+	}
+
+	// --- colima profile ---
+	if vm.ColimaProfile == "" {
+		return fmt.Errorf("vm.colima_profile: must not be empty")
+	}
+
+	// --- recreate_prompt_after ---
+	rpa, err := ParsePromptDuration(vm.RecreatePromptAfter)
+	if err != nil {
+		return fmt.Errorf("vm.recreate_prompt_after: %w", err)
+	}
+	vm.RecreatePromptAfterDuration = rpa
+
+	// --- base_image_rebuild_prompt_after ---
+	bipa, err := ParsePromptDuration(vm.BaseImageRebuildPromptAfter)
+	if err != nil {
+		return fmt.Errorf("vm.base_image_rebuild_prompt_after: %w", err)
+	}
+	vm.BaseImageRebuildPromptAfterDuration = bipa
+
+	// --- mounts ---
+	parsed := make([]Mount, 0, len(vm.Mounts))
+	for _, spec := range vm.Mounts {
+		m, err := ParseMount(spec, home)
+		if err != nil {
+			return fmt.Errorf("vm.mounts: %w", err)
+		}
+		parsed = append(parsed, m)
+	}
+	vm.ParsedMounts = parsed
+
+	return nil
 }
 
 func expandHome(path string) string {

@@ -123,15 +123,17 @@ func vmCreatedRecently(stateDir string) bool {
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
 func buildStartOptions(cfg *config.Config) vm.StartOptions {
+	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts)+1)
+	for _, m := range cfg.VM.ParsedMounts {
+		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
+	}
+	mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".claude", "projects"), Writable: true})
 	return vm.StartOptions{
-		CPUs:      cfg.VM.CPUs,
-		MemoryGiB: cfg.VM.MemoryGiB,
-		DiskGiB:   cfg.VM.DiskGiB,
-		VMType:    cfg.VM.Type,
-		Mounts: []vm.Mount{
-			{HostPath: cfg.VM.DevRoot, Writable: true},
-			{HostPath: filepath.Join(cfg.StateDir, ".claude", "projects"), Writable: true},
-		},
+		CPUs:        cfg.VM.CPUs,
+		MemoryBytes: cfg.VM.MemoryBytes,
+		DiskBytes:   cfg.VM.DiskBytes,
+		VMType:      cfg.VM.Type,
+		Mounts:      mounts,
 	}
 }
 

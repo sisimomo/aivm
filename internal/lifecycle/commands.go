@@ -25,7 +25,7 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 	if status == vm.StatusRunning {
 		vmIcon = "✅"
 	}
-	fmt.Fprintf(out, "  │  VM (%s): %s %s\n", cfg.VM.Profile, vmIcon, status)
+	fmt.Fprintf(out, "  │  VM (%s): %s %s\n", cfg.VM.ColimaProfile, vmIcon, status)
 
 	imgMgr := svc.imageManager()
 	baseImg := imgMgr.LoadBaseImage()
@@ -88,7 +88,7 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 
 		switch status {
 		case vm.StatusRunning:
-			remaining := cfg.Idle.Timeout - idle
+			remaining := cfg.Idle.StopTimeout - idle
 			if remaining > 0 {
 				fmt.Fprintf(out, "  │  Idle suspend:      in %s\n", remaining)
 			} else {

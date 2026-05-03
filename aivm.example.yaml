@@ -9,8 +9,20 @@ agents:
 # VM resources — tune to your machine.
 vm:
   cpus: 4
-  memory: 8   # GiB
-  disk: 60    # GiB
+  memory: "8GB"    # supports MB, GB, TB
+  disk: "60GB"
+
+  # Directories to mount into the VM. Format: <host_path>:<mode>
+  # mode: rw (read-write, default) or ro (read-only)
+  # ~ is expanded to your home directory.
+  mounts:
+    - "~/dev:rw"
+    - "~/.ssh:ro"
+
+# Idle VM management.
+idle:
+  stop_timeout: 5m      # stop VM after this much idle time
+  delete_timeout: 5m    # delete stopped VM after this long
 
 # Per-plugin configuration — override built-in defaults.
 # plugins:

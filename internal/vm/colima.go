@@ -86,15 +86,15 @@ func (c *ColimaVM) Start(ctx context.Context, opts StartOptions) error {
 	default:
 		aivmlog.Step("Creating Colima VM '%s'", c.profile)
 		aivmlog.Info("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
-			opts.CPUs, opts.MemoryGiB, opts.DiskGiB, opts.VMType)
+			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType)
 
 		vmTypeFlags := c.vmTypeFlags(opts.VMType)
 
 		args := []string{
 			"start", c.profile,
 			"--cpu", strconv.Itoa(opts.CPUs),
-			"--memory", strconv.Itoa(opts.MemoryGiB),
-			"--disk", strconv.Itoa(opts.DiskGiB),
+			"--memory", strconv.Itoa(int(opts.MemoryBytes >> 30)),
+			"--disk", strconv.Itoa(int(opts.DiskBytes >> 30)),
 		}
 		args = append(args, vmTypeFlags...)
 
@@ -249,7 +249,15 @@ func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
 }
 
 func (c *ColimaVM) vmTypeFlags(vmType string) []string {
-	if vmType == "vz" && runtime.GOOS == "darwin" {
+	effective := vmType
+	if effective == "" {
+		if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+			effective = "vz"
+		} else {
+			effective = "qemu"
+		}
+	}
+	if effective == "vz" && runtime.GOOS == "darwin" {
 		return []string{"--vm-type", "vz", "--vz-rosetta"}
 	}
 	return []string{"--vm-type", "qemu"}

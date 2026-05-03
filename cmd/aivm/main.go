@@ -55,25 +55,33 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	cfg := compResult.Config
-	vmInst := vm.NewColima(cfg.VM.Profile, cfg.StateDir)
-	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile)
+	vmInst := vm.NewColima(cfg.VM.ColimaProfile, cfg.StateDir)
+	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.ColimaProfile)
 	if err != nil {
 		aivmlog.Warn("Docker socket: %v", err)
 		dockerHost = ""
+	}
+
+	devRoot := ""
+	for _, m := range cfg.VM.ParsedMounts {
+		if m.Writable {
+			devRoot = m.HostPath
+			break
+		}
 	}
 
 	mcpMgr := &mcp.Manager{
 		Port:          cfg.MCP.Port,
 		DataDir:       cfg.MCP.DataDir,
 		DockerHost:    dockerHost,
-		DevRoot:       cfg.VM.DevRoot,
+		DevRoot:       devRoot,
 		ImageTag:      cfg.MCP.ImageTag,
 		ServerMode:    cfg.MCP.ServerMode,
-		ContainerName: "mcpjungle-" + cfg.VM.Profile,
+		ContainerName: "mcpjungle-" + cfg.VM.ColimaProfile,
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
-	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.Timeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
+	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 	mon.VMFactory = vm.ColimaFactory
 
 	return &cli.App{

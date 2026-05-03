@@ -30,12 +30,12 @@ type Mount struct {
 }
 
 type StartOptions struct {
-	CPUs      int
-	MemoryGiB int
-	DiskGiB   int
-	VMType    string
-	Mounts    []Mount
-	SSHAgent  bool
+	CPUs        int
+	MemoryBytes int64
+	DiskBytes   int64
+	VMType      string
+	Mounts      []Mount
+	SSHAgent    bool
 }
 
 type Snapshot struct {

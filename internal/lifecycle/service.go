@@ -103,7 +103,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		svc.log().Step("Deleting aged VM profile '%s'", cfg.VM.Profile)
+		svc.log().Step("Deleting aged VM profile '%s'", cfg.VM.ColimaProfile)
 		if err := svc.VM.Destroy(ctx); err != nil {
 			return err
 		}
@@ -171,7 +171,8 @@ func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated 
 // shouldRecreateVM prompts the user when the VM has exceeded its configured age threshold.
 func (svc *LifecycleService) shouldRecreateVM() bool {
 	cfg := svc.Config
-	if cfg.VM.MaxAgeDays <= 0 {
+	threshold := cfg.VM.RecreatePromptAfterDuration
+	if threshold == config.DisabledDuration || threshold <= 0 {
 		return false
 	}
 	data, err := os.ReadFile(filepath.Join(cfg.StateDir, "vm-created-at"))
@@ -182,11 +183,11 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 	if err != nil {
 		return false
 	}
-	age := int(time.Since(time.Unix(epoch, 0)).Hours() / 24)
-	if age < cfg.VM.MaxAgeDays {
+	age := time.Since(time.Unix(epoch, 0))
+	if age < threshold {
 		return false
 	}
-	return promptVMAge(svc.log(), svc.Confirmer, cfg.VM.Profile, age, cfg.VM.MaxAgeDays) == vmAgeRecreate
+	return promptVMAge(svc.log(), svc.Confirmer, cfg.VM.ColimaProfile, age, threshold) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
@@ -228,21 +229,29 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
-	devRoot := cfg.VM.DevRoot
 	realCWD, _ := filepath.EvalSymlinks(hostCWD)
-	realDev, _ := filepath.EvalSymlinks(devRoot)
-
-	if !strings.HasPrefix(realCWD, realDev) {
-		return fmt.Errorf("current directory '%s' is not under AIVM_DEV_ROOT (%s)\naivm only works inside %s", realCWD, devRoot, devRoot)
+	underMount := false
+	for _, m := range cfg.VM.ParsedMounts {
+		realMount, _ := filepath.EvalSymlinks(m.HostPath)
+		if strings.HasPrefix(realCWD, realMount) {
+			underMount = true
+			break
+		}
+	}
+	if !underMount {
+		return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
 	}
 
 	// If a transition is already in progress, route this session to the new VM.
 	if ts := svc.loadTransition(); ts != nil {
 		svc.log().Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
 		svc.VM = svc.VMFactory(ts.NewProfile, cfg.StateDir)
-	} else if cfg.VM.BaseImageMaxAgeDays > 0 {
-		if err := svc.checkBaseImageAge(ctx); err != nil {
-			return err
+	} else {
+		threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
+		if threshold != config.DisabledDuration && threshold > 0 {
+			if err := svc.checkBaseImageAge(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -308,18 +317,22 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 	}
 
 	imgMgr := svc.imageManager()
-	ageDays := imgMgr.BaseImageAgeDays()
-	if ageDays < cfg.VM.BaseImageMaxAgeDays {
-		return nil
-	}
-
 	img := imgMgr.LoadBaseImage()
 	if img == nil {
 		return nil
 	}
 
+	threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
+	imgAge := time.Since(img.CreatedAt)
+	if imgAge < threshold {
+		return nil
+	}
+
+	ageDays := int(imgAge.Hours() / 24)
+	thresholdDays := int(threshold.Hours() / 24)
+
 	fmt.Fprintln(svc.log().Out)
-	svc.log().Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, cfg.VM.BaseImageMaxAgeDays)
+	svc.log().Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, thresholdDays)
 	svc.log().Warn("Created: %s", img.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
 	if !promptYesNo(svc.log().Out, svc.Confirmer, "  → Rebuild base image for a clean environment? [y/N] ") {
 		return nil
@@ -369,7 +382,7 @@ func (svc *LifecycleService) rebuildCurrentVM(ctx context.Context) error {
 // keeps running for existing sessions. Future launch sessions use the new VM.
 func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 	cfg := svc.Config
-	newProfile := cfg.VM.Profile + "-next"
+	newProfile := cfg.VM.ColimaProfile + "-next"
 	transitionStart := time.Now()
 
 	svc.log().Step("Creating new VM '%s' with fresh base image...", newProfile)
@@ -387,7 +400,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 	}
 
 	ts := &vm.TransitionState{
-		LegacyProfile: cfg.VM.Profile,
+		LegacyProfile: cfg.VM.ColimaProfile,
 		NewProfile:    newProfile,
 		StartedAt:     transitionStart,
 	}
@@ -399,7 +412,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 		svc.log().Warn("could not start legacy monitor: %v", err)
 	}
 
-	svc.log().Success("Transition started: new sessions use '%s', old VM '%s' drains automatically", newProfile, cfg.VM.Profile)
+	svc.log().Success("Transition started: new sessions use '%s', old VM '%s' drains automatically", newProfile, cfg.VM.ColimaProfile)
 
 	svc.VM = newVM
 	return nil
@@ -512,7 +525,7 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 // doSoftRebuild bootstraps a temporary second VM so active sessions are not disrupted.
 func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
 	cfg := svc.Config
-	tempProfile := cfg.VM.Profile + "-rebuild"
+	tempProfile := cfg.VM.ColimaProfile + "-rebuild"
 	tempVM := svc.VMFactory(tempProfile, cfg.StateDir)
 
 	_ = tempVM.Destroy(ctx)
@@ -537,8 +550,8 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 	_ = tempVM.Destroy(ctx)
 
 	ts := &vm.TransitionState{
-		LegacyProfile: cfg.VM.Profile,
-		NewProfile:    cfg.VM.Profile,
+		LegacyProfile: cfg.VM.ColimaProfile,
+		NewProfile:    cfg.VM.ColimaProfile,
 		StartedAt:     time.Now(),
 	}
 	if err := svc.saveTransition(ts); err != nil {
@@ -549,7 +562,7 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 	}
 
 	svc.log().Success("New base image recorded.")
-	svc.log().Info("Legacy VM '%s' will be removed once all sessions close.", cfg.VM.Profile)
+	svc.log().Info("Legacy VM '%s' will be removed once all sessions close.", cfg.VM.ColimaProfile)
 	svc.log().Info("Run 'aivm start' after that to apply the new image.")
 	return nil
 }

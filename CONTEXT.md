@@ -60,7 +60,7 @@ This document defines key concepts used across the codebase. Consistent terminol
 
 **Base Image** — A snapshot of the VM taken after a successful bootstrap. Used to speed up VM recreation: instead of bootstrapping from scratch, restore from the base image and reconcile.
 
-**VM Age** — Time since the base image was created. Configurable threshold (`vm.max_age_days`) triggers a prompt to recreate the VM.
+**VM Age** — Time since the base image was created. Configurable threshold (`vm.recreate_prompt_after`) triggers a prompt to recreate the VM.
 
 **Soft Rebuild** — Recreate the base image while the current VM keeps running. The current VM finishes all active sessions, then auto-deletes; the rebuild VM becomes the new base image.
 

@@ -112,7 +112,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 	cfg := buildTestConfig(profile, stateDir, tc)
 
 	containerVMs := NewContainerVMRegistry()
-	primaryVM := newDockerVM(cfg.VM.Profile, cfg.StateDir)
+	primaryVM := newDockerVM(cfg.VM.ColimaProfile, cfg.StateDir)
 	containerVMs.Register(primaryVM)
 	factory := containerVMs.Factory()
 
@@ -270,9 +270,9 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		Integrations: buildTestIntegrations(tc),
 		Confirmer:    confirmer,
 		// DoLaunch uses GetWorkDir to resolve the working directory.
-		// In tests, return DevRoot so the CWD-under-DevRoot check always passes
+		// In tests, return DevRoot so the CWD-under-mount check always passes
 		// without needing os.Chdir (which is process-global and unsafe in tests).
-		GetWorkDir: func() (string, error) { return cfg.VM.DevRoot, nil },
+		GetWorkDir: func() (string, error) { return tc.DevRoot, nil },
 		// Log routes all user-visible output through the per-test OutputBuffer.
 		Log: aivmlog.New(output, &stderrWriter{output}),
 	}

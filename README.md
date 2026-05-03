@@ -99,18 +99,32 @@ export AIVM_AGENTS_ENABLED=copilot
 
 ### Full configuration reference
 
+> **Breaking change notice:** The configuration schema was updated in a recent release. All old keys have been removed. There is no backward compatibility — update your `aivm.yaml` using the reference below.
+
 #### `vm` — Virtual machine
 
 | Key | Default | Description |
 |---|---|---|
 | `vm.cpus` | `4` | Number of vCPUs |
-| `vm.memory` | `8` | RAM in GiB |
-| `vm.disk` | `60` | Disk in GiB |
-| `vm.type` | `vz` | Hypervisor: `vz` (Apple Silicon, macOS 13+) or `qemu` (Intel) |
-| `vm.max_age_days` | `7` | Days before prompting to recreate the VM |
-| `vm.base_image_max_age_days` | `7` | Days before prompting to rebuild the base image |
-| `vm.dev_root` | `~/dev` | Host directory mounted in the VM at the same absolute path |
-| `vm.profile` | `aivm` | Colima profile name |
+| `vm.memory` | `"8GB"` | RAM — string with unit: `"8GB"`, `"512MB"`, `"1TB"` |
+| `vm.disk` | `"60GB"` | Disk size — string with unit: `"60GB"`, `"1TB"` |
+| `vm.type` | _(auto)_ | Hypervisor: `"vz"` (Apple Silicon) or `"qemu"` (Intel). Omit to auto-detect. |
+| `vm.mounts` | `["~/dev:rw"]` | Host directories to mount. Format: `<path>:<mode>` where mode is `rw` or `ro`. `~` is expanded. |
+| `vm.colima_profile` | `aivm` | Colima profile name (allows multiple isolated VMs) |
+| `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this staleness. Accepts `"7d"`, `"12h"`, etc. Set to `-1` to disable. |
+| `vm.base_image_rebuild_prompt_after` | `"7d"` | Prompt to rebuild base image after this age. Same format. Set to `-1` to disable. |
+
+**Duration format:** `Nd` (days), `Nh` (hours), e.g. `"30d"`, `"12h"`. Use `-1` to disable a prompt entirely.
+
+**Mount format:**
+```yaml
+vm:
+  mounts:
+    - "~/dev:rw"      # read-write (default if mode omitted)
+    - "~/.ssh:ro"     # read-only
+```
+
+**VM type auto-detection:** When `vm.type` is not set, aivm detects the architecture at startup — Apple Silicon (`arm64`) uses `vz`, Intel uses `qemu`.
 
 #### `mcp_jungle` — MCPJungle gateway
 
@@ -126,7 +140,7 @@ export AIVM_AGENTS_ENABLED=copilot
 
 | Key | Default | Description |
 |---|---|---|
-| `idle.timeout` | `5m` | Suspend the VM after this idle duration (Phase 1) |
+| `idle.stop_timeout` | `5m` | Suspend the VM after this idle duration (Phase 1) |
 | `idle.delete_timeout` | `5m` | Delete the suspended VM after this additional duration (Phase 2) |
 
 #### `agents` — Agent configuration
@@ -288,7 +302,7 @@ aivm help
 |---|---|
 | `/Users/you/dev/my-project` | `/Users/you/dev/my-project` |
 
-You must run `aivm` from within `vm.dev_root` (default `~/dev`). Paths outside it produce a clear error.
+You must run `aivm` from within one of the configured `vm.mounts` directories. Paths outside any mount produce a clear error.
 
 ### Multiple sessions
 
@@ -494,7 +508,7 @@ MCP registrations persist in SQLite — you only need to register once. They sur
 
 A background daemon watches for active sessions and automatically manages the VM when idle. It operates in two phases:
 
-**Phase 1 — Suspend** (after `idle.timeout`, default `5m` of no active sessions):
+**Phase 1 — Suspend** (after `idle.stop_timeout`, default `5m` of no active sessions):
 - Suspends the Colima VM (disk preserved)
 - Stops MCPJungle
 
@@ -513,10 +527,10 @@ The daemon starts automatically and exits when it has nothing left to monitor. C
 To make VM recreation fast, aivm maintains a **base image** — a snapshot of the VM taken after a successful bootstrap.
 
 - On first boot: full bootstrap runs, then a snapshot is saved as the base image
-- On subsequent VM creations (after idle deletion or `vm.max_age_days` rotation): the base image is restored in seconds, skipping bootstrap entirely
+- On subsequent VM creations (after idle deletion or `vm.recreate_prompt_after` rotation): the base image is restored in seconds, skipping bootstrap entirely
 - If any plugins have changed since the base image was taken, `syncBootstrap` installs only the missing ones
 
-When the base image is older than `vm.base_image_max_age_days` (default: 7), aivm prompts you to rebuild it on the next session launch.
+When the base image is older than `vm.base_image_rebuild_prompt_after` (default: `"7d"`), aivm prompts you to rebuild it on the next session launch.
 
 **Rebuild manually:**
 
@@ -542,7 +556,7 @@ If you have active sessions, you can choose:
 | Disposal | `aivm destroy` wipes the VM; the next `aivm` rebuilds from the base image |
 | State persistence | MCPJungle data and Claude projects at `~/.aivm/` — survive VM deletion |
 
-The VM is designed to be **disposable**. When it exceeds `vm.max_age_days` (default: 7), `aivm start` offers to recreate it interactively.
+The VM is designed to be **disposable**. When it exceeds `vm.recreate_prompt_after` (default: `"7d"`), `aivm start` offers to recreate it interactively.
 
 ---
 

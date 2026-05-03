@@ -1,12 +1,12 @@
 vm:
   cpus: 4
-  memory: 8
-  disk: 60
-  type: vz
-  max_age_days: 7
-  base_image_max_age_days: 7
-  dev_root: "~/dev"
-  profile: aivm
+  memory: "8GB"
+  disk: "60GB"
+  mounts:
+    - "~/dev:rw"
+  colima_profile: aivm
+  recreate_prompt_after: "7d"
+  base_image_rebuild_prompt_after: "7d"
 
 mcp_jungle:
   enable: true
@@ -16,7 +16,7 @@ mcp_jungle:
   server_mode: development
 
 idle:
-  timeout: 5m
+  stop_timeout: 5m
   delete_timeout: 5m
 
 agents:
