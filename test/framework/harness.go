@@ -171,7 +171,7 @@ func (h *Harness) Scenario(name string) *Scenario {
 func (h *Harness) RunMonitorInProcess(ctx context.Context) context.CancelFunc {
 	monCtx, cancel := context.WithCancel(ctx)
 	go func() {
-		if err := h.App.Monitor.Run(monCtx); err != nil && err != context.Canceled {
+		if err := h.App.Lifecycle.Monitor.Run(monCtx); err != nil && err != context.Canceled {
 			h.t.Logf("monitor exited: %v", err)
 		}
 	}()
@@ -190,7 +190,7 @@ func (h *Harness) ProviderLaunchCount() int {
 
 // ImageManager returns the ImageManager for the test VM, scoped to StateDir.
 func (h *Harness) ImageManager() *vm.ImageManager {
-	return vm.NewImageManager(h.App.VM, h.StateDir)
+	return vm.NewImageManager(h.App.Lifecycle.VM, h.StateDir)
 }
 
 func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, factory vm.VMFactory) *cli.App {
@@ -270,12 +270,6 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 
 	return &cli.App{
 		Lifecycle: svc,
-		Config:    cfg,
-		VM:        vmInst,
-		MCP:       mcpStub,
-		Sessions:  sessions,
-		Monitor:   mon,
-		Agents:    agentReg,
 	}
 }
 

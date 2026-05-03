@@ -74,9 +74,9 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 
 	exec := &integration.Executor{
 		Integrations:     svc.Integrations,
-		InstalledPlugins: stringSet(state.Installed),
+		InstalledPlugins: stringSet(state.AllInstalled()),
 		ActiveAgents:     svc.Config.ActiveAgents(),
-		AlreadyRan:       stringSet(state.Integrations),
+		AlreadyRan:       stringSet(state.AllIntegrations()),
 		VM:               targetVM,
 		Log:              aivmlog.Writer("integration"),
 		TemplateVars: map[string]any{
@@ -99,7 +99,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 	}
 
 	if len(ran) > 0 {
-		state.Integrations = mergeStrings(state.Integrations, ran)
+		state.MarkIntegrationRan(ran)
 		if saveErr := saveBootstrapState(svc.Config.StateDir, state); saveErr != nil {
 			aivmlog.Warn("could not save bootstrap state after integrations: %v", saveErr)
 		}

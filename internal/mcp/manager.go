@@ -9,4 +9,5 @@ type MCPManager interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	IsHealthy(ctx context.Context) bool
+	Logs() error
 }

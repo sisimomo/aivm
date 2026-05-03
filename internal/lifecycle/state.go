@@ -50,13 +50,62 @@ func clearBootstrapState(stateDir string) {
 	_ = os.Remove(bootstrapStatePath(stateDir))
 }
 
+func newBootstrapState(provider string, installed []string) *BootstrapState {
+	return &BootstrapState{
+		Version:   bootstrap.BootstrapVersion,
+		Provider:  provider,
+		Installed: installed,
+	}
+}
+
+// NeedsMigration reports whether the recorded schema version is outdated.
+func (s *BootstrapState) NeedsMigration() bool {
+	return s.Version != bootstrap.BootstrapVersion
+}
+
+// IsInstalled reports whether a plugin has been recorded as installed.
+func (s *BootstrapState) IsInstalled(name string) bool {
+	for _, p := range s.Installed {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+// CurrentProvider returns the agent provider recorded in the state.
+func (s *BootstrapState) CurrentProvider() string {
+	return s.Provider
+}
+
+// AllInstalled returns the complete list of installed plugin names.
+func (s *BootstrapState) AllInstalled() []string {
+	return s.Installed
+}
+
+// AllIntegrations returns the complete list of integration keys that have run.
+func (s *BootstrapState) AllIntegrations() []string {
+	return s.Integrations
+}
+
+// MarkInstalled merges plugins into the installed list (deduplicates).
+func (s *BootstrapState) MarkInstalled(plugins []string) {
+	s.Installed = mergeStrings(s.Installed, plugins)
+}
+
+// MarkIntegrationRan merges keys into the integrations list (deduplicates).
+func (s *BootstrapState) MarkIntegrationRan(keys []string) {
+	s.Integrations = mergeStrings(s.Integrations, keys)
+}
+
+// SetProvider records the active agent provider name.
+func (s *BootstrapState) SetProvider(name string) {
+	s.Provider = name
+}
+
 // recordBootstrapState saves a BootstrapState reflecting the current desired
 // plugin set for the service's provider. Call this after any successful full bootstrap.
 func (svc *LifecycleService) recordBootstrapState() error {
 	desired := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
-	return saveBootstrapState(svc.Config.StateDir, &BootstrapState{
-		Version:   bootstrap.BootstrapVersion,
-		Provider:  svc.Provider.Name(),
-		Installed: desired,
-	})
+	return saveBootstrapState(svc.Config.StateDir, newBootstrapState(svc.Provider.Name(), desired))
 }

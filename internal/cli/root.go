@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	aivmlog "aivm/internal/log"
-	"aivm/internal/vm"
 )
 
 // AppFactory constructs an App from a config file path.
@@ -109,7 +108,7 @@ func monitorCmd(getApp func() (*App, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return app.Monitor.Run(cmd.Context())
+			return app.Lifecycle.RunMonitor(cmd.Context())
 		},
 	}
 }
@@ -126,11 +125,7 @@ func legacyMonitorCmd(getApp func() (*App, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ts := vm.LoadTransitionState(app.Config.StateDir)
-			if ts == nil {
-				return nil // no transition in progress
-			}
-			return app.Monitor.RunLegacyMonitor(cmd.Context(), ts)
+			return app.Lifecycle.RunLegacyMonitor(cmd.Context())
 		},
 	}
 }

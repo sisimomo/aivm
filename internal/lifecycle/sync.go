@@ -7,9 +7,7 @@ import (
 	"strings"
 	"syscall"
 
-	"aivm/internal/bootstrap"
 	aivmlog "aivm/internal/log"
-	"aivm/internal/vm"
 )
 
 // syncStep represents one decision point in the bootstrap state machine.
@@ -57,7 +55,7 @@ func (svc *LifecycleService) syncBootstrap(ctx context.Context) error {
 type missingOrStaleStep struct{}
 
 func (s *missingOrStaleStep) applicable(ss *syncState, _ *LifecycleService) bool {
-	return ss.state == nil || ss.state.Version != bootstrap.BootstrapVersion
+	return ss.state == nil || ss.state.NeedsMigration()
 }
 
 func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
@@ -91,9 +89,8 @@ func (s *newPluginsStep) applicable(ss *syncState, _ *LifecycleService) bool {
 	if ss.state == nil {
 		return false
 	}
-	installedSet := stringSet(ss.state.Installed)
 	for _, p := range ss.desired {
-		if !installedSet[p] {
+		if !ss.state.IsInstalled(p) {
 			return true
 		}
 	}
@@ -101,10 +98,9 @@ func (s *newPluginsStep) applicable(ss *syncState, _ *LifecycleService) bool {
 }
 
 func (s *newPluginsStep) run(ctx context.Context, ss *syncState, svc *LifecycleService) error {
-	installedSet := stringSet(ss.state.Installed)
 	var newPlugins []string
 	for _, p := range ss.desired {
-		if !installedSet[p] {
+		if !ss.state.IsInstalled(p) {
 			newPlugins = append(newPlugins, p)
 		}
 	}
@@ -113,8 +109,8 @@ func (s *newPluginsStep) run(ctx context.Context, ss *syncState, svc *LifecycleS
 	if err := eng.Run(ctx, false); err != nil {
 		return err
 	}
-	ss.state.Installed = mergeStrings(ss.state.Installed, newPlugins)
-	ss.state.Provider = svc.Provider.Name()
+	ss.state.MarkInstalled(newPlugins)
+	ss.state.SetProvider(svc.Provider.Name())
 	if err := saveBootstrapState(svc.Config.StateDir, ss.state); err != nil {
 		return err
 	}
@@ -169,10 +165,9 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 	switch decision {
 	case agentMismatchInstall:
 		desired := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
-		installedSet := stringSet(state.Installed)
 		var newPlugins []string
 		for _, p := range desired {
-			if !installedSet[p] {
+			if !state.IsInstalled(p) {
 				newPlugins = append(newPlugins, p)
 			}
 		}
@@ -180,8 +175,8 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 		if err := eng.Run(ctx, false); err != nil {
 			return err
 		}
-		state.Installed = mergeStrings(state.Installed, newPlugins)
-		state.Provider = svc.Provider.Name()
+		state.MarkInstalled(newPlugins)
+		state.SetProvider(svc.Provider.Name())
 		if err := saveBootstrapState(svc.Config.StateDir, state); err != nil {
 			return err
 		}
@@ -215,13 +210,13 @@ func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) e
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	imgMgr := vm.NewImageManager(svc.VM, svc.Config.StateDir)
+	imgMgr := svc.imageManager()
 	if _, err := svc.bootstrapFreshVM(ctx, svc.VM, imgMgr); err != nil {
 		return err
 	}
 
 	svc.Sessions.ClearVMStoppedAt()
-	vm.ClearTransitionState(svc.Config.StateDir)
+	svc.clearTransition()
 
 	aivmlog.Success("VM recreated with only %s", svc.Provider.Description())
 	return nil

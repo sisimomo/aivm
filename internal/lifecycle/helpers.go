@@ -48,7 +48,6 @@ func requiredPluginsInstalled(provider agent.Provider, installed []string) bool 
 }
 
 func installedProvidersFromState(svc *LifecycleService, state *BootstrapState) map[string]bool {
-	installedSet := stringSet(state.Installed)
 	result := make(map[string]bool)
 	for name, provider := range svc.Agents.All() {
 		required := provider.RequiredPlugins()
@@ -57,7 +56,7 @@ func installedProvidersFromState(svc *LifecycleService, state *BootstrapState) m
 		}
 		allPresent := true
 		for _, p := range required {
-			if !installedSet[p] {
+			if !state.IsInstalled(p) {
 				allPresent = false
 				break
 			}

@@ -38,11 +38,11 @@ func CLI(args ...string) fw.StepFunc {
 // use the new provider.
 func ChangeProvider(name string) fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		prov, ok := h.App.Agents.Get(name)
+		prov, ok := h.App.Lifecycle.Agents.Get(name)
 		if !ok {
 			return fmt.Errorf("provider %q not registered", name)
 		}
-		h.App.Config.Agents.Enabled = name
+		h.App.Lifecycle.Config.Agents.Enabled = name
 		h.App.Lifecycle.Provider = prov
 		return nil
 	}
@@ -52,7 +52,7 @@ func ChangeProvider(name string) fw.StepFunc {
 // The change takes effect on the next DoStart / DoBootstrap call.
 func ChangePlugins(plugins ...string) fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		h.App.Config.Plugins.Enabled = plugins
+		h.App.Lifecycle.Config.Plugins.Enabled = plugins
 		return nil
 	}
 }
@@ -172,7 +172,7 @@ func CorruptBootstrapVersion() fw.StepFunc {
 // run by a specific bootstrap phase. No-op if the VM does not implement RunCounter.
 func ResetMockVMRunCount() fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		if rc, ok := h.App.VM.(fw.RunCounter); ok {
+		if rc, ok := h.App.Lifecycle.VM.(fw.RunCounter); ok {
 			rc.ResetRunCount()
 		}
 		return nil
@@ -181,7 +181,7 @@ func ResetMockVMRunCount() fw.StepFunc {
 
 func RunInVM(script string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		return h.App.VM.Run(ctx, script, nil)
+		return h.App.Lifecycle.VM.Run(ctx, script, nil)
 	}
 }
 
@@ -189,7 +189,7 @@ func RunInVM(script string) fw.StepFunc {
 // environment variables set.
 func RunInVMWithEnv(script string, env map[string]string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		return h.App.VM.Run(ctx, script, env)
+		return h.App.Lifecycle.VM.Run(ctx, script, env)
 	}
 }
 
@@ -212,7 +212,7 @@ func StartMonitor(cancelDest *context.CancelFunc) fw.StepFunc {
 // CreateSnapshot takes a named snapshot of the current VM state.
 func CreateSnapshot(name string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		return h.App.VM.CreateSnapshot(ctx, name)
+		return h.App.Lifecycle.VM.CreateSnapshot(ctx, name)
 	}
 }
 
@@ -220,7 +220,7 @@ func CreateSnapshot(name string) fw.StepFunc {
 // Fails if the snapshot does not exist or the restore fails.
 func RestoreSnapshot(name string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		found, err := h.App.VM.RestoreSnapshot(ctx, name)
+		found, err := h.App.Lifecycle.VM.RestoreSnapshot(ctx, name)
 		if err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func RestoreSnapshot(name string) fw.StepFunc {
 // where you want precise control over VM creation without bootstrap.
 func StartWithOptions(opts vm.StartOptions) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		return h.App.VM.Start(ctx, opts)
+		return h.App.Lifecycle.VM.Start(ctx, opts)
 	}
 }
 

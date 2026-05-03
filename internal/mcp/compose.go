@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
 
 	aivmlog "aivm/internal/log"
@@ -122,4 +123,18 @@ func (m *Manager) IsHealthy(_ context.Context) bool {
 	}
 	resp.Body.Close()
 	return resp.StatusCode < 400
+}
+
+// Logs streams the MCPJungle container logs to stdout until interrupted.
+func (m *Manager) Logs() error {
+	aivmlog.Info("MCPJungle container logs (Ctrl-C to stop):")
+	name := m.ContainerName
+	if name == "" {
+		name = "mcpjungle-server"
+	}
+	cmd := exec.Command("docker", "logs", "-f", name)
+	cmd.Env = append(os.Environ(), "DOCKER_HOST="+m.DockerHost)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

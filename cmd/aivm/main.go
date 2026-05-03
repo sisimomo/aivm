@@ -86,12 +86,6 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	mon.VMFactory = vm.ColimaFactory
 
 	return &cli.App{
-		Config:   cfg,
-		VM:       vmInst,
-		MCP:      mcpMgr,
-		Sessions: sessions,
-		Monitor:  mon,
-		Agents:   compResult.Agents,
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,

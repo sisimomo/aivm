@@ -2,7 +2,6 @@ package cli
 
 import (
 "context"
-"fmt"
 
 "github.com/spf13/cobra"
 )
@@ -37,21 +36,5 @@ return app.Lifecycle.Bootstrap(ctx, onlyPlugin, force)
 }
 
 func ListPlugins(app *App) error {
-svc := app.Lifecycle
-all := svc.Registry.All()
-fmt.Printf("\n  %-16s %-40s %s\n", "NAME", "DESCRIPTION", "DEPENDS ON")
-fmt.Printf("  %-16s %-40s %s\n", "────────────────", "────────────────────────────────────────", "──────────")
-ordered, _ := svc.Registry.Resolve(svc.Config.Plugins.Enabled)
-shown := make(map[string]bool)
-for _, p := range ordered {
-shown[p.Name()] = true
-fmt.Printf("  %-16s %-40s %v\n", p.Name(), p.Description(), p.Dependencies())
-}
-for name, p := range all {
-if !shown[name] {
-fmt.Printf("  %-16s %-40s %v  (disabled)\n", p.Name(), p.Description(), p.Dependencies())
-}
-}
-fmt.Println()
-return nil
+	return app.Lifecycle.ListPlugins()
 }

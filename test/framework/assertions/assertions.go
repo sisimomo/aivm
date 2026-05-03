@@ -17,7 +17,7 @@ import (
 // VMStatus asserts that the VM is currently in the given status.
 func VMStatus(want vm.Status) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		got, err := h.App.VM.Status(ctx)
+		got, err := h.App.Lifecycle.VM.Status(ctx)
 		if err != nil {
 			return fmt.Errorf("get VM status: %w", err)
 		}
@@ -126,12 +126,7 @@ func StateFileAbsent(relPath string) fw.AssertFunc {
 // the expected substring.
 func VMRunOutput(script, contains string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		// Run the script and capture output by writing to a temp file on the VM.
-		// We use the vm.Run API which streams to the log writer, so we can only
-		// check for script success/failure here — not capture stdout.
-		// For richer assertions use RunInVM with a custom script that writes to
-		// a known file and then ReadFile it on the host.
-		if err := h.App.VM.Run(ctx, script, nil); err != nil {
+		if err := h.App.Lifecycle.VM.Run(ctx, script, nil); err != nil {
 			return fmt.Errorf("script %q failed: %w", script, err)
 		}
 		_ = contains // future: add output capture if needed
@@ -174,7 +169,7 @@ func BaseImageIsNot(prev *string) fw.AssertFunc {
 // implement RunCounter (e.g. a real Colima VM).
 func VMRunCountIs(n int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		rc, ok := h.App.VM.(fw.RunCounter)
+		rc, ok := h.App.Lifecycle.VM.(fw.RunCounter)
 		if !ok {
 			return nil
 		}
@@ -191,7 +186,7 @@ func VMRunCountIs(n int) fw.AssertFunc {
 // implement RunCounter.
 func VMRunCountAtLeast(n int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		rc, ok := h.App.VM.(fw.RunCounter)
+		rc, ok := h.App.Lifecycle.VM.(fw.RunCounter)
 		if !ok {
 			return nil
 		}
@@ -217,7 +212,7 @@ func TransitionStateAbsent() fw.AssertFunc {
 // SessionCount asserts that exactly n active sessions exist.
 func SessionCount(want int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		got, err := h.App.Sessions.CountActive()
+		got, err := h.App.Lifecycle.Sessions.CountActive()
 		if err != nil {
 			return fmt.Errorf("count sessions: %w", err)
 		}
@@ -383,7 +378,7 @@ func BootstrapStateNotContainsIntegrations(keys ...string) fw.AssertFunc {
 // The path must be absolute (e.g. "/tmp/.aivm_test_integ_rtk_claude").
 func VMFileExists(path string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		if err := h.App.VM.Run(ctx, "test -f "+path, nil); err != nil {
+		if err := h.App.Lifecycle.VM.Run(ctx, "test -f "+path, nil); err != nil {
 			return fmt.Errorf("expected file %q to exist in VM: %w", path, err)
 		}
 		return nil
@@ -393,7 +388,7 @@ func VMFileExists(path string) fw.AssertFunc {
 // VMFileAbsent asserts that a file does NOT exist inside the VM at the given path.
 func VMFileAbsent(path string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		if err := h.App.VM.Run(ctx, "test ! -f "+path, nil); err != nil {
+		if err := h.App.Lifecycle.VM.Run(ctx, "test ! -f "+path, nil); err != nil {
 			return fmt.Errorf("expected file %q to be absent in VM: %w", path, err)
 		}
 		return nil

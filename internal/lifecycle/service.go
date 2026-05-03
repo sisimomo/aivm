@@ -48,6 +48,31 @@ type LifecycleService struct {
 	GetWorkDir func() (string, error)
 }
 
+// imageManager returns an ImageManager scoped to the service's VM and state dir.
+func (svc *LifecycleService) imageManager() *vm.ImageManager {
+	return vm.NewImageManager(svc.VM, svc.Config.StateDir)
+}
+
+// imageManagerFor returns an ImageManager scoped to a specific VM and state dir.
+func (svc *LifecycleService) imageManagerFor(v vm.VM) *vm.ImageManager {
+	return vm.NewImageManager(v, svc.Config.StateDir)
+}
+
+// loadTransition loads the active VM transition state, or nil if none.
+func (svc *LifecycleService) loadTransition() *vm.TransitionState {
+	return vm.LoadTransitionState(svc.Config.StateDir)
+}
+
+// saveTransition persists a VM transition state to disk.
+func (svc *LifecycleService) saveTransition(ts *vm.TransitionState) error {
+	return vm.SaveTransitionState(svc.Config.StateDir, ts)
+}
+
+// clearTransition removes any persisted VM transition state.
+func (svc *LifecycleService) clearTransition() {
+	vm.ClearTransitionState(svc.Config.StateDir)
+}
+
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
@@ -83,7 +108,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return fmt.Errorf("starting VM: %w", err)
 	}
 
-	imgMgr := vm.NewImageManager(svc.VM, cfg.StateDir)
+	imgMgr := svc.imageManager()
 	if wasCreated {
 		imgMgr.RecordCreation()
 	}
@@ -201,7 +226,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 	}
 
 	// If a transition is already in progress, route this session to the new VM.
-	if ts := vm.LoadTransitionState(cfg.StateDir); ts != nil {
+	if ts := svc.loadTransition(); ts != nil {
 		aivmlog.Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
 		svc.VM = svc.VMFactory(ts.NewProfile, cfg.StateDir)
 	} else if cfg.VM.BaseImageMaxAgeDays > 0 {
@@ -271,7 +296,7 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		return nil
 	}
 
-	imgMgr := vm.NewImageManager(svc.VM, cfg.StateDir)
+	imgMgr := svc.imageManager()
 	ageDays := imgMgr.BaseImageAgeDays()
 	if ageDays < cfg.VM.BaseImageMaxAgeDays {
 		return nil
@@ -341,7 +366,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 	newVM := svc.VMFactory(newProfile, cfg.StateDir)
 	_ = newVM.Destroy(ctx)
 
-	imgMgr := vm.NewImageManager(newVM, cfg.StateDir)
+	imgMgr := svc.imageManagerFor(newVM)
 	img, err := svc.bootstrapFreshVM(ctx, newVM, imgMgr)
 	if err != nil {
 		return err
@@ -355,7 +380,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 		NewProfile:    newProfile,
 		StartedAt:     transitionStart,
 	}
-	if err := vm.SaveTransitionState(cfg.StateDir, ts); err != nil {
+	if err := svc.saveTransition(ts); err != nil {
 		return fmt.Errorf("saving transition state: %w", err)
 	}
 
@@ -383,7 +408,7 @@ func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, f
 		}
 		state, _ := loadBootstrapState(svc.Config.StateDir)
 		if state != nil {
-			state.Installed = mergeStrings(state.Installed, []string{onlyPlugin})
+			state.MarkInstalled([]string{onlyPlugin})
 			_ = saveBootstrapState(svc.Config.StateDir, state)
 		}
 		return nil
@@ -398,8 +423,7 @@ func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, f
 
 // RebuildImage rebuilds the base VM image by re-running bootstrap on a fresh VM.
 func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error {
-	cfg := svc.Config
-	imgMgr := vm.NewImageManager(svc.VM, cfg.StateDir)
+	imgMgr := svc.imageManager()
 	current := imgMgr.LoadBaseImage()
 
 	fmt.Println()
@@ -458,8 +482,6 @@ func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.V
 
 // doHardRebuild destroys the current VM, recreates it, and runs full bootstrap.
 func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
-	cfg := svc.Config
-
 	aivmlog.Step("Destroying existing VM")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
@@ -470,7 +492,7 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 		return err
 	}
 
-	vm.ClearTransitionState(cfg.StateDir)
+	svc.clearTransition()
 	aivmlog.Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
 	aivmlog.Info("Future VMs will start from this image.")
 	return nil
@@ -508,7 +530,7 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 		NewProfile:    cfg.VM.Profile,
 		StartedAt:     time.Now(),
 	}
-	if err := vm.SaveTransitionState(cfg.StateDir, ts); err != nil {
+	if err := svc.saveTransition(ts); err != nil {
 		aivmlog.Warn("could not save transition state: %v", err)
 	}
 	if err := svc.Monitor.EnsureLegacyMonitorRunning(); err != nil {
