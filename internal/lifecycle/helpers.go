@@ -88,15 +88,6 @@ func installedProviderDescriptions(svc *LifecycleService, installed map[string]b
 	return out
 }
 
-func containsString(items []string, want string) bool {
-	for _, item := range items {
-		if item == want {
-			return true
-		}
-	}
-	return false
-}
-
 func stringSet(items []string) map[string]bool {
 	m := make(map[string]bool, len(items))
 	for _, s := range items {
@@ -116,11 +107,6 @@ func mergeStrings(base, additions []string) []string {
 		}
 	}
 	return result
-}
-
-func writeVMCreatedAt(stateDir string, at time.Time) {
-	agePath := filepath.Join(stateDir, "vm-created-at")
-	_ = os.WriteFile(agePath, []byte(fmt.Sprintf("%d", at.Unix())), 0644)
 }
 
 func vmCreatedRecently(stateDir string) bool {
@@ -163,6 +149,3 @@ func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config) error {
 	}
 	return nil
 }
-
-// keep containsString to avoid unused symbol — it may be used by external callers.
-var _ = containsString

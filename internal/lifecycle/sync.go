@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-	"time"
 
 	"aivm/internal/bootstrap"
 	aivmlog "aivm/internal/log"
@@ -162,21 +161,13 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 	}
 
 	sessions, _ := svc.Sessions.List()
-
-	fmt.Println()
-	fmt.Printf("  This VM already has %s installed.\n", installedSummary)
-	fmt.Printf("  Config now selects %s.\n", configured)
-	if len(sessions) > 0 {
-		fmt.Printf("  Note: option 2 will terminate %d active session(s).\n", len(sessions))
+	decision, ok := promptAgentMismatch(svc.Confirmer, installedSummary, configured, len(sessions))
+	if !ok {
+		return fmt.Errorf("invalid choice")
 	}
-	fmt.Printf("  Choose how to proceed:\n")
-	fmt.Printf("    1. Install %s in the existing VM and keep the current agent(s)\n", configured)
-	fmt.Printf("    2. Delete the VM and recreate it with only %s\n", configured)
-	fmt.Printf("  Choice [1/2]: ")
-	choice := svc.Confirmer.ReadAnswer()
 
-	switch choice {
-	case "1":
+	switch decision {
+	case agentMismatchInstall:
 		desired := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
 		installedSet := stringSet(state.Installed)
 		var newPlugins []string
@@ -195,10 +186,10 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 			return err
 		}
 		return svc.runIntegrationsFromState(ctx, svc.VM)
-	case "2":
+	case agentMismatchRecreate:
 		return svc.recreateVMForConfiguredAgent(ctx)
 	default:
-		return fmt.Errorf("invalid choice %q", choice)
+		return fmt.Errorf("invalid choice")
 	}
 }
 
@@ -223,24 +214,14 @@ func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) e
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
-	if err := startFreshVM(ctx, svc.VM, svc.Config); err != nil {
-		return err
-	}
-
-	if err := svc.fullBootstrap(ctx, svc.VM, true); err != nil {
-		return err
-	}
-
-	writeVMCreatedAt(svc.Config.StateDir, time.Now())
-	svc.Sessions.ClearVMStoppedAt()
-	vm.ClearTransitionState(svc.Config.StateDir)
 
 	imgMgr := vm.NewImageManager(svc.VM, svc.Config.StateDir)
-	img, err := imgMgr.SaveBaseImage(ctx)
-	if err != nil {
-		return fmt.Errorf("saving base image: %w", err)
+	if _, err := svc.bootstrapFreshVM(ctx, svc.VM, imgMgr); err != nil {
+		return err
 	}
-	imgMgr.RecordVMImageRef(img.ID)
+
+	svc.Sessions.ClearVMStoppedAt()
+	vm.ClearTransitionState(svc.Config.StateDir)
 
 	aivmlog.Success("VM recreated with only %s", svc.Provider.Description())
 	return nil

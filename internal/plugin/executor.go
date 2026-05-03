@@ -23,7 +23,12 @@ func (e *Executor) Ordered() ([]Plugin, error) {
 	return e.Registry.Resolve(e.Enabled)
 }
 
-func (e *Executor) Run(ctx context.Context) error {
+// Run executes all enabled plugins in DAG order.
+//
+// When force is true every plugin's Install+Configure steps run unconditionally
+// (Check is skipped). Use force=true on a fresh blank VM; force=false on an
+// existing VM so already-installed plugins are skipped.
+func (e *Executor) Run(ctx context.Context, force bool) error {
 	ordered, err := e.Ordered()
 	if err != nil {
 		return fmt.Errorf("resolving plugin order: %w", err)
@@ -45,16 +50,18 @@ func (e *Executor) Run(ctx context.Context) error {
 			VM:       e.VMInst,
 		}
 
-		already, err := p.Check(ctx, env)
-		if err != nil {
-			aivmlog.Warn("check failed for %s: %v", p.Name(), err)
-		}
-		if already {
-			aivmlog.Info("skip %-12s (already installed)", p.Name())
-			continue
+		if !force {
+			already, err := p.Check(ctx, env)
+			if err != nil {
+				aivmlog.Warn("check failed for plugin %s: %v", p.Name(), err)
+			}
+			if already {
+				aivmlog.Info("skip %s (already installed)", p.Name())
+				continue
+			}
 		}
 
-		aivmlog.Step("Installing %s", p.Name())
+		aivmlog.Step("Plugin: %s", p.Name())
 		start := time.Now()
 
 		if err := p.Install(ctx, env); err != nil {
