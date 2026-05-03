@@ -28,12 +28,16 @@ idle:
 # plugins:
 #   config:
 #     java:
-#       version: "25"
+#       version: "21"
 #       distribution: temurin
+#     maven:
+#       version: "3.9.6"
 #     nodejs:
-#       version: lts
+#       version: "20"
 #     python:
-#       tool: uv
+#       version: "3.11.9"
+#     golang:
+#       version: "go1.22.4"
 
 # Add custom plugins or override built-in ones.
 # plugins:

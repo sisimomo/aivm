@@ -43,6 +43,12 @@ var _ vm.VM = (*DockerVM)(nil)
 var _ RunCounter = (*DockerVM)(nil)
 
 func newDockerVM(profile, stateDir string) *DockerVM {
+	return NewDockerVM(profile, stateDir)
+}
+
+// NewDockerVM creates a new DockerVM for the given Colima profile and state directory.
+// The container is not started — call Start to create and run it.
+func NewDockerVM(profile, stateDir string) *DockerVM {
 	return &DockerVM{
 		profile:       profile,
 		stateDir:      stateDir,
@@ -134,23 +140,11 @@ func (d *DockerVM) Run(_ context.Context, script string, env map[string]string) 
 	d.runCount++
 	d.mu.Unlock()
 
-	full := script
-	if len(env) > 0 {
-		var sb strings.Builder
-		for k, v := range env {
-			fmt.Fprintf(&sb, "export %s=%s\n", k, vm.ShellEscape(v))
-		}
-		full = sb.String() + script
-	}
-
-	encoded := base64.StdEncoding.EncodeToString([]byte(full))
-	bashCmd := "echo " + encoded + " | base64 -d | bash -l"
-
 	return dockerRun(
 		"exec",
 		"-u", testContainerUser,
 		d.containerName,
-		"bash", "-lc", bashCmd,
+		"bash", "-lc", buildBashCmd(script, env),
 	)
 }
 
@@ -158,6 +152,21 @@ func (d *DockerVM) Run(_ context.Context, script string, env map[string]string) 
 // its combined stdout output. Use this when you need to assert on the content
 // produced by a script, rather than just whether it succeeded.
 func (d *DockerVM) RunOutput(_ context.Context, script string, env map[string]string) (string, error) {
+	return dockerOutput(
+		"exec",
+		"-u", testContainerUser,
+		d.containerName,
+		"bash", "-lc", buildBashCmd(script, env),
+	)
+}
+
+// buildBashCmd builds the bash -lc command string that executes the given
+// script inside the container. The script is base64-encoded to avoid quoting
+// issues, then decoded into a temporary file and executed as a login shell.
+// Using a temp file (rather than piping directly to bash) prevents dpkg/apt
+// postinst scripts from accidentally consuming stdin and eating the rest of
+// the setup script, which would cause silent partial execution.
+func buildBashCmd(script string, env map[string]string) string {
 	full := script
 	if len(env) > 0 {
 		var sb strings.Builder
@@ -166,16 +175,9 @@ func (d *DockerVM) RunOutput(_ context.Context, script string, env map[string]st
 		}
 		full = sb.String() + script
 	}
-
 	encoded := base64.StdEncoding.EncodeToString([]byte(full))
-	bashCmd := "echo " + encoded + " | base64 -d | bash -l"
-
-	return dockerOutput(
-		"exec",
-		"-u", testContainerUser,
-		d.containerName,
-		"bash", "-lc", bashCmd,
-	)
+	// Write decoded script to a temp file, execute as login shell, clean up.
+	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\"; ec=$?; rm -f \"$t\"; exit $ec"
 }
 
 // SSH opens an interactive shell session in the container. Used only manually,
