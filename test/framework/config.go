@@ -2,7 +2,6 @@ package framework
 
 import (
 	"path/filepath"
-	"strings"
 	"time"
 
 	"aivm/internal/config"
@@ -154,13 +153,4 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 		},
 		StateDir: stateDir,
 	}
-}
-
-// stdinReader returns a strings.Reader built from the test answers joined by newlines,
-// or nil when no answers are configured.
-func stdinReader(tc testConfig) *strings.Reader {
-	if len(tc.StdinAnswers) == 0 {
-		return strings.NewReader("")
-	}
-	return strings.NewReader(strings.Join(tc.StdinAnswers, "\n") + "\n")
 }

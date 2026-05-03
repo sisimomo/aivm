@@ -43,7 +43,7 @@ func ChangeProvider(name string) fw.StepFunc {
 			return fmt.Errorf("provider %q not registered", name)
 		}
 		h.App.Config.Agents.Enabled = name
-		h.App.Provider = prov
+		h.App.Lifecycle.Provider = prov
 		return nil
 	}
 }

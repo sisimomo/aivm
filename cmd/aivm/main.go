@@ -11,6 +11,7 @@ import (
 	"aivm/internal/config"
 	"aivm/internal/integration"
 	aivmlog "aivm/internal/log"
+	"aivm/internal/lifecycle"
 	"aivm/internal/mcp"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
@@ -128,18 +129,25 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	return &cli.App{
-		Config:       cfg,
-		VM:           vmInst,
-		MCP:          mcpMgr,
-		Sessions:     sessions,
-		Monitor:      mon,
-		Registry:     reg,
-		Agents:       agentReg,
-		Provider:     prov,
-		AgentDefs:    agentDefs,
-		VMFactory:    vm.ColimaFactory,
-		Integrations: append(integDefs, cfg.Integrations...),
+		Config:   cfg,
+		VM:       vmInst,
+		MCP:      mcpMgr,
+		Sessions: sessions,
+		Monitor:  mon,
+		Agents:   agentReg,
+		Lifecycle: &lifecycle.LifecycleService{
+			Config:       cfg,
+			VM:           vmInst,
+			MCP:          mcpMgr,
+			Sessions:     sessions,
+			Monitor:      mon,
+			Registry:     reg,
+			Agents:       agentReg,
+			Provider:     prov,
+			AgentDefs:    agentDefs,
+			VMFactory:    vm.ColimaFactory,
+			Integrations: append(integDefs, cfg.Integrations...),
+			Confirmer:    lifecycle.NewTTYConfirmer(),
+		},
 	}, nil
 }
-
-

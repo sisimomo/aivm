@@ -126,11 +126,11 @@ func TestBareCommandWithTransitionState(t *testing.T) {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// setCWD returns a step that overrides h.App.GetWorkDir to return dir,
+// setCWD returns a step that overrides h.App.Lifecycle.GetWorkDir to return dir,
 // simulating running aivm from that path.
 func setCWD(h *framework.Harness, dir string) framework.StepFunc {
 	return func(_ context.Context, _ *framework.Harness) error {
-		h.App.GetWorkDir = func() (string, error) { return dir, nil }
+		h.App.Lifecycle.GetWorkDir = func() (string, error) { return dir, nil }
 		return nil
 	}
 }

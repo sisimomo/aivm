@@ -33,6 +33,7 @@ import (
 	"aivm/internal/cli"
 	"aivm/internal/config"
 	"aivm/internal/integration"
+	"aivm/internal/lifecycle"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
 	"aivm/internal/providers/claude"
@@ -181,7 +182,7 @@ func (h *Harness) RunMonitorInProcess(ctx context.Context) context.CancelFunc {
 // Launch method was called. All harness-created Apps use MockProvider, so this
 // is always accurate. Use with assertions.AgentLaunched() or assertions.AgentLaunchCount().
 func (h *Harness) ProviderLaunchCount() int {
-	if mp, ok := h.App.Provider.(*MockProvider); ok {
+	if mp, ok := h.App.Lifecycle.Provider.(*MockProvider); ok {
 		return mp.LaunchCallCount()
 	}
 	return 0
@@ -239,34 +240,43 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		reg.Set(plugin.NewYAMLPlugin(name, stub))
 	}
 
-	app := &cli.App{
-		Config:    cfg,
-		VM:        vmInst,
-		MCP:       mcpStub,
-		Sessions:  sessions,
-		Monitor:   mon,
-		Registry:  reg,
-		Agents:    agentReg,
-		Provider:  prov,
-		AgentDefs: agentDefs,
-		VMFactory: factory,
+	var confirmer lifecycle.Confirmer
+	if tc.Interactive {
+		confirmer = lifecycle.NewScriptedConfirmer(tc.StdinAnswers...)
+	} else {
+		confirmer = &lifecycle.SilentConfirmer{}
+	}
+
+	svc := &lifecycle.LifecycleService{
+		Config:       cfg,
+		VM:           vmInst,
+		MCP:          mcpStub,
+		Sessions:     sessions,
+		Monitor:      mon,
+		Registry:     reg,
+		Agents:       agentReg,
+		Provider:     prov,
+		AgentDefs:    agentDefs,
+		VMFactory:    factory,
 		// Integrations: replace production scripts with lightweight marker-file
 		// stubs so tests don't run real tool setup inside the container.
 		Integrations: buildTestIntegrations(tc),
+		Confirmer:    confirmer,
 		// DoLaunch uses GetWorkDir to resolve the working directory.
 		// In tests, return DevRoot so the CWD-under-DevRoot check always passes
 		// without needing os.Chdir (which is process-global and unsafe in tests).
 		GetWorkDir: func() (string, error) { return cfg.VM.DevRoot, nil },
 	}
 
-	// Wire injectable I/O: only active when Interactive=true so that
-	// non-interactive tests are not affected.
-	if tc.Interactive {
-		app.IsTerminal = func() bool { return true }
-		app.Stdin = stdinReader(tc)
+	return &cli.App{
+		Lifecycle: svc,
+		Config:    cfg,
+		VM:        vmInst,
+		MCP:       mcpStub,
+		Sessions:  sessions,
+		Monitor:   mon,
+		Agents:    agentReg,
 	}
-
-	return app
 }
 
 // testDockerDir returns the absolute path to the test/docker/ directory
