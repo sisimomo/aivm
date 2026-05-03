@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	aivmlog "aivm/internal/log"
-	"aivm/internal/plugin"
-	"aivm/internal/vm"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 const markerFile = ".aivm-bootstrap-version"

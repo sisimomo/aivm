@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"aivm/internal/run"
+	"github.com/sisimomo/aivm/internal/run"
 )
 
 func FindHostDockerSocket(ctx context.Context, colimaProfile string) (string, error) {

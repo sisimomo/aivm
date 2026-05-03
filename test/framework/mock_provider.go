@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/agent"
 )
 
 // MockProvider wraps a real agent.Provider and replaces Launch with a no-op

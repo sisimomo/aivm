@@ -8,8 +8,8 @@ import (
 	"os/exec"
 	"time"
 
-	aivmlog "aivm/internal/log"
-	"aivm/internal/run"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/run"
 )
 
 type Manager struct {

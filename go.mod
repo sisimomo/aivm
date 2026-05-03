@@ -1,4 +1,4 @@
-module aivm
+module github.com/sisimomo/aivm
 
 go 1.26.2
 

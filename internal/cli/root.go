@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	aivmlog "aivm/internal/log"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 // AppFactory constructs an App from a config file path.

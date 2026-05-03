@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	fw "aivm/test/framework"
+	fw "github.com/sisimomo/aivm/test/framework"
 )
 
 // OutputContains asserts that the captured stdout contains substr.

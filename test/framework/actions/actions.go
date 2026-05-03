@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"aivm/internal/vm"
-	fw "aivm/test/framework"
+	"github.com/sisimomo/aivm/internal/vm"
+	fw "github.com/sisimomo/aivm/test/framework"
 )
 
 // CLI invokes an aivm command through the real Cobra CLI entry point, identical

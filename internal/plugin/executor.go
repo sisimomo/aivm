@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	aivmlog "aivm/internal/log"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 // Executor runs plugins in DAG order.

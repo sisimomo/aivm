@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"aivm/test/framework"
+	"github.com/sisimomo/aivm/test/framework"
 )
 
 // captureBaseImageID returns a StepFunc that reads the current base image ID

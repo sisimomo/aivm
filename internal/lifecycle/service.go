@@ -11,15 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"aivm/internal/agent"
-	"aivm/internal/config"
-	"aivm/internal/integration"
-	aivmlog "aivm/internal/log"
-	"aivm/internal/mcp"
-	"aivm/internal/monitor"
-	"aivm/internal/plugin"
-	"aivm/internal/session"
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/config"
+	"github.com/sisimomo/aivm/internal/integration"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/mcp"
+	"github.com/sisimomo/aivm/internal/monitor"
+	"github.com/sisimomo/aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/session"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 // LifecycleService owns all orchestration logic for the aivm VM lifecycle.

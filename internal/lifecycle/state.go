@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"aivm/internal/bootstrap"
-	"aivm/internal/integration"
-	"aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/bootstrap"
+	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/plugin"
 )
 
 // BootstrapState is persisted on the host (no SSH required) and records the

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"aivm/internal/config"
-	"aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/config"
+	"github.com/sisimomo/aivm/internal/integration"
 )
 
 // testConfig holds configuration for a test Harness. It uses small defaults

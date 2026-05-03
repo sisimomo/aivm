@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"aivm/internal/vm"
-	fw "aivm/test/framework"
+	"github.com/sisimomo/aivm/internal/vm"
+	fw "github.com/sisimomo/aivm/test/framework"
 )
 
 // VMStatus asserts that the VM is currently in the given status.

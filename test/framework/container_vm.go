@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 const (

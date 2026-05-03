@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	aivmlog "aivm/internal/log"
-	"aivm/internal/mcp"
-	"aivm/internal/session"
-	"aivm/internal/vm"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/mcp"
+	"github.com/sisimomo/aivm/internal/session"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 type IdleMonitor struct {

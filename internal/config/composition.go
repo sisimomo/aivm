@@ -3,9 +3,9 @@ package config
 import (
 	"fmt"
 
-	"aivm/internal/agent"
-	"aivm/internal/integration"
-	"aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/plugin"
 )
 
 // CompositionError indicates a problem during configuration composition.

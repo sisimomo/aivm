@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 
-	"aivm/internal/agent"
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 const defaultLaunchCommand = "gh copilot"

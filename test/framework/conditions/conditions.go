@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"aivm/internal/vm"
-	fw "aivm/test/framework"
+	"github.com/sisimomo/aivm/internal/vm"
+	fw "github.com/sisimomo/aivm/test/framework"
 )
 
 // VMStatus returns a ConditionFunc that resolves to true when the VM reaches

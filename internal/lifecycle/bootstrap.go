@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"aivm/internal/bootstrap"
-	"aivm/internal/integration"
-	"aivm/internal/plugin"
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/bootstrap"
+	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 // newBootstrapEngine builds a bootstrap.Engine targeting targetVM.

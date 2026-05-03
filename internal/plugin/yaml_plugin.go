@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"aivm/internal/run"
+	"github.com/sisimomo/aivm/internal/run"
 )
 
 //go:embed defaults.yaml

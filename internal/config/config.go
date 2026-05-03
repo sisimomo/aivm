@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
-	"aivm/internal/agent"
-	"aivm/internal/integration"
-	"aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/plugin"
 )
 
 //go:embed defaults.yaml

@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	aivmlog "aivm/internal/log"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 // vmAgeDecision is the user's answer to whether to recreate an aged VM.

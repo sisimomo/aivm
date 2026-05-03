@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"aivm/internal/vm"
-	"aivm/test/framework"
-	"aivm/test/framework/actions"
-	"aivm/test/framework/assertions"
-	"aivm/test/framework/conditions"
+	"github.com/sisimomo/aivm/internal/vm"
+	"github.com/sisimomo/aivm/test/framework"
+	"github.com/sisimomo/aivm/test/framework/actions"
+	"github.com/sisimomo/aivm/test/framework/assertions"
+	"github.com/sisimomo/aivm/test/framework/conditions"
 )
 
 // TestCLIStartStop verifies that `aivm start` and `aivm stop` routed through

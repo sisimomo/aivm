@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	aivmlog "aivm/internal/log"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 const baseImageFile = "base-image.json"

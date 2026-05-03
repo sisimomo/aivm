@@ -1,6 +1,6 @@
 package agent
 
-import "aivm/internal/plugin"
+import "github.com/sisimomo/aivm/internal/plugin"
 
 // Def is the definition of an AI agent: how to set it up in the VM
 // and its runtime launch settings.

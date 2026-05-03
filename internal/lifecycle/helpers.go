@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"aivm/internal/agent"
-	"aivm/internal/config"
-	"aivm/internal/plugin"
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/config"
+	"github.com/sisimomo/aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, configured []string) []string {

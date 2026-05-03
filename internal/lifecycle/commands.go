@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 // Status displays VM, MCP, session, and monitor status to stdout.
