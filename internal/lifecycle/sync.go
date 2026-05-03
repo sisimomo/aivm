@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-
-	aivmlog "aivm/internal/log"
 )
 
 // syncStep represents one decision point in the bootstrap state machine.
@@ -37,7 +35,7 @@ var syncPipeline = []syncStep{
 func (svc *LifecycleService) syncBootstrap(ctx context.Context) error {
 	state, err := loadBootstrapState(svc.Config.StateDir)
 	if err != nil {
-		aivmlog.Warn("could not read bootstrap state, running full bootstrap: %v", err)
+		svc.log().Warn("could not read bootstrap state, running full bootstrap: %v", err)
 	}
 	desired := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
 	ss := &syncState{state: state, desired: desired}
@@ -104,7 +102,7 @@ func (s *newPluginsStep) run(ctx context.Context, ss *syncState, svc *LifecycleS
 			newPlugins = append(newPlugins, p)
 		}
 	}
-	aivmlog.Step("Installing %d new plugin(s): %s", len(newPlugins), strings.Join(newPlugins, ", "))
+	svc.log().Step("Installing %d new plugin(s): %s", len(newPlugins), strings.Join(newPlugins, ", "))
 	eng := svc.newBootstrapEngine(svc.VM, newPlugins)
 	if err := eng.Run(ctx, false); err != nil {
 		return err
@@ -126,7 +124,7 @@ func (s *upToDateStep) applicable(ss *syncState, _ *LifecycleService) bool {
 }
 
 func (s *upToDateStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
-	aivmlog.Info("VM is up to date — skipping bootstrap")
+	svc.log().Info("VM is up to date — skipping bootstrap")
 	return svc.runIntegrationsFromState(ctx, svc.VM)
 }
 
@@ -137,13 +135,13 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 	configured := svc.Provider.Description()
 	installedSummary := strings.Join(installedDescriptions, ", ")
 
-	aivmlog.Warn("VM '%s' was created for a different agent", svc.VM.Profile())
+	svc.log().Warn("VM '%s' was created for a different agent", svc.VM.Profile())
 	if len(installedDescriptions) == 1 {
-		aivmlog.Warn("Installed agent: %s", installedSummary)
+		svc.log().Warn("Installed agent: %s", installedSummary)
 	} else {
-		aivmlog.Warn("Installed agents: %s", installedSummary)
+		svc.log().Warn("Installed agents: %s", installedSummary)
 	}
-	aivmlog.Warn("Configured agent: %s", configured)
+	svc.log().Warn("Configured agent: %s", configured)
 
 	if !svc.Confirmer.IsInteractive() {
 		return fmt.Errorf(
@@ -157,7 +155,7 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 	}
 
 	sessions, _ := svc.Sessions.List()
-	decision, ok := promptAgentMismatch(svc.Confirmer, installedSummary, configured, len(sessions))
+	decision, ok := promptAgentMismatch(svc.log().Out, svc.Confirmer, installedSummary, configured, len(sessions))
 	if !ok {
 		return fmt.Errorf("invalid choice")
 	}
@@ -193,7 +191,7 @@ func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *Bo
 func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) error {
 	sessions, _ := svc.Sessions.List()
 	if len(sessions) > 0 {
-		aivmlog.Step("Terminating %d active session(s)", len(sessions))
+		svc.log().Step("Terminating %d active session(s)", len(sessions))
 		for _, sess := range sessions {
 			proc, err := os.FindProcess(sess.PID)
 			if err == nil {
@@ -205,7 +203,7 @@ func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) e
 
 	clearBootstrapState(svc.Config.StateDir)
 
-	aivmlog.Step("Recreating VM for %s", svc.Provider.Description())
+	svc.log().Step("Recreating VM for %s", svc.Provider.Description())
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
@@ -218,6 +216,6 @@ func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) e
 	svc.Sessions.ClearVMStoppedAt()
 	svc.clearTransition()
 
-	aivmlog.Success("VM recreated with only %s", svc.Provider.Description())
+	svc.log().Success("VM recreated with only %s", svc.Provider.Description())
 	return nil
 }

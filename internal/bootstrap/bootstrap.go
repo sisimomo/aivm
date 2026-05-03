@@ -25,6 +25,15 @@ type Engine struct {
 	VM       vm.VM
 	Executor *plugin.Executor
 	StateDir string
+	// Log receives all user-visible output. When nil, aivmlog.Default is used.
+	Log *aivmlog.Logger
+}
+
+func (e *Engine) log() *aivmlog.Logger {
+	if e.Log != nil {
+		return e.Log
+	}
+	return aivmlog.Default
 }
 
 // Run executes all configured plugins then writes the in-VM bootstrap marker.
@@ -32,9 +41,9 @@ type Engine struct {
 // a fresh blank VM. When false, already-installed plugins are skipped.
 func (e *Engine) Run(ctx context.Context, force bool) error {
 	if force {
-		aivmlog.Step("Bootstrapping VM")
+		e.log().Step("Bootstrapping VM")
 	} else {
-		aivmlog.Step("Reconciling VM bootstrap")
+		e.log().Step("Reconciling VM bootstrap")
 	}
 
 	if err := e.Executor.Run(ctx, force); err != nil {
@@ -46,7 +55,7 @@ func (e *Engine) Run(ctx context.Context, force bool) error {
 		return fmt.Errorf("writing bootstrap marker: %w", err)
 	}
 
-	aivmlog.Success("Bootstrap complete!")
+	e.log().Success("Bootstrap complete!")
 	return nil
 }
 

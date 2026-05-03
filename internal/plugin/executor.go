@@ -16,6 +16,16 @@ type Executor struct {
 	StateDir     string
 	// VMInst is passed as InstallEnv.VM so plugins can run commands in the VM.
 	VMInst VMRunner
+	// Log receives all user-visible output. When nil, aivmlog.Default is used.
+	// Inject a custom logger in tests to capture output.
+	Log *aivmlog.Logger
+}
+
+func (e *Executor) log() *aivmlog.Logger {
+	if e.Log != nil {
+		return e.Log
+	}
+	return aivmlog.Default
 }
 
 // Ordered returns the enabled plugins in topological order.
@@ -46,22 +56,22 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		env := InstallEnv{
 			Config:   cfg,
 			StateDir: e.StateDir,
-			Log:      aivmlog.Writer(p.Name()),
+			Log:      e.log().Writer(p.Name()),
 			VM:       e.VMInst,
 		}
 
 		if !force {
 			already, err := p.Check(ctx, env)
 			if err != nil {
-				aivmlog.Warn("check failed for plugin %s: %v", p.Name(), err)
+				e.log().Warn("check failed for plugin %s: %v", p.Name(), err)
 			}
 			if already {
-				aivmlog.Info("skip %s (already installed)", p.Name())
+				e.log().Info("skip %s (already installed)", p.Name())
 				continue
 			}
 		}
 
-		aivmlog.Step("Plugin: %s", p.Name())
+		e.log().Step("Plugin: %s", p.Name())
 		start := time.Now()
 
 		if err := p.Install(ctx, env); err != nil {
@@ -71,7 +81,7 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 			return fmt.Errorf("configure %s: %w", p.Name(), err)
 		}
 
-		aivmlog.Success("%s installed (%s)", p.Name(), time.Since(start).Round(time.Second))
+		e.log().Success("%s installed (%s)", p.Name(), time.Since(start).Round(time.Second))
 	}
 	return nil
 }

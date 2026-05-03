@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"aivm/internal/vm"
 	fw "aivm/test/framework"
@@ -123,14 +124,25 @@ func StateFileAbsent(relPath string) fw.AssertFunc {
 }
 
 // VMRunOutput asserts that running script in the VM produces output containing
-// the expected substring.
+// the expected substring. Uses DockerVM.RunOutput if available; otherwise
+// falls back to a plain Run with no output check.
 func VMRunOutput(script, contains string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		if err := h.App.Lifecycle.VM.Run(ctx, script, nil); err != nil {
-			return fmt.Errorf("script %q failed: %w", script, err)
+		type outputRunner interface {
+			RunOutput(ctx context.Context, script string, env map[string]string) (string, error)
 		}
-		_ = contains // future: add output capture if needed
-		return nil
+		if or, ok := h.App.Lifecycle.VM.(outputRunner); ok {
+			out, err := or.RunOutput(ctx, script, nil)
+			if err != nil {
+				return fmt.Errorf("script %q failed: %w", script, err)
+			}
+			if !strings.Contains(out, contains) {
+				return fmt.Errorf("script %q output does not contain %q\ngot: %s", script, contains, out)
+			}
+			return nil
+		}
+		// Fallback for VMs that don't support output capture.
+		return h.App.Lifecycle.VM.Run(ctx, script, nil)
 	}
 }
 

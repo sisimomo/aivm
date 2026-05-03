@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"fmt"
+	"io"
 
 	aivmlog "aivm/internal/log"
 )
@@ -16,13 +17,13 @@ const (
 
 // promptVMAge shows the VM age warning and asks whether to recreate.
 // Returns vmAgeRecreate only when the user answers y/Y.
-func promptVMAge(c Confirmer, profile string, ageDays, threshold int) vmAgeDecision {
+func promptVMAge(l *aivmlog.Logger, c Confirmer, profile string, ageDays, threshold int) vmAgeDecision {
 	if !c.IsInteractive() {
-		aivmlog.Info("VM is %d days old but running non-interactively — keeping", ageDays)
+		l.Info("VM is %d days old but running non-interactively — keeping", ageDays)
 		return vmAgeKeep
 	}
-	aivmlog.Warn("VM '%s' is %d day(s) old (threshold: %d)", profile, ageDays, threshold)
-	fmt.Printf("  → Delete and recreate for a clean slate? [y/N] ")
+	l.Warn("VM '%s' is %d day(s) old (threshold: %d)", profile, ageDays, threshold)
+	fmt.Fprintf(l.Out, "  → Delete and recreate for a clean slate? [y/N] ")
 	answer := c.ReadAnswer()
 	if answer == "y" || answer == "Y" {
 		return vmAgeRecreate
@@ -31,8 +32,8 @@ func promptVMAge(c Confirmer, profile string, ageDays, threshold int) vmAgeDecis
 }
 
 // promptYesNo prints the prompt string and returns true only for y/Y.
-func promptYesNo(c Confirmer, prompt string) bool {
-	fmt.Print(prompt)
+func promptYesNo(out io.Writer, c Confirmer, prompt string) bool {
+	fmt.Fprint(out, prompt)
 	ans := c.ReadAnswer()
 	return ans == "y" || ans == "Y"
 }
@@ -49,12 +50,12 @@ const (
 
 // promptBaseImageRebuildWithSessions asks the user to pick between killing
 // sessions now or transitioning to a parallel VM. nSessions must be > 0.
-func promptBaseImageRebuildWithSessions(c Confirmer, nSessions int) baseImageRebuildDecision {
-	fmt.Printf("\n  You have %d active session(s).\n", nSessions)
-	fmt.Printf("  Choose how to proceed:\n")
-	fmt.Printf("    1. Kill all sessions and rebuild now (sessions will be lost)\n")
-	fmt.Printf("    2. Start a new VM with the fresh image; old VM runs until sessions end, then auto-deletes\n")
-	fmt.Printf("  Choice [1/2]: ")
+func promptBaseImageRebuildWithSessions(out io.Writer, c Confirmer, nSessions int) baseImageRebuildDecision {
+	fmt.Fprintf(out, "\n  You have %d active session(s).\n", nSessions)
+	fmt.Fprintf(out, "  Choose how to proceed:\n")
+	fmt.Fprintf(out, "    1. Kill all sessions and rebuild now (sessions will be lost)\n")
+	fmt.Fprintf(out, "    2. Start a new VM with the fresh image; old VM runs until sessions end, then auto-deletes\n")
+	fmt.Fprintf(out, "  Choice [1/2]: ")
 	switch c.ReadAnswer() {
 	case "1":
 		return baseImageRebuildNow
@@ -76,29 +77,29 @@ const (
 
 // promptImageRebuild drives the interactive decision tree for `aivm rebuild-image`
 // when force is false. Returns imageRebuildCancel if the user backs out.
-func promptImageRebuild(c Confirmer, nSessions int) imageRebuildDecision {
+func promptImageRebuild(out io.Writer, c Confirmer, nSessions int) imageRebuildDecision {
 	if nSessions > 0 {
-		fmt.Printf("\n  Kill all active sessions now? [y/N] ")
+		fmt.Fprintf(out, "\n  Kill all active sessions now? [y/N] ")
 		if ans := c.ReadAnswer(); ans == "y" || ans == "Y" {
 			return imageRebuildHard
 		}
-		fmt.Println()
-		aivmlog.Warn("A second VM will be created for the rebuild.")
-		aivmlog.Warn("The current VM becomes legacy and will be automatically")
-		aivmlog.Warn("deleted once all its sessions close (no timer).")
-		fmt.Printf("\n  Proceed with soft rebuild? [y/N] ")
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "⚠️  A second VM will be created for the rebuild.\n")
+		fmt.Fprintf(out, "⚠️  The current VM becomes legacy and will be automatically\n")
+		fmt.Fprintf(out, "⚠️  deleted once all its sessions close (no timer).\n")
+		fmt.Fprintf(out, "\n  Proceed with soft rebuild? [y/N] ")
 		if ans := c.ReadAnswer(); ans == "y" || ans == "Y" {
 			return imageRebuildSoft
 		}
-		aivmlog.Info("Rebuild cancelled.")
+		fmt.Fprintf(out, "ℹ️  Rebuild cancelled.\n")
 		return imageRebuildCancel
 	}
 	// No active sessions — confirm hard rebuild.
-	fmt.Printf("\n  Proceed with base image rebuild? [y/N] ")
+	fmt.Fprintf(out, "\n  Proceed with base image rebuild? [y/N] ")
 	if ans := c.ReadAnswer(); ans == "y" || ans == "Y" {
 		return imageRebuildHard
 	}
-	aivmlog.Info("Rebuild cancelled.")
+	fmt.Fprintf(out, "ℹ️  Rebuild cancelled.\n")
 	return imageRebuildCancel
 }
 
@@ -114,17 +115,17 @@ const (
 // promptAgentMismatch shows the mismatch context and asks the user to choose
 // between installing alongside the existing agent or recreating the VM.
 // Returns (decision, true) on a valid choice or (0, false) on invalid input.
-func promptAgentMismatch(c Confirmer, installedSummary, configured string, nSessions int) (agentMismatchDecision, bool) {
-	fmt.Println()
-	fmt.Printf("  This VM already has %s installed.\n", installedSummary)
-	fmt.Printf("  Config now selects %s.\n", configured)
+func promptAgentMismatch(out io.Writer, c Confirmer, installedSummary, configured string, nSessions int) (agentMismatchDecision, bool) {
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  This VM already has %s installed.\n", installedSummary)
+	fmt.Fprintf(out, "  Config now selects %s.\n", configured)
 	if nSessions > 0 {
-		fmt.Printf("  Note: option 2 will terminate %d active session(s).\n", nSessions)
+		fmt.Fprintf(out, "  Note: option 2 will terminate %d active session(s).\n", nSessions)
 	}
-	fmt.Printf("  Choose how to proceed:\n")
-	fmt.Printf("    1. Install %s in the existing VM and keep the current agent(s)\n", configured)
-	fmt.Printf("    2. Delete the VM and recreate it with only %s\n", configured)
-	fmt.Printf("  Choice [1/2]: ")
+	fmt.Fprintf(out, "  Choose how to proceed:\n")
+	fmt.Fprintf(out, "    1. Install %s in the existing VM and keep the current agent(s)\n", configured)
+	fmt.Fprintf(out, "    2. Delete the VM and recreate it with only %s\n", configured)
+	fmt.Fprintf(out, "  Choice [1/2]: ")
 	switch c.ReadAnswer() {
 	case "1":
 		return agentMismatchInstall, true

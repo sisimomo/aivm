@@ -46,6 +46,17 @@ type LifecycleService struct {
 	Confirmer Confirmer
 	// GetWorkDir returns the working directory for Launch. When nil, os.Getwd is used.
 	GetWorkDir func() (string, error)
+	// Log is the logger used for all user-visible output. When nil, aivmlog.Default is used.
+	// Inject a custom logger in tests to capture console output.
+	Log *aivmlog.Logger
+}
+
+// log returns the active logger, falling back to the global default.
+func (svc *LifecycleService) log() *aivmlog.Logger {
+	if svc.Log != nil {
+		return svc.Log
+	}
+	return aivmlog.Default
 }
 
 // imageManager returns an ImageManager scoped to the service's VM and state dir.
@@ -77,9 +88,9 @@ func (svc *LifecycleService) clearTransition() {
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
 
-	aivmlog.Step("Starting aivm")
+	svc.log().Step("Starting aivm")
 
-	aivmlog.Info("Ensuring MCPJungle is running...")
+	svc.log().Info("Ensuring MCPJungle is running...")
 	if err := svc.MCP.Start(ctx); err != nil {
 		return fmt.Errorf("starting MCPJungle: %w", err)
 	}
@@ -92,7 +103,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		aivmlog.Step("Deleting aged VM profile '%s'", cfg.VM.Profile)
+		svc.log().Step("Deleting aged VM profile '%s'", cfg.VM.Profile)
 		if err := svc.VM.Destroy(ctx); err != nil {
 			return err
 		}
@@ -125,10 +136,10 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if err := svc.Monitor.EnsureRunning(); err != nil {
-		aivmlog.Warn("could not start idle monitor: %v", err)
+		svc.log().Warn("could not start idle monitor: %v", err)
 	}
 
-	aivmlog.Success("aivm is ready")
+	svc.log().Success("aivm is ready")
 	return nil
 }
 
@@ -150,7 +161,7 @@ func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated 
 	}
 	img, err := imgMgr.SaveBaseImage(ctx)
 	if err != nil {
-		aivmlog.Warn("could not save base image (non-fatal): %v", err)
+		svc.log().Warn("could not save base image (non-fatal): %v", err)
 	} else {
 		imgMgr.RecordVMImageRef(img.ID)
 	}
@@ -175,20 +186,20 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 	if age < cfg.VM.MaxAgeDays {
 		return false
 	}
-	return promptVMAge(svc.Confirmer, cfg.VM.Profile, age, cfg.VM.MaxAgeDays) == vmAgeRecreate
+	return promptVMAge(svc.log(), svc.Confirmer, cfg.VM.Profile, age, cfg.VM.MaxAgeDays) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
 func (svc *LifecycleService) Stop(ctx context.Context) error {
-	aivmlog.Step("Stopping aivm")
+	svc.log().Step("Stopping aivm")
 	svc.Monitor.Stop()
 	if err := svc.VM.Stop(ctx); err != nil {
-		aivmlog.Warn("VM stop error: %v", err)
+		svc.log().Warn("VM stop error: %v", err)
 	}
 	if err := svc.MCP.Stop(ctx); err != nil {
-		aivmlog.Warn("MCPJungle stop error: %v", err)
+		svc.log().Warn("MCPJungle stop error: %v", err)
 	}
-	aivmlog.Success("aivm stopped")
+	svc.log().Success("aivm stopped")
 	return nil
 }
 
@@ -199,9 +210,9 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		return err
 	}
 	if err := svc.MCP.Stop(ctx); err != nil {
-		aivmlog.Warn("MCPJungle stop error: %v", err)
+		svc.log().Warn("MCPJungle stop error: %v", err)
 	}
-	aivmlog.Success("VM destroyed")
+	svc.log().Success("VM destroyed")
 	return nil
 }
 
@@ -227,7 +238,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	// If a transition is already in progress, route this session to the new VM.
 	if ts := svc.loadTransition(); ts != nil {
-		aivmlog.Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
+		svc.log().Info("Transition active: launching on new VM '%s' (legacy '%s' still draining)", ts.NewProfile, ts.LegacyProfile)
 		svc.VM = svc.VMFactory(ts.NewProfile, cfg.StateDir)
 	} else if cfg.VM.BaseImageMaxAgeDays > 0 {
 		if err := svc.checkBaseImageAge(ctx); err != nil {
@@ -242,7 +253,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	sess, err := svc.Sessions.Create(hostCWD)
 	if err != nil {
-		aivmlog.Warn("could not create session lock: %v", err)
+		svc.log().Warn("could not create session lock: %v", err)
 	} else {
 		defer sess.Remove()
 	}
@@ -259,9 +270,9 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	vmDir := realCWD
 
-	aivmlog.Info("Host: %s", hostCWD)
-	aivmlog.Info("VM:   %s", vmDir)
-	aivmlog.Step("Launching %s in VM", svc.Provider.Description())
+	svc.log().Info("Host: %s", hostCWD)
+	svc.log().Info("VM:   %s", vmDir)
+	svc.log().Step("Launching %s in VM", svc.Provider.Description())
 
 	providerDef := svc.AgentDefs[svc.Provider.Name()]
 	providerCfg := make(map[string]any)
@@ -307,10 +318,10 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		return nil
 	}
 
-	fmt.Println()
-	aivmlog.Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, cfg.VM.BaseImageMaxAgeDays)
-	aivmlog.Warn("Created: %s", img.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
-	if !promptYesNo(svc.Confirmer, "  → Rebuild base image for a clean environment? [y/N] ") {
+	fmt.Fprintln(svc.log().Out)
+	svc.log().Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, cfg.VM.BaseImageMaxAgeDays)
+	svc.log().Warn("Created: %s", img.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
+	if !promptYesNo(svc.log().Out, svc.Confirmer, "  → Rebuild base image for a clean environment? [y/N] ") {
 		return nil
 	}
 
@@ -319,9 +330,9 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		return svc.rebuildCurrentVM(ctx)
 	}
 
-	switch promptBaseImageRebuildWithSessions(svc.Confirmer, len(sessions)) {
+	switch promptBaseImageRebuildWithSessions(svc.log().Out, svc.Confirmer, len(sessions)) {
 	case baseImageRebuildNow:
-		aivmlog.Step("Killing %d active session(s)...", len(sessions))
+		svc.log().Step("Killing %d active session(s)...", len(sessions))
 		for _, s := range sessions {
 			proc, err := os.FindProcess(s.PID)
 			if err == nil {
@@ -333,24 +344,24 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 	case baseImageTransition:
 		return svc.startTransitionVM(ctx)
 	default:
-		aivmlog.Info("Skipping base image rebuild.")
+		svc.log().Info("Skipping base image rebuild.")
 		return nil
 	}
 }
 
 // rebuildCurrentVM destroys the current VM, recreates it, and runs full bootstrap.
 func (svc *LifecycleService) rebuildCurrentVM(ctx context.Context) error {
-	aivmlog.Step("Stopping current VM...")
+	svc.log().Step("Stopping current VM...")
 	if err := svc.Stop(ctx); err != nil {
-		aivmlog.Warn("Stop error (continuing): %v", err)
+		svc.log().Warn("Stop error (continuing): %v", err)
 	}
 
-	aivmlog.Step("Destroying VM for fresh rebuild...")
+	svc.log().Step("Destroying VM for fresh rebuild...")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	aivmlog.Step("Creating new VM and rebuilding base image...")
+	svc.log().Step("Creating new VM and rebuilding base image...")
 	return svc.Start(ctx)
 }
 
@@ -361,7 +372,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 	newProfile := cfg.VM.Profile + "-next"
 	transitionStart := time.Now()
 
-	aivmlog.Step("Creating new VM '%s' with fresh base image...", newProfile)
+	svc.log().Step("Creating new VM '%s' with fresh base image...", newProfile)
 
 	newVM := svc.VMFactory(newProfile, cfg.StateDir)
 	_ = newVM.Destroy(ctx)
@@ -372,7 +383,7 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 		return err
 	}
 	if img != nil {
-		aivmlog.Success("New base image saved: id=%s", img.ID)
+		svc.log().Success("New base image saved: id=%s", img.ID)
 	}
 
 	ts := &vm.TransitionState{
@@ -385,10 +396,10 @@ func (svc *LifecycleService) startTransitionVM(ctx context.Context) error {
 	}
 
 	if err := svc.Monitor.EnsureLegacyMonitorRunning(); err != nil {
-		aivmlog.Warn("could not start legacy monitor: %v", err)
+		svc.log().Warn("could not start legacy monitor: %v", err)
 	}
 
-	aivmlog.Success("Transition started: new sessions use '%s', old VM '%s' drains automatically", newProfile, cfg.VM.Profile)
+	svc.log().Success("Transition started: new sessions use '%s', old VM '%s' drains automatically", newProfile, cfg.VM.Profile)
 
 	svc.VM = newVM
 	return nil
@@ -426,33 +437,33 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error
 	imgMgr := svc.imageManager()
 	current := imgMgr.LoadBaseImage()
 
-	fmt.Println()
-	aivmlog.Warn("Base image rebuild requested.")
+	fmt.Fprintln(svc.log().Out)
+	svc.log().Warn("Base image rebuild requested.")
 	if current != nil {
-		aivmlog.Warn("Current base image: id=%s, created %s",
+		svc.log().Warn("Current base image: id=%s, created %s",
 			current.ID, current.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
 	} else {
-		aivmlog.Warn("No existing base image found.")
+		svc.log().Warn("No existing base image found.")
 	}
 
 	sessions, _ := svc.Sessions.List()
 	if len(sessions) > 0 {
-		aivmlog.Warn("%d active session(s) detected.", len(sessions))
+		svc.log().Warn("%d active session(s) detected.", len(sessions))
 	}
 
 	if force {
 		if len(sessions) > 0 {
 			killed := svc.Sessions.KillAll()
-			aivmlog.Info("Sent SIGTERM to %d session(s).", len(killed))
+			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
 		}
 		return svc.doHardRebuild(ctx, imgMgr)
 	}
 
-	switch promptImageRebuild(svc.Confirmer, len(sessions)) {
+	switch promptImageRebuild(svc.log().Out, svc.Confirmer, len(sessions)) {
 	case imageRebuildHard:
 		if len(sessions) > 0 {
 			killed := svc.Sessions.KillAll()
-			aivmlog.Info("Sent SIGTERM to %d session(s).", len(killed))
+			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
 		}
 		return svc.doHardRebuild(ctx, imgMgr)
 	case imageRebuildSoft:
@@ -482,7 +493,7 @@ func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.V
 
 // doHardRebuild destroys the current VM, recreates it, and runs full bootstrap.
 func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
-	aivmlog.Step("Destroying existing VM")
+	svc.log().Step("Destroying existing VM")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
@@ -493,8 +504,8 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 	}
 
 	svc.clearTransition()
-	aivmlog.Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
-	aivmlog.Info("Future VMs will start from this image.")
+	svc.log().Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
+	svc.log().Info("Future VMs will start from this image.")
 	return nil
 }
 
@@ -506,12 +517,12 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 
 	_ = tempVM.Destroy(ctx)
 
-	aivmlog.Step("Starting temporary rebuild VM '%s'", tempProfile)
+	svc.log().Step("Starting temporary rebuild VM '%s'", tempProfile)
 	if err := startFreshVM(ctx, tempVM, cfg); err != nil {
 		return err
 	}
 
-	aivmlog.Step("Bootstrapping rebuild VM from scratch")
+	svc.log().Step("Bootstrapping rebuild VM from scratch")
 	if err := svc.rebuildBootstrap(ctx, tempVM); err != nil {
 		_ = tempVM.Destroy(ctx)
 		return err
@@ -522,7 +533,7 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 		return fmt.Errorf("saving base image metadata: %w", err)
 	}
 
-	aivmlog.Step("Destroying temporary rebuild VM")
+	svc.log().Step("Destroying temporary rebuild VM")
 	_ = tempVM.Destroy(ctx)
 
 	ts := &vm.TransitionState{
@@ -531,14 +542,14 @@ func (svc *LifecycleService) doSoftRebuild(ctx context.Context, imgMgr *vm.Image
 		StartedAt:     time.Now(),
 	}
 	if err := svc.saveTransition(ts); err != nil {
-		aivmlog.Warn("could not save transition state: %v", err)
+		svc.log().Warn("could not save transition state: %v", err)
 	}
 	if err := svc.Monitor.EnsureLegacyMonitorRunning(); err != nil {
-		aivmlog.Warn("could not start legacy monitor: %v", err)
+		svc.log().Warn("could not start legacy monitor: %v", err)
 	}
 
-	aivmlog.Success("New base image recorded.")
-	aivmlog.Info("Legacy VM '%s' will be removed once all sessions close.", cfg.VM.Profile)
-	aivmlog.Info("Run 'aivm start' after that to apply the new image.")
+	svc.log().Success("New base image recorded.")
+	svc.log().Info("Legacy VM '%s' will be removed once all sessions close.", cfg.VM.Profile)
+	svc.log().Info("Run 'aivm start' after that to apply the new image.")
 	return nil
 }

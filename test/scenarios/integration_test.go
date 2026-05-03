@@ -29,6 +29,7 @@ func TestIntegrationRunsForActiveAgent(t *testing.T) {
 			assertions.BootstrapStateContainsIntegrations("rtk:claude")).
 		Assert("rtk→claude marker file exists in VM",
 			assertions.VMFileExists("/tmp/.aivm_test_integ_rtk_claude")).
+		Assert("User saw integration step in output", assertions.OutputContains("Integration: rtk:claude")).
 		Run()
 }
 
@@ -51,6 +52,8 @@ func TestIntegrationSkipsForInactiveAgent(t *testing.T) {
 			assertions.VMFileExists("/tmp/.aivm_test_integ_rtk_copilot")).
 		Assert("rtk→claude marker file is absent in VM",
 			assertions.VMFileAbsent("/tmp/.aivm_test_integ_rtk_claude")).
+		Assert("rtk:claude integration step not shown to user",
+			assertions.OutputNotContains("Integration: rtk:claude")).
 		Run()
 }
 

@@ -9,39 +9,39 @@ import (
 	"path/filepath"
 	"time"
 
-	aivmlog "aivm/internal/log"
 	"aivm/internal/vm"
 )
 
 // Status displays VM, MCP, session, and monitor status to stdout.
 func (svc *LifecycleService) Status(ctx context.Context) error {
 	cfg := svc.Config
+	out := svc.log().Out
 
-	fmt.Println()
-	fmt.Println("  ┌─ aivm status ─────────────────────────────────┐")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  ┌─ aivm status ─────────────────────────────────┐")
 
 	status, _ := svc.VM.Status(ctx)
 	vmIcon := "❌"
 	if status == vm.StatusRunning {
 		vmIcon = "✅"
 	}
-	fmt.Printf("  │  VM (%s): %s %s\n", cfg.VM.Profile, vmIcon, status)
+	fmt.Fprintf(out, "  │  VM (%s): %s %s\n", cfg.VM.Profile, vmIcon, status)
 
 	imgMgr := svc.imageManager()
 	baseImg := imgMgr.LoadBaseImage()
 	if baseImg != nil {
-		fmt.Printf("  │  Base image:        id=%s (%s)\n",
+		fmt.Fprintf(out, "  │  Base image:        id=%s (%s)\n",
 			baseImg.ID, baseImg.CreatedAt.Local().Format("2006-01-02 15:04 MST"))
 		vmRef := imgMgr.GetVMImageRef()
 		if vmRef == "" {
-			fmt.Printf("  │  VM image ref:      (unknown)\n")
+			fmt.Fprintf(out, "  │  VM image ref:      (unknown)\n")
 		} else if imgMgr.IsVMLegacy() {
-			fmt.Printf("  │  VM image ref:      id=%s ⚠️  legacy\n", vmRef)
+			fmt.Fprintf(out, "  │  VM image ref:      id=%s ⚠️  legacy\n", vmRef)
 		} else {
-			fmt.Printf("  │  VM image ref:      id=%s ✅ current\n", vmRef)
+			fmt.Fprintf(out, "  │  VM image ref:      id=%s ✅ current\n", vmRef)
 		}
 	} else {
-		fmt.Printf("  │  Base image:        (none — run 'aivm start' to create)\n")
+		fmt.Fprintf(out, "  │  Base image:        (none — run 'aivm start' to create)\n")
 	}
 
 	if ts := svc.loadTransition(); ts != nil {
@@ -52,35 +52,35 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 			legacyIcon = "🔄"
 		}
 		legacySessions, _ := svc.Sessions.CountLegacy(ts.StartedAt)
-		fmt.Printf("  │  ─────────────────────────────────────────────\n")
-		fmt.Printf("  │  Legacy VM (%s): %s %s\n", ts.LegacyProfile, legacyIcon, legacyStatus)
-		fmt.Printf("  │  Legacy sessions:   %d remaining (auto-delete when done)\n", legacySessions)
+		fmt.Fprintf(out, "  │  ─────────────────────────────────────────────\n")
+		fmt.Fprintf(out, "  │  Legacy VM (%s): %s %s\n", ts.LegacyProfile, legacyIcon, legacyStatus)
+		fmt.Fprintf(out, "  │  Legacy sessions:   %d remaining (auto-delete when done)\n", legacySessions)
 
 		legacyPID := filepath.Join(cfg.StateDir, "legacy-monitor.pid")
 		legacyMonIcon := "❌"
 		if _, err := os.Stat(legacyPID); err == nil {
 			legacyMonIcon = "✅"
 		}
-		fmt.Printf("  │  Legacy monitor:    %s\n", legacyMonIcon)
-		fmt.Printf("  │  Transition since:  %s\n", ts.StartedAt.Local().Format("2006-01-02 15:04 MST"))
-		fmt.Printf("  │  ─────────────────────────────────────────────\n")
+		fmt.Fprintf(out, "  │  Legacy monitor:    %s\n", legacyMonIcon)
+		fmt.Fprintf(out, "  │  Transition since:  %s\n", ts.StartedAt.Local().Format("2006-01-02 15:04 MST"))
+		fmt.Fprintf(out, "  │  ─────────────────────────────────────────────\n")
 	}
 
 	mcpIcon := "❌"
 	if svc.MCP.IsHealthy(ctx) {
 		mcpIcon = "✅"
 	}
-	fmt.Printf("  │  MCPJungle:         %s port %d\n", mcpIcon, cfg.MCP.Port)
+	fmt.Fprintf(out, "  │  MCPJungle:         %s port %d\n", mcpIcon, cfg.MCP.Port)
 
 	monitorPID := filepath.Join(cfg.StateDir, "idle-monitor.pid")
 	monitorIcon := "❌"
 	if _, err := os.Stat(monitorPID); err == nil {
 		monitorIcon = "✅"
 	}
-	fmt.Printf("  │  Idle monitor:      %s\n", monitorIcon)
+	fmt.Fprintf(out, "  │  Idle monitor:      %s\n", monitorIcon)
 
 	sessions, _ := svc.Sessions.List()
-	fmt.Printf("  │  Active sessions:   %d\n", len(sessions))
+	fmt.Fprintf(out, "  │  Active sessions:   %d\n", len(sessions))
 
 	if len(sessions) == 0 {
 		last := svc.Sessions.ReadLastActive()
@@ -90,9 +90,9 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 		case vm.StatusRunning:
 			remaining := cfg.Idle.Timeout - idle
 			if remaining > 0 {
-				fmt.Printf("  │  Idle suspend:      in %s\n", remaining)
+				fmt.Fprintf(out, "  │  Idle suspend:      in %s\n", remaining)
 			} else {
-				fmt.Printf("  │  Idle suspend:      ⚠️  imminent\n")
+				fmt.Fprintf(out, "  │  Idle suspend:      ⚠️  imminent\n")
 			}
 		case vm.StatusStopped:
 			stoppedAt := svc.Sessions.ReadVMStoppedAt()
@@ -100,18 +100,18 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 				elapsed := time.Since(stoppedAt).Round(time.Second)
 				remaining := cfg.Idle.DeleteTimeout - elapsed
 				if remaining > 0 {
-					fmt.Printf("  │  VM deletion:       in %s\n", remaining)
+					fmt.Fprintf(out, "  │  VM deletion:       in %s\n", remaining)
 				} else {
-					fmt.Printf("  │  VM deletion:       ⚠️  imminent\n")
+					fmt.Fprintf(out, "  │  VM deletion:       ⚠️  imminent\n")
 				}
 			}
 		}
 	} else {
-		fmt.Printf("  │  Idle suspend:      ─ sessions active\n")
+		fmt.Fprintf(out, "  │  Idle suspend:      ─ sessions active\n")
 	}
 
-	fmt.Println("  └───────────────────────────────────────────────┘")
-	fmt.Println()
+	fmt.Fprintln(out, "  └───────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
 	return nil
 }
 
@@ -125,7 +125,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 	workDir, _ := os.Getwd()
 	sess, err := svc.Sessions.Create(workDir)
 	if err != nil {
-		aivmlog.Warn("could not create session lock: %v", err)
+		svc.log().Warn("could not create session lock: %v", err)
 	} else {
 		defer sess.Remove()
 	}
@@ -173,21 +173,22 @@ func tailFile(path string) error {
 
 // ListPlugins prints all known plugins and their status (enabled or disabled).
 func (svc *LifecycleService) ListPlugins() error {
+	out := svc.log().Out
 	all := svc.Registry.All()
-	fmt.Printf("\n  %-16s %-40s %s\n", "NAME", "DESCRIPTION", "DEPENDS ON")
-	fmt.Printf("  %-16s %-40s %s\n", "────────────────", "────────────────────────────────────────", "──────────")
+	fmt.Fprintf(out, "\n  %-16s %-40s %s\n", "NAME", "DESCRIPTION", "DEPENDS ON")
+	fmt.Fprintf(out, "  %-16s %-40s %s\n", "────────────────", "────────────────────────────────────────", "──────────")
 	ordered, _ := svc.Registry.Resolve(svc.Config.Plugins.Enabled)
 	shown := make(map[string]bool)
 	for _, p := range ordered {
 		shown[p.Name()] = true
-		fmt.Printf("  %-16s %-40s %v\n", p.Name(), p.Description(), p.Dependencies())
+		fmt.Fprintf(out, "  %-16s %-40s %v\n", p.Name(), p.Description(), p.Dependencies())
 	}
 	for name, p := range all {
 		if !shown[name] {
-			fmt.Printf("  %-16s %-40s %v  (disabled)\n", p.Name(), p.Description(), p.Dependencies())
+			fmt.Fprintf(out, "  %-16s %-40s %v  (disabled)\n", p.Name(), p.Description(), p.Dependencies())
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 	return nil
 }
 

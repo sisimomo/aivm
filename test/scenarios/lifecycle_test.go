@@ -27,9 +27,13 @@ func TestStopDestroyRestart(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Assert("Base image saved", assertions.BaseImageExists()).
+		Assert("Bootstrap ran: user saw 'Bootstrapping VM'", assertions.OutputContains("Bootstrapping VM")).
+		Assert("Bootstrap ran: user saw 'Bootstrap complete!'", assertions.OutputContains("Bootstrap complete!")).
+		Assert("Start finished: user saw 'aivm is ready'", assertions.OutputContains("aivm is ready")).
 		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
+		Assert("Stop finished: user saw 'aivm stopped'", assertions.OutputContains("aivm stopped")).
 		Step("Resume VM via Start (no bootstrap — VM was not destroyed)", actions.CLI("start")).
 		Wait("VM is running again", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
 		Assert("VM is running after resume", assertions.VMStatus(vm.StatusRunning)).
@@ -37,6 +41,7 @@ func TestStopDestroyRestart(t *testing.T) {
 		Step("Destroy VM entirely", actions.CLI("destroy")).
 		Wait("VM is gone", conditions.VMStatus(vm.StatusNotFound), 2*time.Minute).
 		Assert("VM is not found", assertions.VMStatus(vm.StatusNotFound)).
+		Assert("Destroy finished: user saw 'VM destroyed'", assertions.OutputContains("VM destroyed")).
 		Step("Recreate VM from scratch via Start", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap ran again on new VM", assertions.BootstrapComplete()).
@@ -59,10 +64,14 @@ func TestBootstrapCommandForce(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run bootstrap --force (re-runs everything)", actions.CLI("bootstrap", "--force")).
 		Assert("Scripts ran again (force=true bypasses up-to-date check)",
 			assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state still valid", assertions.BootstrapComplete()).
+		Assert("User saw force-bootstrap header", assertions.OutputContains("Bootstrapping VM")).
+		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
+		Assert("User saw provider plugin step", assertions.OutputContains("Plugin: claude")).
 		Run()
 }
 
@@ -81,8 +90,11 @@ func TestBootstrapCommandSinglePlugin(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run bootstrap --plugin java (only java plugin)", actions.CLI("bootstrap", "--plugin", "java")).
 		Assert("At least one script ran (the java plugin's steps)", assertions.VMRunCountAtLeast(1)).
+		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
+		Assert("User saw java installed message", assertions.OutputContains("java installed")).
 		Run()
 }
 
@@ -101,7 +113,9 @@ func TestBootstrapCommandSync(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run bootstrap (sync — no flags)", actions.CLI("bootstrap")).
 		Assert("No scripts ran — VM was already up to date", assertions.VMRunCountIs(0)).
+		Assert("User saw up-to-date message", assertions.OutputContains("VM is up to date — skipping bootstrap")).
 		Run()
 }

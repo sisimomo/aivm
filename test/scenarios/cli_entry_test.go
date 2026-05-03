@@ -37,9 +37,12 @@ func TestCLIStartStop(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
 		Assert("Base image saved after start", assertions.BaseImageExists()).
+		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm stop", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
+		Assert("User saw stop confirmation", assertions.OutputContains("aivm stopped")).
 		Run()
 }
 
@@ -54,10 +57,13 @@ func TestCLIBootstrapForceFlag(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm bootstrap --force", actions.CLI("bootstrap", "--force")).
 		Assert("Scripts ran again (--force flag reached DoBootstrap)",
 			assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state still valid", assertions.BootstrapComplete()).
+		Assert("User saw force-bootstrap header", assertions.OutputContains("Bootstrapping VM")).
+		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
 		Run()
 }
 
@@ -72,9 +78,12 @@ func TestCLIBootstrapPluginFlag(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm bootstrap --plugin java", actions.CLI("bootstrap", "--plugin", "java")).
 		Assert("At least one script ran (the java plugin's steps)",
 			assertions.VMRunCountAtLeast(1)).
+		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
+		Assert("User saw java installed confirmation", assertions.OutputContains("java installed")).
 		Run()
 }
 

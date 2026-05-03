@@ -39,12 +39,19 @@ func TestAgentMismatchInstallIntoExistingVM(t *testing.T) {
 			assertions.BootstrapStateContainsPlugins("claude")).
 		Step("Switch config to copilot provider", actions.ChangeProvider("copilot")).
 		Step("Reset run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM again — mismatch detected, choose to install into existing VM",
 			actions.CLI("start")).
 		Assert("VM still running (was not destroyed)", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Copilot plugin was installed (one new script ran)", assertions.VMRunCountAtLeast(1)).
 		Assert("Both agent plugins now in bootstrap state",
 			assertions.BootstrapStateContainsPlugins("claude", "copilot")).
+		Assert("User was warned about agent mismatch",
+			assertions.StderrContains("was created for a different agent")).
+		Assert("User saw copilot plugin install step",
+			assertions.OutputContains("Plugin: copilot")).
+		Assert("User saw copilot installed confirmation",
+			assertions.OutputContains("copilot installed")).
 		Run()
 }
 
@@ -79,5 +86,9 @@ func TestAgentMismatchRecreateVM(t *testing.T) {
 		Assert("Bootstrap state updated to copilot provider",
 			assertions.BootstrapStateProviderIs("copilot")).
 		Assert("Copilot plugin installed", assertions.BootstrapStateContainsPlugins("copilot")).
+		Assert("User was warned about agent mismatch",
+			assertions.StderrContains("was created for a different agent")).
+		Assert("User saw VM recreation message",
+			assertions.OutputContains("VM recreated with only GitHub Copilot")).
 		Run()
 }

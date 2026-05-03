@@ -30,10 +30,12 @@ func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Assert("At least one script ran during bootstrap", assertions.VMRunCountAtLeast(1)).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM again with identical config", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("No scripts ran — bootstrap was skipped", assertions.VMRunCountIs(0)).
 		Assert("Bootstrap state still complete", assertions.BootstrapComplete()).
+		Assert("User saw skip message", assertions.OutputContains("VM is up to date — skipping bootstrap")).
 		Run()
 }
 
@@ -59,12 +61,15 @@ func TestStartInstallsNewPluginsIncrementally(t *testing.T) {
 		Assert("Bootstrap includes claude and java",
 			assertions.BootstrapStateContainsPlugins("claude", "java")).
 		Step("Reset VM run counter after first boot", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Add nodejs to plugin list", actions.ChangePlugins("java", "nodejs")).
 		Step("Start VM again — only nodejs should be installed", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("At least one script ran for the new nodejs plugin", assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state now includes all three plugins",
 			assertions.BootstrapStateContainsPlugins("claude", "java", "nodejs")).
+		Assert("User saw install step for nodejs", assertions.OutputContains("Plugin: nodejs")).
+		Assert("User saw nodejs installed confirmation", assertions.OutputContains("nodejs installed")).
 		Run()
 }
 
@@ -85,9 +90,12 @@ func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Corrupt bootstrap state version to simulate an upgrade", actions.CorruptBootstrapVersion()).
 		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM again — version mismatch triggers full re-bootstrap", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("Re-bootstrap ran at least one script", assertions.VMRunCountAtLeast(1)).
 		Assert("Bootstrap state is valid again", assertions.BootstrapComplete()).
+		Assert("User saw reconcile header (force=false re-bootstrap)", assertions.OutputContains("Reconciling VM bootstrap")).
+		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
 		Run()
 }

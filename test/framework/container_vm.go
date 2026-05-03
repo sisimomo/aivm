@@ -154,6 +154,30 @@ func (d *DockerVM) Run(_ context.Context, script string, env map[string]string) 
 	)
 }
 
+// RunOutput executes script inside the container as the test user and returns
+// its combined stdout output. Use this when you need to assert on the content
+// produced by a script, rather than just whether it succeeded.
+func (d *DockerVM) RunOutput(_ context.Context, script string, env map[string]string) (string, error) {
+	full := script
+	if len(env) > 0 {
+		var sb strings.Builder
+		for k, v := range env {
+			fmt.Fprintf(&sb, "export %s=%s\n", k, vm.ShellEscape(v))
+		}
+		full = sb.String() + script
+	}
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(full))
+	bashCmd := "echo " + encoded + " | base64 -d | bash -l"
+
+	return dockerOutput(
+		"exec",
+		"-u", testContainerUser,
+		d.containerName,
+		"bash", "-lc", bashCmd,
+	)
+}
+
 // SSH opens an interactive shell session in the container. Used only manually,
 // not called by automated tests.
 func (d *DockerVM) SSH(_ context.Context) error {

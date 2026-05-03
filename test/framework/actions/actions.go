@@ -167,6 +167,26 @@ func CorruptBootstrapVersion() fw.StepFunc {
 	}
 }
 
+// ResetOutput clears the harness output buffer. Use between RunCLI calls when
+// you want to assert on only a specific command's output.
+func ResetOutput() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		h.Output.Reset()
+		return nil
+	}
+}
+
+// AddPlugin appends a plugin name to the enabled plugins list in the app config.
+// The new plugin will be picked up on the next start or bootstrap call.
+func AddPlugin(name string) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		h.App.Lifecycle.Config.Plugins.Enabled = append(
+			h.App.Lifecycle.Config.Plugins.Enabled, name,
+		)
+		return nil
+	}
+}
+
 // ResetMockVMRunCount resets the primary VM's run counter to zero.
 // Use this before a step where you want to assert on the number of scripts
 // run by a specific bootstrap phase. No-op if the VM does not implement RunCounter.

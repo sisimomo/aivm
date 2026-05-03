@@ -6,7 +6,6 @@ import (
 
 	"aivm/internal/bootstrap"
 	"aivm/internal/integration"
-	aivmlog "aivm/internal/log"
 	"aivm/internal/plugin"
 	"aivm/internal/vm"
 )
@@ -27,8 +26,10 @@ func (svc *LifecycleService) newBootstrapEngine(targetVM vm.VM, plugins []string
 			PluginConfig: svc.Config.Plugins.Config,
 			StateDir:     svc.Config.StateDir,
 			VMInst:       targetVM,
+			Log:          svc.log(),
 		},
 		StateDir: svc.Config.StateDir,
+		Log:      svc.log(),
 	}
 }
 
@@ -65,7 +66,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 	}
 	state, err := loadBootstrapState(svc.Config.StateDir)
 	if err != nil {
-		aivmlog.Warn("could not read bootstrap state for integrations: %v", err)
+		svc.log().Warn("could not read bootstrap state for integrations: %v", err)
 		return nil
 	}
 	if state == nil {
@@ -78,7 +79,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 		ActiveAgents:     svc.Config.ActiveAgents(),
 		AlreadyRan:       stringSet(state.AllIntegrations()),
 		VM:               targetVM,
-		Log:              aivmlog.Writer("integration"),
+		Log:              svc.log().Writer("integration"),
 		TemplateVars: map[string]any{
 			"mcp_port": fmt.Sprintf("%d", svc.Config.MCP.Port),
 		},
@@ -90,7 +91,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 	}
 
 	for _, integ := range matching {
-		aivmlog.Step("Integration: %s → %s", integ.Key(), integ.To)
+		svc.log().Step("Integration: %s → %s", integ.Key(), integ.To)
 	}
 
 	ran, err := exec.Run(ctx)
@@ -101,7 +102,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 	if len(ran) > 0 {
 		state.MarkIntegrationRan(ran)
 		if saveErr := saveBootstrapState(svc.Config.StateDir, state); saveErr != nil {
-			aivmlog.Warn("could not save bootstrap state after integrations: %v", saveErr)
+			svc.log().Warn("could not save bootstrap state after integrations: %v", saveErr)
 		}
 	}
 	return nil

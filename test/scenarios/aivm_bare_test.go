@@ -39,6 +39,8 @@ func TestBareCommandFirstBoot(t *testing.T) {
 		Assert("Base image saved during DoStart", assertions.BaseImageExists()).
 		Assert("Agent was launched by DoLaunch", assertions.AgentLaunched()).
 		Assert("Agent launched exactly once", assertions.AgentLaunchCount(1)).
+		Assert("User saw bootstrap complete", assertions.OutputContains("Bootstrap complete!")).
+		Assert("User saw agent launch step", assertions.OutputContains("Launching Claude Code (Anthropic) in VM")).
 		Run()
 }
 
@@ -56,10 +58,13 @@ func TestBareCommandResume(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
 		Step("Reset run counter (nothing should re-run)", actions.ResetMockVMRunCount()).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm (bare) — VM already up", actions.CLI()).
 		Assert("VM is still running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("No bootstrap scripts ran (VM was already up-to-date)", assertions.VMRunCountIs(0)).
 		Assert("Agent was launched", assertions.AgentLaunched()).
+		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
+		Assert("User saw agent launch step", assertions.OutputContains("Launching Claude Code (Anthropic) in VM")).
 		Run()
 }
 

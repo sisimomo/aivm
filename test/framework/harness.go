@@ -34,6 +34,7 @@ import (
 	"aivm/internal/config"
 	"aivm/internal/integration"
 	"aivm/internal/lifecycle"
+	aivmlog "aivm/internal/log"
 	"aivm/internal/monitor"
 	"aivm/internal/plugin"
 	"aivm/internal/providers/claude"
@@ -51,6 +52,10 @@ type Harness struct {
 	StateDir string
 	Profile  string
 	App      *cli.App
+	// Output captures all stdout/stderr written by the LifecycleService logger.
+	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
+	// between RunCLI calls when per-command isolation matters.
+	Output *OutputBuffer
 	// ContainerVMs provides access to all DockerVM instances created during the
 	// test, keyed by profile name. Use this to inspect secondary VMs (e.g. the
 	// new VM profile bootstrapped during a soft rebuild).
@@ -111,7 +116,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 	containerVMs.Register(primaryVM)
 	factory := containerVMs.Factory()
 
-	app := buildTestApp(t, cfg, tc, primaryVM, factory)
+	output := &OutputBuffer{}
+	app := buildTestApp(t, cfg, tc, primaryVM, factory, output)
 
 	h := &Harness{
 		t:            t,
@@ -119,6 +125,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		StateDir:     stateDir,
 		Profile:      profile,
 		App:          app,
+		Output:       output,
 		ContainerVMs: containerVMs,
 	}
 
@@ -193,7 +200,7 @@ func (h *Harness) ImageManager() *vm.ImageManager {
 	return vm.NewImageManager(h.App.Lifecycle.VM, h.StateDir)
 }
 
-func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, factory vm.VMFactory) *cli.App {
+func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, factory vm.VMFactory, output *OutputBuffer) *cli.App {
 	t.Helper()
 
 	agentReg := agent.NewRegistry()
@@ -266,6 +273,8 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		// In tests, return DevRoot so the CWD-under-DevRoot check always passes
 		// without needing os.Chdir (which is process-global and unsafe in tests).
 		GetWorkDir: func() (string, error) { return cfg.VM.DevRoot, nil },
+		// Log routes all user-visible output through the per-test OutputBuffer.
+		Log: aivmlog.New(output, &stderrWriter{output}),
 	}
 
 	return &cli.App{
