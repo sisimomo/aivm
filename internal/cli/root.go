@@ -45,11 +45,11 @@ Run from any directory under your dev root.
 Supported providers: claude, copilot
 
 Examples:
-  aivm                   Launch the configured AI agent in the current directory
+  aivm                   Launch the configured AI agent in the current directory (starts VM if needed)
+  aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
-  aivm status            Show status
-  aivm ssh               Open a shell in the VM`,
+  aivm status            Show status`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -81,7 +81,6 @@ Examples:
 		RestartCmd(getApp),
 		StatusCmd(getApp),
 		SSHCmd(getApp),
-		BootstrapCmd(getApp),
 		RebuildImageCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),

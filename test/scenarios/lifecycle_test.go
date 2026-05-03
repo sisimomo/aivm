@@ -49,73 +49,20 @@ func TestStopDestroyRestart(t *testing.T) {
 		Run()
 }
 
-// TestBootstrapCommandForce verifies that `aivm bootstrap --force` re-runs all
-// plugins on an already-bootstrapped VM.
+// TestSSHAutoStart verifies that `aivm ssh` starts the VM automatically when
+// it is not running, bootstraps it if needed, then opens the shell.
 //
-//  1. Start VM — bootstrap runs.
-//  2. Reset run counter.
-//  3. DoBootstrap(force=true) — all plugins run again regardless of state.
-func TestBootstrapCommandForce(t *testing.T) {
+//  1. No VM running.
+//  2. aivm ssh — auto-starts the VM, runs bootstrap, opens SSH shell.
+func TestSSHAutoStart(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
 
-	h.Scenario("bootstrap --force re-runs all plugins on an already-bootstrapped VM").
-		Step("Start VM (first boot — bootstrap installs plugins)", actions.CLI("start")).
+	h.Scenario("aivm ssh starts and bootstraps VM when not running").
+		Step("Run: aivm ssh (VM not yet running)", actions.CLI("ssh")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run bootstrap --force (re-runs everything)", actions.CLI("bootstrap", "--force")).
-		Assert("Scripts ran again (force=true bypasses up-to-date check)",
-			assertions.VMRunCountAtLeast(1)).
-		Assert("Bootstrap state still valid", assertions.BootstrapComplete()).
-		Assert("User saw force-bootstrap header", assertions.OutputContains("Bootstrapping VM")).
-		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
-		Assert("User saw provider plugin step", assertions.OutputContains("Plugin: claude")).
-		Run()
-}
-
-// TestBootstrapCommandSinglePlugin verifies that `aivm bootstrap --plugin java`
-// runs only the specified plugin on an already-running VM.
-//
-//  1. Start VM — bootstrap runs (installs claude plugin).
-//  2. Reset run counter.
-//  3. DoBootstrap(plugin="java") — only the java plugin runs.
-func TestBootstrapCommandSinglePlugin(t *testing.T) {
-	t.Parallel()
-	h := framework.New(t)
-
-	h.Scenario("bootstrap --plugin runs only the specified plugin").
-		Step("Start VM (first boot)", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Step("Reset run counter", actions.ResetMockVMRunCount()).
-		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run bootstrap --plugin java (only java plugin)", actions.CLI("bootstrap", "--plugin", "java")).
-		Assert("At least one script ran (the java plugin's steps)", assertions.VMRunCountAtLeast(1)).
-		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
-		Assert("User saw java installed message", assertions.OutputContains("java set up")).
-		Run()
-}
-
-// TestBootstrapCommandSync verifies that `aivm bootstrap` (no flags) on an
-// already-up-to-date VM logs "VM is up to date" and runs no scripts.
-//
-//  1. Start VM — bootstrap runs.
-//  2. Reset run counter.
-//  3. DoBootstrap(force=false, plugin="") — detects up-to-date, skips.
-func TestBootstrapCommandSync(t *testing.T) {
-	t.Parallel()
-	h := framework.New(t)
-
-	h.Scenario("bootstrap sync on up-to-date VM — no scripts run").
-		Step("Start VM (first boot)", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Step("Reset run counter", actions.ResetMockVMRunCount()).
-		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run bootstrap (sync — no flags)", actions.CLI("bootstrap")).
-		Assert("No scripts ran — VM was already up to date", assertions.VMRunCountIs(0)).
-		Assert("User saw up-to-date message", assertions.OutputContains("VM is up to date — skipping bootstrap")).
+		Assert("Bootstrap completed automatically", assertions.BootstrapComplete()).
+		Assert("Base image saved", assertions.BaseImageExists()).
+		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
 		Run()
 }

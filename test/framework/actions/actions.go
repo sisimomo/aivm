@@ -49,7 +49,7 @@ func ChangeProvider(name string) fw.StepFunc {
 }
 
 // ChangePlugins replaces the list of enabled plugins in the app config.
-// The change takes effect on the next DoStart / DoBootstrap call.
+// The change takes effect on the next DoStart call.
 func ChangePlugins(plugins ...string) fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		h.App.Lifecycle.Config.Plugins.Enabled = plugins

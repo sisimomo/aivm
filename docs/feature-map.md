@@ -112,27 +112,14 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 |---|---|
 | **Entry point** | `aivm ssh` subcommand |
 | **Source** | `internal/cli/ssh.go: DoSSH()` |
-| **What it does** | Opens an interactive `colima ssh` shell into the running VM. Creates a session lock file so the idle monitor does not suspend the VM during the SSH session. Removes the lock on exit or SIGINT. |
+| **What it does** | Ensures the VM is running (starting and bootstrapping if needed, identical to `aivm start`), then opens an interactive `colima ssh` shell. Creates a session lock file so the idle monitor does not suspend the VM during the SSH session. Removes the lock on exit or SIGINT. |
 | **Dependencies** | ColimaVM, session store |
 | **Configuration** | None |
-| **Complexity** | **Low** — guards VM status, creates/removes session lock, delegates to `colima ssh` |
+| **Complexity** | **Low** — delegates start/bootstrap to `Start()`, creates/removes session lock, delegates shell to `colima ssh` |
 
 ---
 
-### 2.8 `aivm bootstrap` — Plugin Installation
-
-| Attribute | Detail |
-|---|---|
-| **Entry point** | `aivm bootstrap [--force] [--plugin <name>] [--list]` subcommand |
-| **Source** | `internal/cli/bootstrap_cmd.go` |
-| **What it does** | Three modes: `--list` prints all plugins with descriptions; `--plugin <name>` installs a single named plugin; default/`--force` runs syncBootstrap (diff-based) or fullBootstrap (forced). |
-| **Dependencies** | ColimaVM, plugin registry, bootstrap engine, plugin executor, bootstrap state |
-| **Configuration** | `plugins.enabled`, `plugins.config`, `plugins.define` |
-| **Complexity** | **Medium** — three distinct execution paths; state file management; single-plugin mode modifies state separately |
-
----
-
-### 2.9 `aivm rebuild-image` — Base Image Rebuild
+### 2.8 `aivm rebuild-image` — Base Image Rebuild
 
 | Attribute | Detail |
 |---|---|
@@ -145,7 +132,7 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 
 ---
 
-### 2.10 `aivm logs` — Log Tailing
+### 2.9 `aivm logs` — Log Tailing
 
 | Attribute | Detail |
 |---|---|
@@ -158,7 +145,7 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 
 ---
 
-### 2.11 `aivm version` — Version Print
+### 2.10 `aivm version` — Version Print
 
 | Attribute | Detail |
 |---|---|
@@ -171,7 +158,7 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 
 ---
 
-### 2.12 VM Lifecycle Management
+### 2.11 VM Lifecycle Management
 
 | Attribute | Detail |
 |---|---|
@@ -183,7 +170,7 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 
 ---
 
-### 2.13 Base Image System
+### 2.12 Base Image System
 
 | Attribute | Detail |
 |---|---|
@@ -195,7 +182,7 @@ The host dev directory (e.g. `~/dev`) is bind-mounted read-write into the VM at 
 
 ---
 
-### 2.14 VM Transition / Dual-VM Migration
+### 2.13 VM Transition / Dual-VM Migration
 
 | Attribute | Detail |
 |---|---|

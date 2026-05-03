@@ -91,11 +91,11 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 	return nil
 }
 
-// SSH opens an interactive shell in the VM, creating a session lock for the duration.
+// SSH ensures the VM is running (starting and bootstrapping if needed) then
+// opens an interactive shell, creating a session lock for the duration.
 func (svc *LifecycleService) SSH(ctx context.Context) error {
-	status, err := svc.VM.Status(ctx)
-	if err != nil || status != vm.StatusRunning {
-		return fmt.Errorf("VM is not running — run 'aivm start' first")
+	if err := svc.Start(ctx); err != nil {
+		return err
 	}
 
 	workDir, _ := os.Getwd()

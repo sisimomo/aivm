@@ -46,47 +46,6 @@ func TestCLIStartStop(t *testing.T) {
 		Run()
 }
 
-// TestCLIBootstrapForceFlag verifies that `aivm bootstrap --force` re-runs all
-// plugins. This specifically tests that the --force flag is parsed correctly
-// and reaches DoBootstrap with force=true.
-func TestCLIBootstrapForceFlag(t *testing.T) {
-	h := framework.New(t)
-
-	h.Scenario("aivm bootstrap --force re-runs all plugins (flag parsed via cobra)").
-		Step("Run: aivm start", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap complete", assertions.BootstrapComplete()).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run: aivm bootstrap --force", actions.CLI("bootstrap", "--force")).
-		Assert("Scripts ran again (--force flag reached DoBootstrap)",
-			assertions.VMRunCountAtLeast(1)).
-		Assert("Bootstrap state still valid", assertions.BootstrapComplete()).
-		Assert("User saw force-bootstrap header", assertions.OutputContains("Bootstrapping VM")).
-		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
-		Run()
-}
-
-// TestCLIBootstrapPluginFlag verifies that `aivm bootstrap --plugin java`
-// runs only the specified plugin. This tests that the --plugin flag is parsed
-// and forwarded correctly.
-func TestCLIBootstrapPluginFlag(t *testing.T) {
-	h := framework.New(t)
-
-	h.Scenario("aivm bootstrap --plugin java runs only the java plugin (flag parsed via cobra)").
-		Step("Run: aivm start", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap complete", assertions.BootstrapComplete()).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
-		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run: aivm bootstrap --plugin java", actions.CLI("bootstrap", "--plugin", "java")).
-		Assert("At least one script ran (the java plugin's steps)",
-			assertions.VMRunCountAtLeast(1)).
-		Assert("User saw java plugin step", assertions.OutputContains("Plugin: java")).
-		Assert("User saw java installed confirmation", assertions.OutputContains("java set up")).
-		Run()
-}
-
 // TestCLIRebuildImageForceFlag verifies that `aivm rebuild-image --force`
 // completes without prompts, destroys the current VM, and saves a new base
 // image. Tests that the --force flag is correctly parsed by the rebuild-image
