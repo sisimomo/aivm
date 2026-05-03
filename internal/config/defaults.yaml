@@ -11,6 +11,7 @@ vm:
 mcp_jungle:
   enable: true
   port: 7593
+  data_dir: "~/.aivm/mcpjungle-data"
   image_tag: latest-stdio
   server_mode: development
 
@@ -29,3 +30,5 @@ plugins:
     - nodejs
     - python
     - rtk
+
+debug: false

@@ -23,11 +23,7 @@ type Manager struct {
 }
 
 func (m *Manager) image() string {
-	tag := m.ImageTag
-	if tag == "" {
-		tag = "latest-stdio"
-	}
-	return "ghcr.io/mcpjungle/mcpjungle:" + tag
+	return "ghcr.io/mcpjungle/mcpjungle:" + m.ImageTag
 }
 
 func (m *Manager) containerName() string {
@@ -38,10 +34,7 @@ func (m *Manager) containerName() string {
 }
 
 func (m *Manager) serverMode() string {
-	if m.ServerMode != "" {
-		return m.ServerMode
-	}
-	return "development"
+	return m.ServerMode
 }
 
 func (m *Manager) dockerEnv() map[string]string {

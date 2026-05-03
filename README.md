@@ -97,67 +97,149 @@ export AIVM_IDLE_TIMEOUT=10m
 export AIVM_AGENTS_ENABLED=copilot
 ```
 
-### Full reference
+### Full configuration reference
+
+#### `vm` — Virtual machine
+
+| Key | Default | Description |
+|---|---|---|
+| `vm.cpus` | `4` | Number of vCPUs |
+| `vm.memory` | `8` | RAM in GiB |
+| `vm.disk` | `60` | Disk in GiB |
+| `vm.type` | `vz` | Hypervisor: `vz` (Apple Silicon, macOS 13+) or `qemu` (Intel) |
+| `vm.max_age_days` | `7` | Days before prompting to recreate the VM |
+| `vm.base_image_max_age_days` | `7` | Days before prompting to rebuild the base image |
+| `vm.dev_root` | `~/dev` | Host directory mounted in the VM at the same absolute path |
+| `vm.profile` | `aivm` | Colima profile name |
+
+#### `mcp_jungle` — MCPJungle gateway
+
+| Key | Default | Description |
+|---|---|---|
+| `mcp_jungle.enable` | `true` | Whether to start MCPJungle with the VM |
+| `mcp_jungle.port` | `7593` | Host port MCPJungle listens on |
+| `mcp_jungle.data_dir` | `~/.aivm/mcpjungle-data` | SQLite database and persistent data directory |
+| `mcp_jungle.image_tag` | `latest-stdio` | Docker image tag for the MCPJungle container |
+| `mcp_jungle.server_mode` | `development` | MCPJungle server mode |
+
+#### `idle` — Idle monitor
+
+| Key | Default | Description |
+|---|---|---|
+| `idle.timeout` | `5m` | Suspend the VM after this idle duration (Phase 1) |
+| `idle.delete_timeout` | `5m` | Delete the suspended VM after this additional duration (Phase 2) |
+
+#### `agents` — Agent configuration
+
+| Key | Default | Description |
+|---|---|---|
+| `agents.enabled` | `claude` | Active agent: `claude` or `copilot` |
+
+`agents.define` lets you override any built-in agent definition field-by-field:
 
 ```yaml
-vm:
-  cpus: 4
-  memory: 8                    # GiB
-  disk: 60                     # GiB
-  type: vz                     # vz (Apple Silicon, macOS 13+) | qemu (Intel/fallback)
-  max_age_days: 7              # days before prompting to recreate the VM
-  base_image_max_age_days: 7   # days before prompting to rebuild the base image
-  dev_root: ~/dev              # host directory mounted in VM at the same absolute path
-  profile: aivm                # Colima profile name
-
-mcp:
-  port: 7593
-  data_dir: ~/.aivm/mcpjungle-data
-  image_tag: latest-stdio
-
-idle:
-  timeout: 5m        # suspend VM after this idle duration (Phase 1)
-  delete_timeout: 5m # delete suspended VM after this additional duration (Phase 2)
-
 agents:
-  enabled: claude    # claude | copilot  (exactly one agent at a time)
+  enabled: copilot
+  define:
+    copilot:
+      launch_command: "gh copilot suggest"
+```
 
-  # Optional per-agent configuration:
-  # config:
-  #   copilot:
-  #     launch_command: "gh copilot"
+Agent definition fields (all optional when overriding):
 
+| Field | Description |
+|---|---|
+| `description` | Human-readable description |
+| `dependencies` | Plugin names this agent depends on |
+| `check` | Shell script to test if the agent is installed (exit 0 = skip install) |
+| `install` | Shell script to install the agent |
+| `configure` | Shell script to configure the agent post-install |
+| `launch_command` | Command used to launch the agent session |
+
+#### `plugins` — Plugin system
+
+| Key | Default | Description |
+|---|---|---|
+| `plugins.enabled` | `[system, java, maven, nodejs, python, rtk]` | Plugins to install; the active agent plugin is added automatically |
+
+**`plugins.config`** — per-plugin configuration (overrides each plugin's built-in defaults):
+
+| Plugin | Key | Default | Description |
+|---|---|---|---|
+| `java` | `version` | `25` | JDK major version |
+| `java` | `distribution` | `temurin` | JDK distribution (Adoptium apt repo) |
+| `nodejs` | `version` | `lts` | Node.js version passed to NodeSource setup script |
+| `python` | `tool` | `uv` | Python package manager |
+
+Example:
+
+```yaml
+plugins:
+  config:
+    java:
+      version: "21"
+```
+
+**`plugins.define`** — define custom plugins or override built-in ones (YAML only, no Go required):
+
+```yaml
 plugins:
   enabled:
     - system
-    - java
-    - maven
     - nodejs
-    - python
-    - golang
-    - rtk
-    # The active agent plugin (claude or copilot) is added automatically.
-    # You do not need to list it here.
-
-  config:
-    java:
-      version: "25"
-      distribution: temurin
-    nodejs:
-      version: lts
-    python:
-      tool: uv
-
-  # Define custom or override built-in plugins (YAML, no Go required):
-  # define:
-  #   rust:
-  #     description: "Rust toolchain via rustup"
-  #     dependencies: [system]
-  #     check: |
-  #       rustc --version >/dev/null 2>&1
-  #     install: |
-  #       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - rust
+  define:
+    rust:
+      description: "Rust toolchain via rustup"
+      dependencies: [system]
+      check: |
+        rustc --version >/dev/null 2>&1
+      install: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        source "$HOME/.cargo/env"
 ```
+
+Plugin definition fields:
+
+| Field | Description |
+|---|---|
+| `description` | Human-readable description |
+| `dependencies` | Plugin names that must run before this one |
+| `agents` | Restrict plugin to these agent names (empty = all agents) |
+| `defaults` | Default template variables for `check`/`install`/`configure` scripts |
+| `check` | Shell script to test if already installed (exit 0 = skip install) |
+| `install` | Shell script to install the tool |
+| `configure` | Shell script to configure the tool post-install |
+
+Use Go template syntax (`{{ .key }}`) in scripts to reference values from `plugins.config.<name>` or the plugin's `defaults` map.
+
+#### `integrations` — Cross-cutting configuration
+
+User-defined integrations run a `configure` script when a specific plugin is installed *and* a specific agent is active. They run after all plugins are installed and are idempotent.
+
+```yaml
+integrations:
+  - from: my-tool
+    to: claude
+    configure: |
+      my-tool configure --agent claude
+```
+
+Integration fields:
+
+| Field | Description |
+|---|---|
+| `name` | Optional unique key (defaults to `from:to`); required when `from` is empty |
+| `from` | Plugin name that must be installed; omit for agent-only integrations |
+| `to` | Agent name that must be active |
+| `when` | Condition — only `installed` is currently supported |
+| `configure` | Shell script run inside the VM when all conditions are met |
+
+#### `debug`
+
+| Key | Default | Description |
+|---|---|---|
+| `debug` | `false` | Enable verbose debug output |
 
 ---
 
@@ -231,7 +313,7 @@ Examples: `java`, `nodejs`, `rtk`, `claude`, `copilot`
 
 ### Agents — runtime identities
 
-An **agent** is an AI coding assistant (Claude Code, GitHub Copilot, etc.). Agents are fully decoupled from plugins. You configure the active agent via `agent.provider`. Each provider:
+An **agent** is an AI coding assistant (Claude Code, GitHub Copilot, etc.). Agents are fully decoupled from plugins. You configure the active agent via `agents.enabled`. Each provider:
 
 - Identifies itself by name (`claude`, `copilot`)
 - Declares its required VM plugin (e.g. the `claude` plugin)
@@ -255,7 +337,7 @@ Built-in example: when `rtk` is installed *and* `claude` (or `copilot`) is activ
 
 ```
 1. Install plugins   — resolve dependency graph, run check+install for each
-2. Initialize agents — select active provider from agent.provider
+2. Initialize agents — select active provider from agents.enabled
 3. Resolve integrations — find matching (installed plugin × active agent) pairs
 4. Execute integrations — run configure scripts for each match
 ```
@@ -266,14 +348,14 @@ Integrations are **idempotent**: each `from:to` pair runs exactly once, tracked 
 
 ## Choosing an Agent
 
-Set `agent.provider` in `aivm.yaml` (or `AIVM_AGENT_PROVIDER` env var):
+Set `agents.enabled` in `aivm.yaml` (or `AIVM_AGENTS_ENABLED` env var):
 
 | Provider | Value | Authentication |
 |---|---|---|
 | [Claude Code](https://www.anthropic.com/claude-code) | `claude` | Run `claude auth` inside the VM (`aivm ssh`) |
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` | Run `gh auth login` inside the VM (`aivm ssh`) |
 
-Switching providers is enough — aivm automatically adds the right bootstrap plugin (`claude` or `copilot`) based on `agent.provider`. You do not need to edit the `plugins.enabled` list.
+Switching agents is enough — aivm automatically adds the right bootstrap plugin (`claude` or `copilot`) based on `agents.enabled`. You do not need to edit the `plugins.enabled` list.
 
 ---
 

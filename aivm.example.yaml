@@ -1,99 +1,52 @@
 # aivm configuration
 # Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
 
-vm:
-  cpus: 4
-  memory: 8         # GiB
-  disk: 60          # GiB
-  type: vz          # vz (Apple Silicon, macOS 13+) | qemu (Intel/fallback)
-  max_age_days: 7   # days before prompting to recreate VM
-  base_image_max_age_days: 7  # days before prompting to rebuild base image
-  dev_root: ~/dev   # host dev root mounted in VM at same path
-  profile: aivm     # Colima profile name
-
-mcp_jungle:
-  enable: true
-  port: 7593
-  data_dir: ~/.aivm/mcpjungle-data
-  image_tag: latest-stdio
-  server_mode: development
-
-idle:
-  timeout: 5m        # stop (suspend) VM after this idle duration  — Phase 1
-  delete_timeout: 5m # delete suspended VM after this additional duration — Phase 2
-
+# Active agent — claude or copilot.
+# Authentication is handled externally (run `claude auth` or `gh auth login` inside the VM).
 agents:
-  # Active agent. Supported values: claude, copilot
-  # Authentication is handled externally (e.g. `claude auth` or `gh auth login` inside the VM).
-  # A single name or a list are both valid; only the first entry is active.
   enabled: claude
 
-  # Per-agent configuration (all fields are optional).
-  # config:
-  #   copilot:
-  #     launch_command: "gh copilot"
+# VM resources — tune to your machine.
+vm:
+  cpus: 4
+  memory: 8   # GiB
+  disk: 60    # GiB
 
-plugins:
-  enabled:
-    # Common bootstrap plugins. The active agent plugin (e.g. "claude" or
-    # "copilot") is added automatically from agents.enabled — you do not
-    # need to list it here.
-    - system
-    - java
-    - maven
-    - nodejs
-    - python
-    - golang
-    - rtk
-    # Switching agent.provider is enough; you do not need to add or remove
-    # any plugin entries when changing agents.
+# Per-plugin configuration — override built-in defaults.
+# plugins:
+#   config:
+#     java:
+#       version: "25"
+#       distribution: temurin
+#     nodejs:
+#       version: lts
+#     python:
+#       tool: uv
 
-  config:
-    java:
-      version: "25"
-      distribution: temurin
-    nodejs:
-      version: lts
-    python:
-      tool: uv
+# Add custom plugins or override built-in ones.
+# plugins:
+#   enabled:
+#     - system
+#     - nodejs
+#     - rust        # your custom plugin
+#   define:
+#     rust:
+#       description: "Rust toolchain via rustup"
+#       dependencies: [system]
+#       check: |
+#         rustc --version >/dev/null 2>&1
+#       install: |
+#         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-  # Define or override plugins — same format as defaults, merged field-by-field.
-  # Use to add custom plugins or tweak a built-in plugin's scripts.
-  # define:
-  #   my-tool:
-  #     description: "My custom tool"
-  #     dependencies: [system]
-  #     check: |
-  #       my-tool --version >/dev/null 2>&1
-  #     install: |
-  #       curl -fsSL https://example.com/install.sh | sh
-
-# agents — top-level, fully independent of plugins.
-# The active agent is selected via agents.enabled (see above).
-# Exactly one agent is active at a time. To switch agents, change the value —
-# the VM will be updated or recreated as needed.
-#
-# To override an agent's configuration (e.g. launch_command for copilot),
-# use agents.define:
-#
+# Override an agent's launch command or install steps.
 # agents:
-#   enabled: claude   # or: copilot
 #   define:
 #     copilot:
 #       launch_command: "gh copilot suggest"
 
-# integrations — cross-cutting configuration applied when a plugin is installed
-# AND an agent is active (plugin→agent), or whenever an agent is active (agent-only).
-# Built-in integrations are included automatically:
-#   rtk→claude, rtk→copilot  (when rtk is installed)
-#   mcp:claude, mcp:copilot   (always, injects mcpjungle endpoint into agent MCP config)
-#
+# Custom integrations — run a script when a plugin is installed and an agent is active.
 # integrations:
-#   - from: rtk
+#   - from: my-tool
 #     to: claude
 #     configure: |
-#       rtk init -g --auto-patch 2>/dev/null || true
-#   - name: mcp:claude
-#     to: claude
-#     configure: |
-#       # inject mcpjungle into ~/.claude/mcp-config.json
+#       my-tool configure --agent claude
