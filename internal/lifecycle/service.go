@@ -285,7 +285,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	svc.log().Info("Host: %s", hostCWD)
 	svc.log().Info("VM:   %s", vmDir)
-	svc.log().Step("Launching %s in VM", svc.Provider.Description())
+	svc.log().Info("Launching %s in VM", svc.Provider.Description())
 
 	providerDef := svc.AgentDefs[svc.Provider.Name()]
 	providerCfg := make(map[string]any)

@@ -55,6 +55,13 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	}
 
 	cfg := compResult.Config
+
+	// Wire config-level debug flag so `debug: true` in aivm.yaml behaves
+	// identically to the --debug CLI flag.
+	if cfg.Debug {
+		aivmlog.SetDebug(true)
+	}
+
 	vmInst := vm.NewColima(cfg.VM.ColimaProfile, cfg.StateDir)
 	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.ColimaProfile)
 	if err != nil {

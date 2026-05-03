@@ -2,9 +2,8 @@ BINARY    ?= aivm
 STATE_DIR ?= ~/.aivm
 
 INSTALL_DIR := /usr/local/bin
-BUILD_FLAGS := -ldflags="-s -w \
-  -X main.defaultStateDir=$(STATE_DIR)
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_FLAGS := -ldflags="-s -w -X main.defaultStateDir=$(STATE_DIR) -X main.version=$(VERSION)"
 
 .PHONY: build install uninstall clean test test-integration build-test-image fmt vet
 

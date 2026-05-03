@@ -18,41 +18,94 @@ const (
 	colorBold   = "\033[1m"
 )
 
+// logMode controls how log messages are rendered.
+type logMode int
+
+const (
+	// ModeFull is verbose mode: all levels print, plugin output streams.
+	// Used by test harnesses and when --debug / debug:true is set.
+	ModeFull logMode = iota
+	// ModeClean suppresses Info/Debug and discards plugin output.
+	// Steps are printed as a simple numbered sequence.
+	ModeClean
+)
+
 var debug bool
 
-func SetDebug(v bool) { debug = v }
+// SetDebug enables debug output. It also switches Default to ModeFull so that
+// all Info/Step/Debug messages are printed (current verbose behaviour).
+func SetDebug(v bool) {
+	debug = v
+	if v {
+		Default.mode = ModeFull
+	}
+}
 
 func ts() string     { return time.Now().Format("15:04:05") }
 func prefix() string { return colorBold + colorBlue + "[aivm]" + colorReset }
 
-// Logger is a named writer pair for stdout and stderr. The zero value is not
-// usable; construct one with New or use Default.
+// Logger is a named writer pair for stdout and stderr.
+// Construct with New (verbose, for tests) or use Default (clean mode).
 type Logger struct {
 	Out io.Writer // receives Info, Success, Step, Debug messages
 	Err io.Writer // receives Warn, Error messages
+
+	mode  logMode
+	stepN int
 }
 
-// New returns a Logger that writes to out (stdout) and err (stderr).
-func New(out, err io.Writer) *Logger { return &Logger{Out: out, Err: err} }
+// New returns a ModeFull (verbose) Logger. Use in tests so all messages are
+// captured and assertions continue to work without change.
+func New(out, err io.Writer) *Logger {
+	return &Logger{Out: out, Err: err, mode: ModeFull}
+}
 
 // Default is the logger used by the package-level functions.
-var Default = &Logger{Out: os.Stdout, Err: os.Stderr}
+var Default = &Logger{Out: os.Stdout, Err: os.Stderr, mode: ModeClean}
 
 func (l *Logger) Info(msg string, args ...any) {
-	fmt.Fprintf(l.Out, "%s %s %sINFO%s  %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))
+	if l.mode == ModeFull {
+		fmt.Fprintf(l.Out, "%s %s %sINFO%s  %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))
+	}
 }
+
 func (l *Logger) Success(msg string, args ...any) {
-	fmt.Fprintf(l.Out, "%s %s %s✓%s     %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))
+	text := fmt.Sprintf(msg, args...)
+	if l.mode == ModeFull {
+		fmt.Fprintf(l.Out, "%s %s %s✓%s     %s\n", prefix(), ts(), colorGreen, colorReset, text)
+	} else {
+		fmt.Fprintf(l.Out, "%s✓%s  %s\n", colorGreen, colorReset, text)
+	}
 }
+
 func (l *Logger) Warn(msg string, args ...any) {
-	fmt.Fprintf(l.Err, "%s %s %sWARN%s  %s\n", prefix(), ts(), colorYellow, colorReset, fmt.Sprintf(msg, args...))
+	text := fmt.Sprintf(msg, args...)
+	if l.mode == ModeFull {
+		fmt.Fprintf(l.Err, "%s %s %sWARN%s  %s\n", prefix(), ts(), colorYellow, colorReset, text)
+	} else {
+		fmt.Fprintf(l.Err, "%s⚠%s  %s\n", colorYellow, colorReset, text)
+	}
 }
+
 func (l *Logger) Error(msg string, args ...any) {
-	fmt.Fprintf(l.Err, "%s %s %sERROR%s %s\n", prefix(), ts(), colorRed, colorReset, fmt.Sprintf(msg, args...))
+	text := fmt.Sprintf(msg, args...)
+	if l.mode == ModeFull {
+		fmt.Fprintf(l.Err, "%s %s %sERROR%s %s\n", prefix(), ts(), colorRed, colorReset, text)
+	} else {
+		fmt.Fprintf(l.Err, "%s✗%s  %s\n", colorRed, colorReset, text)
+	}
 }
+
 func (l *Logger) Step(msg string, args ...any) {
-	fmt.Fprintf(l.Out, "\n%s %s %s────%s %s %s────%s\n", prefix(), ts(), colorCyan, colorReset, fmt.Sprintf(msg, args...), colorCyan, colorReset)
+	text := fmt.Sprintf(msg, args...)
+	if l.mode == ModeFull {
+		fmt.Fprintf(l.Out, "\n%s %s %s────%s %s %s────%s\n", prefix(), ts(), colorCyan, colorReset, text, colorCyan, colorReset)
+	} else {
+		l.stepN++
+		fmt.Fprintf(l.Out, "[%d] %s...\n", l.stepN, text)
+	}
 }
+
 func (l *Logger) Debug(msg string, args ...any) {
 	if debug {
 		fmt.Fprintf(l.Out, "%s %s %sDEBUG%s %s\n", prefix(), ts(), colorCyan, colorReset, fmt.Sprintf(msg, args...))
@@ -74,8 +127,11 @@ func Fatal(msg string, args ...any) {
 }
 
 // Writer returns an io.Writer that prefixes lines with the plugin name,
-// writing to l.Out.
+// writing to l.Out. In ModeClean, plugin output is discarded.
 func (l *Logger) Writer(pluginName string) io.Writer {
+	if l.mode == ModeClean {
+		return io.Discard
+	}
 	return &prefixWriter{out: l.Out, prefix: "[" + pluginName + "] "}
 }
 
