@@ -1,18 +1,17 @@
-//go:build plugin_install
+//go:build bootstrap
 
-// Package plugininstall contains integration tests that exercise each plugin's
-// real install scripts inside a Docker container. Tests run in parallel — each
-// plugin gets a fresh Ubuntu container. The full bootstrap engine is used so
-// that template rendering and dependency resolution are also covered.
+// Package bootstraptest contains Docker-based tests that exercise the full
+// bootstrap pipeline — plugins, agents, and integrations — inside a real Ubuntu
+// container. Tests run in parallel; each test gets its own fresh container.
 //
 // Run with:
 //
-//	make test-plugin-install
+//	make test-bootstrap
 //
 // or directly:
 //
-//	go test -tags plugin_install -v -timeout 120m ./test/plugin_install/
-package plugininstall
+//	go test -tags bootstrap -v -timeout 120m ./test/bootstrap/
+package bootstraptest
 
 import (
 	"fmt"
@@ -30,7 +29,7 @@ func TestMain(m *testing.M) {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		fmt.Fprintf(os.Stderr, "\n[plugin-install-test] caught %v — cleaning up...\n", sig)
+		fmt.Fprintf(os.Stderr, "\n[bootstrap-test] caught %v — cleaning up...\n", sig)
 		cleanupOrphanedTestDirs()
 		os.Exit(1)
 	}()
@@ -51,9 +50,9 @@ func cleanupOrphanedTestDirs() {
 		return
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "aivm-pitest-") {
+		if strings.HasPrefix(e.Name(), "aivm-bstest-") {
 			path := dir + "/" + e.Name()
-			fmt.Fprintf(os.Stderr, "[plugin-install-test] removing orphaned dir: %s\n", path)
+			fmt.Fprintf(os.Stderr, "[bootstrap-test] removing orphaned dir: %s\n", path)
 			os.RemoveAll(path) //nolint:errcheck
 		}
 	}

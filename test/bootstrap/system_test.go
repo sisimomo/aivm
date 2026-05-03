@@ -1,6 +1,6 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
@@ -8,7 +8,7 @@ import "testing"
 // correctly and that its skip_if script detects the installed state.
 func TestPlugin_System(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("system", nil)
 	h.AssertCommand("jq --version", "jq-")
 	h.AssertCommand("git --version", "git version")

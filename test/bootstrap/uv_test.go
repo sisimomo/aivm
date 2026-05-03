@@ -1,13 +1,13 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
 // TestPlugin_UV verifies the standalone uv installer and skip_if idempotency.
 func TestPlugin_UV(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("uv", nil)
 	h.AssertCommand(`export PATH="$HOME/.local/bin:$PATH" && uv --version`, "uv ")
 	h.AssertSkipIf("uv", nil)

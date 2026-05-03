@@ -1,6 +1,6 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
@@ -8,7 +8,7 @@ import "testing"
 // version (22) and validates skip_if idempotency.
 func TestPlugin_NodeJS(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("nodejs", nil)
 	// nvm adds node to PATH for login shells; source nvm.sh before checking.
 	h.AssertCommand(`
@@ -23,7 +23,7 @@ func TestPlugin_NodeJS(t *testing.T) {
 // to confirm the nvm version template substitution works.
 func TestPlugin_NodeJS_CustomVersion(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	cfg := map[string]any{"version": "20"}
 	h.Install("nodejs", cfg)
 	h.AssertCommand(`

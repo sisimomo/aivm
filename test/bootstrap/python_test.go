@@ -1,6 +1,6 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
@@ -8,7 +8,7 @@ import "testing"
 // version and validates skip_if idempotency.
 func TestPlugin_Python(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("python", nil)
 	h.AssertCommand(`
 		export PYENV_ROOT="$HOME/.pyenv"
@@ -23,7 +23,7 @@ func TestPlugin_Python(t *testing.T) {
 // the pyenv version template substitution works end-to-end.
 func TestPlugin_Python_CustomVersion(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	cfg := map[string]any{"version": "3.11.11"}
 	h.Install("python", cfg)
 	h.AssertCommand(`

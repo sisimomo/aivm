@@ -1,6 +1,6 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
@@ -8,7 +8,7 @@ import "testing"
 // skip_if detects the installed binary. Authentication is not tested here.
 func TestAgent_Claude(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("claude", nil) // installs nodejs first (dependency)
 	h.AssertCommand(`
 		export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"

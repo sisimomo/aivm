@@ -1,6 +1,6 @@
-//go:build plugin_install
+//go:build bootstrap
 
-package plugininstall
+package bootstraptest
 
 import "testing"
 
@@ -8,7 +8,7 @@ import "testing"
 // and validates that the version-aware skip_if detects the installed JDK.
 func TestPlugin_Java(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	h.Install("java", nil)
 	// java -version writes to stderr; redirect so AssertCommand can check it.
 	h.AssertCommand("java -version 2>&1", "version")
@@ -20,7 +20,7 @@ func TestPlugin_Java(t *testing.T) {
 // the version configuration flows through to the apt package name.
 func TestPlugin_Java_CustomVersion(t *testing.T) {
 	t.Parallel()
-	h := newPluginHarness(t)
+	h := newBootstrapHarness(t)
 	cfg := map[string]any{"version": "21", "distribution": "temurin"}
 	h.Install("java", cfg)
 	h.AssertCommand("java -version 2>&1", "21")
