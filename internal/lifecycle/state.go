@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/bootstrap"
 	"github.com/sisimomo/aivm/internal/integration"
 	"github.com/sisimomo/aivm/internal/plugin"
@@ -72,35 +73,72 @@ func (svc *LifecycleService) recordBootstrapState() error {
 // currentConfigHash computes the hash covering all execution-relevant config.
 func (svc *LifecycleService) currentConfigHash() string {
 	enabled := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
-	return computeConfigHash(svc.PluginDefs, svc.Config.Plugins.Config, svc.Integrations, enabled, svc.Provider.Name())
+	return computeConfigHash(
+		svc.PluginDefs,
+		svc.Config.Plugins.Config,
+		svc.Integrations,
+		enabled,
+		svc.Provider.Name(),
+		svc.AgentDefs,
+		svc.Config.VM.CPUs,
+		svc.Config.VM.Memory,
+		svc.Config.VM.Disk,
+		svc.Config.VM.Type,
+		svc.Config.VM.Mounts,
+		svc.Config.VM.ColimaProfile,
+	)
 }
 
 // computeConfigHash returns a SHA-256 hex digest of all execution-relevant
-// configuration: enabled plugin list, effective plugin defs, plugin config
-// overrides, integration defs, and active provider name.
+// configuration: provider, agent defs, VM resources, enabled plugin list,
+// effective plugin defs, plugin config overrides, and integration defs.
+//
+// Excluded intentionally: MCP, T3Code, Idle timeouts, debug flag, and VM
+// prompt-threshold fields — none of these affect what runs inside the VM.
 func computeConfigHash(
 	pluginDefs map[string]plugin.PluginDef,
 	pluginConfig map[string]map[string]any,
 	integrations []integration.IntegrationDef,
 	enabledPlugins []string,
 	provider string,
+	agentDefs map[string]agent.Def,
+	vmCPUs int,
+	vmMemory string,
+	vmDisk string,
+	vmType string,
+	vmMounts []string,
+	vmColimaProfile string,
 ) string {
 	sorted := append([]string(nil), enabledPlugins...)
 	sort.Strings(sorted)
 
 	type hashInput struct {
-		Provider       string
-		EnabledPlugins []string
-		PluginDefs     map[string]plugin.PluginDef
-		PluginConfig   map[string]map[string]any
-		Integrations   []integration.IntegrationDef
+		Provider        string
+		AgentDefs       map[string]agent.Def
+		VMCPUs          int
+		VMMemory        string
+		VMDisk          string
+		VMType          string
+		VMMounts        []string
+		VMColimaProfile string
+		EnabledPlugins  []string
+		PluginDefs      map[string]plugin.PluginDef
+		PluginConfig    map[string]map[string]any
+		Integrations    []integration.IntegrationDef
 	}
 	data, _ := json.Marshal(hashInput{
-		Provider:       provider,
-		EnabledPlugins: sorted,
-		PluginDefs:     pluginDefs,
-		PluginConfig:   pluginConfig,
-		Integrations:   integrations,
+		Provider:        provider,
+		AgentDefs:       agentDefs,
+		VMCPUs:          vmCPUs,
+		VMMemory:        vmMemory,
+		VMDisk:          vmDisk,
+		VMType:          vmType,
+		VMMounts:        vmMounts,
+		VMColimaProfile: vmColimaProfile,
+		EnabledPlugins:  sorted,
+		PluginDefs:      pluginDefs,
+		PluginConfig:    pluginConfig,
+		Integrations:    integrations,
 	})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])

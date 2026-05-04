@@ -62,11 +62,13 @@ func TestBootstrapSyncUpToDate(t *testing.T) {
 }
 
 // TestBootstrapSyncNewPlugin verifies that when a new plugin is added,
-// `aivm start` sets up the new plugin so users know work is happening.
+// `aivm start` detects the config change, prompts to recreate, and after
+// confirmation sets up the new plugin so users know work is happening.
 func TestBootstrapSyncNewPlugin(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
 		framework.WithPlugins("java"),
+		framework.WithInteractive("y"), // answer "y" = recreate VM
 	)
 
 	h.Scenario("start with new plugin sets up the new plugin").
@@ -75,7 +77,8 @@ func TestBootstrapSyncNewPlugin(t *testing.T) {
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Add nodejs plugin", actions.AddPlugin("nodejs")).
-		Step("Start again (installs nodejs)", actions.CLI("start")).
+		Step("Start again — config change detected, user confirms recreate", actions.CLI("start")).
+		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Output shows nodejs was set up",
 			assertions.OutputContains("nodejs set up")).
 		Assert("Output shows ready", assertions.OutputContains("aivm is ready")).

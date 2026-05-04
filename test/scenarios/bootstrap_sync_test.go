@@ -39,39 +39,36 @@ Assert("User saw skip message", assertions.OutputContains("VM is up to date — 
 Run()
 }
 
-// TestStartInstallsNewPluginsWhenConfigChanges verifies that when a new plugin is
-// added to the config, DoStart detects the hash change and re-runs bootstrap.
-// Previously-installed plugins are skipped by their skip_if scripts; only the
-// new plugin's setup script actually executes.
+// TestConfigChangedPluginRecreatesVM verifies that when a new plugin is added
+// to the config, syncBootstrap detects the hash change and prompts the user to
+// recreate the VM. When confirmed, the VM is destroyed and recreated with the
+// new config applied.
 //
 //  1. First start: bootstrap installs the provider plugin and "java".
-//  2. Reset run counter.
-//  3. Add "nodejs" to the plugin list.
-//  4. Second start: hash changed → fullBootstrap(force=false) → only nodejs sets up.
-//  5. Marker files for all three plugins now exist in the VM.
-func TestStartInstallsNewPluginsWhenConfigChanges(t *testing.T) {
+//  2. Add "nodejs" to the plugin list.
+//  3. Second start (answer "y"): hash changed → recreate prompt → VM recreated.
+//  4. Marker files for all three plugins now exist in the recreated VM.
+func TestConfigChangedPluginRecreatesVM(t *testing.T) {
 t.Parallel()
 h := framework.New(t,
 framework.WithPlugins("java"),
+framework.WithInteractive("y"), // answer "y" = recreate VM
 )
 
-h.Scenario("second start sets up newly-added plugins").
+h.Scenario("plugin added — user confirms VM recreation").
 Step("Start VM (first boot — installs claude + java)", actions.CLI("start")).
 Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 Assert("Claude marker file exists", assertions.VMFileExists("/tmp/.aivm_test_claude_installed")).
 Assert("Java marker file exists", assertions.VMFileExists("/tmp/.aivm_test_java_installed")).
-Step("Reset VM run counter after first boot", actions.ResetMockVMRunCount()).
 Step("Reset output buffer", actions.ResetOutput()).
 Step("Add nodejs to plugin list", actions.ChangePlugins("java", "nodejs")).
-Step("Start VM again — nodejs should be set up", actions.CLI("start")).
-Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
-Assert("At least one script ran for the new nodejs plugin", assertions.VMRunCountAtLeast(1)).
-Assert("Claude marker still exists", assertions.VMFileExists("/tmp/.aivm_test_claude_installed")).
-Assert("Java marker still exists", assertions.VMFileExists("/tmp/.aivm_test_java_installed")).
+Step("Start VM again — config change detected, user confirms recreate", actions.CLI("start")).
+Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+Assert("Bootstrap state updated", assertions.BootstrapComplete()).
 Assert("NodeJS marker file exists", assertions.VMFileExists("/tmp/.aivm_test_nodejs_installed")).
-Assert("User saw setup step for nodejs", assertions.OutputContains("Plugin: nodejs")).
-Assert("User saw nodejs set up confirmation", assertions.OutputContains("nodejs set up")).
+Assert("User was warned about config change", assertions.StderrContains("config has changed")).
+Assert("User saw VM recreated message", assertions.OutputContains("VM recreated")).
 Run()
 }
 

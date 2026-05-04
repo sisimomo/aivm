@@ -69,35 +69,10 @@ func promptImageRebuild(out io.Writer, c Confirmer, nSessions int) imageRebuildD
 	return imageRebuildCancel
 }
 
-// agentMismatchDecision is the user's choice when the VM has a different agent
-// installed than the one configured.
-type agentMismatchDecision int
-
-const (
-	agentMismatchInstall  agentMismatchDecision = iota // add new agent to existing VM
-	agentMismatchRecreate                              // destroy VM and recreate
-)
-
-// promptAgentMismatch shows the mismatch context and asks the user to choose
-// between installing alongside the existing agent or recreating the VM.
-// Returns (decision, true) on a valid choice or (0, false) on invalid input.
-func promptAgentMismatch(out io.Writer, c Confirmer, installedSummary, configured string, nSessions int) (agentMismatchDecision, bool) {
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "  This VM already has %s installed.\n", installedSummary)
-	fmt.Fprintf(out, "  Config now selects %s.\n", configured)
-	if nSessions > 0 {
-		fmt.Fprintf(out, "  Note: option 2 will terminate %d active session(s).\n", nSessions)
-	}
-	fmt.Fprintf(out, "  Choose how to proceed:\n")
-	fmt.Fprintf(out, "    1. Install %s in the existing VM and keep the current agent(s)\n", configured)
-	fmt.Fprintf(out, "    2. Delete the VM and recreate it with only %s\n", configured)
-	fmt.Fprintf(out, "  Choice [1/2]: ")
-	switch c.ReadAnswer() {
-	case "1":
-		return agentMismatchInstall, true
-	case "2":
-		return agentMismatchRecreate, true
-	default:
-		return 0, false
-	}
+// promptConfigChanged asks the user whether to recreate the VM to apply
+// pending config changes. Returns true only when the user answers y/Y.
+func promptConfigChanged(out io.Writer, c Confirmer) bool {
+	fmt.Fprintf(out, "  → Recreate VM to apply changes? [y/N] ")
+	ans := c.ReadAnswer()
+	return ans == "y" || ans == "Y"
 }

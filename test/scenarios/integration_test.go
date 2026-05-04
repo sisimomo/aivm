@@ -98,11 +98,13 @@ Run()
 
 // TestIntegrationRunsWhenPluginNewlyInstalled verifies that adding rtk after
 // the initial boot causes the rtk integration to run on the next start.
-// The agent-only MCP integration runs on first boot regardless.
+// The config hash change triggers a recreation prompt; when confirmed, the VM
+// is recreated with rtk installed and its integration applied.
 func TestIntegrationRunsWhenPluginNewlyInstalled(t *testing.T) {
 t.Parallel()
 h := framework.New(t,
 framework.WithProvider("claude"),
+framework.WithInteractive("y"), // answer "y" = recreate VM
 // no rtk initially
 )
 
@@ -115,10 +117,9 @@ assertions.VMFileExists("/tmp/.aivm_test_integ_mcpjungle_claude")).
 Assert("rtk→claude marker file is absent (rtk not yet installed)",
 assertions.VMFileAbsent("/tmp/.aivm_test_integ_rtk_claude")).
 Step("Add rtk to plugin list", actions.ChangePlugins("rtk")).
-Step("Reset run counter before second start", actions.ResetMockVMRunCount()).
-Step("Start VM again with rtk now enabled", actions.CLI("start")).
-Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
-Assert("Scripts ran: rtk setup + integration", assertions.VMRunCountAtLeast(1)).
+Step("Start VM again — config change detected, user confirms recreate", actions.CLI("start")).
+Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+Assert("Bootstrap state updated", assertions.BootstrapComplete()).
 Assert("rtk→claude marker file now exists", assertions.VMFileExists("/tmp/.aivm_test_integ_rtk_claude")).
 Run()
 }

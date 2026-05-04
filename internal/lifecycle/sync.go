@@ -22,8 +22,7 @@ configHash string
 // The first applicable step is executed; subsequent steps are skipped.
 var syncPipeline = []syncStep{
 &missingOrStaleStep{},
-&providerMismatchStep{},
-&hashChangedStep{},
+&configChangedStep{},
 &upToDateStep{},
 }
 
@@ -58,28 +57,16 @@ func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *Lifecyc
 return svc.fullBootstrap(ctx, svc.VM, false)
 }
 
-// providerMismatchStep handles the case where the configured agent has changed
-// since the last bootstrap — prompts the user to install the new agent or recreate.
-type providerMismatchStep struct{}
+// configChangedStep handles any config change (provider or hash) since the last
+// bootstrap by prompting the user to recreate the VM or continue as-is.
+type configChangedStep struct{}
 
-func (s *providerMismatchStep) applicable(ss *syncState, svc *LifecycleService) bool {
-return ss.state != nil && ss.state.Provider != svc.Provider.Name()
+func (s *configChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {
+return ss.state != nil && (ss.state.Provider != svc.Provider.Name() || ss.state.ConfigHash != ss.configHash)
 }
 
-func (s *providerMismatchStep) run(ctx context.Context, ss *syncState, svc *LifecycleService) error {
-return svc.resolveAgentMismatch(ctx, ss.state)
-}
-
-// hashChangedStep runs a full bootstrap when the config hash has changed,
-// meaning plugins, integrations, or provider config was modified.
-type hashChangedStep struct{}
-
-func (s *hashChangedStep) applicable(ss *syncState, _ *LifecycleService) bool {
-return ss.state != nil && ss.state.ConfigHash != ss.configHash
-}
-
-func (s *hashChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
-return svc.fullBootstrap(ctx, svc.VM, false)
+func (s *configChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+return svc.resolveConfigChange(ctx)
 }
 
 // upToDateStep is the terminal fallthrough: config hash matches, nothing to do.
@@ -94,52 +81,26 @@ svc.log().Info("VM is up to date — skipping bootstrap")
 return nil
 }
 
-// resolveAgentMismatch handles the case where the VM has a different agent than
-// the configured one. Prompts the user to install the new agent or recreate the VM.
-func (svc *LifecycleService) resolveAgentMismatch(ctx context.Context, state *BootstrapState) error {
-old, ok := svc.Agents.Get(state.Provider)
-var oldDesc string
-if ok {
-oldDesc = old.Description()
-} else {
-oldDesc = state.Provider
-}
-configured := svc.Provider.Description()
-
-svc.log().Warn("VM '%s' was created for a different agent", svc.VM.Profile())
-svc.log().Warn("Installed agent: %s", oldDesc)
-svc.log().Warn("Configured agent: %s", configured)
+// resolveConfigChange handles any config change by prompting the user to
+// recreate the VM or continue without applying the change.
+func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
+svc.log().Warn("VM '%s' config has changed", svc.VM.Profile())
 
 if !svc.Confirmer.IsInteractive() {
-return fmt.Errorf(
-"VM %q was created for %s, but config selects %s; rerun interactively to choose whether to install %s into the existing VM or recreate it with only %s",
-svc.VM.Profile(),
-oldDesc,
-configured,
-configured,
-configured,
-)
+return fmt.Errorf("VM %q config has changed; rerun interactively to recreate the VM or continue without applying changes", svc.VM.Profile())
 }
 
-sessions, _ := svc.Sessions.List()
-decision, ok := promptAgentMismatch(svc.log().Out, svc.Confirmer, oldDesc, configured, len(sessions))
-if !ok {
-return fmt.Errorf("invalid choice")
+if !promptConfigChanged(svc.log().Out, svc.Confirmer) {
+svc.log().Info("Continuing without applying config changes")
+return nil
 }
 
-switch decision {
-case agentMismatchInstall:
-return svc.fullBootstrap(ctx, svc.VM, false)
-case agentMismatchRecreate:
-return svc.recreateVMForConfiguredAgent(ctx)
-default:
-return fmt.Errorf("invalid choice")
-}
+return svc.recreateVM(ctx)
 }
 
-// recreateVMForConfiguredAgent terminates all active sessions, destroys the VM,
-// recreates it with a fresh bootstrap, and saves a new base image.
-func (svc *LifecycleService) recreateVMForConfiguredAgent(ctx context.Context) error {
+// recreateVM terminates all active sessions, destroys the VM, and recreates
+// it with a fresh bootstrap.
+func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 sessions, _ := svc.Sessions.List()
 if len(sessions) > 0 {
 svc.log().Step("Terminating %d active session(s)", len(sessions))
@@ -154,7 +115,7 @@ sess.Remove()
 
 clearBootstrapState(svc.Config.StateDir)
 
-svc.log().Step("Recreating VM for %s", svc.Provider.Description())
+svc.log().Step("Recreating VM")
 if err := svc.VM.Destroy(ctx); err != nil {
 return fmt.Errorf("destroying VM: %w", err)
 }
@@ -166,6 +127,6 @@ return err
 
 svc.Sessions.ClearVMStoppedAt()
 
-svc.log().Success("VM recreated with only %s", svc.Provider.Description())
+svc.log().Success("VM recreated")
 return nil
 }
