@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="sisimomo/aivm"
 BINARY="aivm"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${AIVM_INSTALL_DIR:-${HOME}/.local/bin}"
 
 OS=$(uname -s)
 if [[ "$OS" != "Darwin" ]]; then
@@ -43,9 +43,14 @@ if curl -fsSL "$CHECKSUM_URL" -o "${TMP}/checksums.txt" 2>/dev/null; then
 fi
 
 tar -xzf "${TMP}/${TARBALL}" -C "$TMP"
-sudo install -m 755 "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+mkdir -p "${INSTALL_DIR}"
+install -m 755 "${TMP}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
 xattr -dr com.apple.quarantine "${INSTALL_DIR}/${BINARY}" 2>/dev/null || true
 
 echo ""
 echo "✓ ${BINARY} ${VERSION} installed → ${INSTALL_DIR}/${BINARY}"
+if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
+  echo "  ⚠ Add ${INSTALL_DIR} to your PATH:"
+  echo "    echo 'export PATH=\"\${HOME}/.local/bin:\${PATH}\"' >> ~/.zshrc"
+fi
 echo "  Run '${BINARY} --help' to get started."
