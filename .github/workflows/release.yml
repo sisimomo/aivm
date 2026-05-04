@@ -10,7 +10,7 @@ permissions:
 jobs:
   test-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -20,11 +20,11 @@ jobs:
           cache: true
 
       - name: Run integration tests
-        run: go test -tags integration -v -timeout 60m ./test/scenarios/
+        run: go test -tags integration -v -timeout 15m ./test/scenarios/
 
   test-bootstrap:
     runs-on: ubuntu-latest
-    timeout-minutes: 130
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Run bootstrap tests
-        run: go test -tags bootstrap -v -timeout 120m ./test/bootstrap/
+        run: go test -tags bootstrap -v -timeout 15m ./test/bootstrap/
 
   release:
     needs: [test-integration, test-bootstrap]
@@ -49,9 +49,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
         with:
-          version: latest
+          distribution: goreleaser
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
