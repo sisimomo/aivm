@@ -57,14 +57,11 @@ func vmCreatedRecently(stateDir string) bool {
 }
 
 // ensureAgentPersistDirs creates the host-side directories that are mounted
-// into the VM for persistence. Which directories are created depends on the
-// active agent and whether T3 Code is enabled.
-func ensureAgentPersistDirs(cfg *config.Config) {
-	switch cfg.Agents.Enabled {
-	case "claude":
-		os.MkdirAll(filepath.Join(cfg.StateDir, ".claude", "projects"), 0755)
-	case "copilot":
-		os.MkdirAll(filepath.Join(cfg.StateDir, ".copilot", "session-state"), 0755)
+// into the VM for persistence. Directories are driven by the active agent's
+// Persist field so no code change is needed when adding a new agent.
+func ensureAgentPersistDirs(cfg *config.Config, agentDef agent.Def) {
+	for _, rel := range agentDef.Persist {
+		os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
 	}
 	if cfg.T3Code.Enable {
 		os.MkdirAll(filepath.Join(cfg.StateDir, ".t3"), 0755)
@@ -73,16 +70,13 @@ func ensureAgentPersistDirs(cfg *config.Config) {
 
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
-func buildStartOptions(cfg *config.Config) vm.StartOptions {
-	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts)+2)
+func buildStartOptions(cfg *config.Config, agentDef agent.Def) vm.StartOptions {
+	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts)+len(agentDef.Persist)+1)
 	for _, m := range cfg.VM.ParsedMounts {
 		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
 	}
-	switch cfg.Agents.Enabled {
-	case "claude":
-		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".claude", "projects"), Writable: true})
-	case "copilot":
-		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".copilot", "session-state"), Writable: true})
+	for _, rel := range agentDef.Persist {
+		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, rel), Writable: true})
 	}
 	if cfg.T3Code.Enable {
 		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".t3"), Writable: true})
@@ -98,9 +92,9 @@ func buildStartOptions(cfg *config.Config) vm.StartOptions {
 
 // startFreshVM starts v using config-derived options and waits until ready.
 // Use for all VM creation and rebuild operations.
-func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config) error {
-	ensureAgentPersistDirs(cfg)
-	opts := buildStartOptions(cfg)
+func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config, agentDef agent.Def) error {
+	ensureAgentPersistDirs(cfg, agentDef)
+	opts := buildStartOptions(cfg, agentDef)
 	if err := v.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
 	}

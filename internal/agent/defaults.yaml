@@ -2,6 +2,8 @@ claude:
   description: "Claude Code CLI"
   dependencies:
     - nodejs
+  persist:
+    - .claude/projects
   launch_command: 'claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"'
   skip_if: |
     claude --version >/dev/null 2>&1
@@ -28,6 +30,8 @@ copilot:
   dependencies:
     - system
     - gh
+  persist:
+    - .copilot/session-state
   launch_command: "gh copilot --yolo"
   skip_if: |
     gh copilot --help >/dev/null 2>&1

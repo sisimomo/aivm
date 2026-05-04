@@ -6,11 +6,14 @@ import "github.com/sisimomo/aivm/internal/plugin"
 // and its runtime launch settings.
 // This is semantically distinct from plugin.PluginDef — agents are not plugins.
 type Def struct {
-	Description  string `yaml:"description"  mapstructure:"description"`
-	Dependencies []string `yaml:"dependencies" mapstructure:"dependencies"`
-	SkipIf       string `yaml:"skip_if"      mapstructure:"skip_if"`
-	Setup        string `yaml:"setup"        mapstructure:"setup"`
-	LaunchCommand string `yaml:"launch_command" mapstructure:"launch_command"`
+	Description   string   `yaml:"description"    mapstructure:"description"`
+	Dependencies  []string `yaml:"dependencies"   mapstructure:"dependencies"`
+	SkipIf        string   `yaml:"skip_if"        mapstructure:"skip_if"`
+	Setup         string   `yaml:"setup"          mapstructure:"setup"`
+	LaunchCommand string   `yaml:"launch_command" mapstructure:"launch_command"`
+	// Persist lists host-relative subdirectory paths (relative to state_dir) that
+	// should be created on the host and mounted read-write into the VM for persistence.
+	Persist []string `yaml:"persist" mapstructure:"persist"`
 }
 
 // ToPluginDef converts this agent definition into a plugin.PluginDef so it
@@ -41,6 +44,9 @@ func MergeDef(base, override Def) Def {
 	}
 	if override.LaunchCommand != "" {
 		result.LaunchCommand = override.LaunchCommand
+	}
+	if len(override.Persist) > 0 {
+		result.Persist = override.Persist
 	}
 	return result
 }

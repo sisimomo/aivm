@@ -37,8 +37,7 @@ import (
 	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/monitor"
 	"github.com/sisimomo/aivm/internal/plugin"
-	"github.com/sisimomo/aivm/internal/providers/claude"
-	"github.com/sisimomo/aivm/internal/providers/copilot"
+	"github.com/sisimomo/aivm/internal/providers/generic"
 	"github.com/sisimomo/aivm/internal/session"
 	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
@@ -106,14 +105,16 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 
 	// Create agent-specific and T3 Code persistence directories.
-	switch tc.Provider {
-	case "claude":
-		if err := os.MkdirAll(filepath.Join(stateDir, ".claude", "projects"), 0755); err != nil {
-			t.Fatalf("harness: create claude dir: %v", err)
-		}
-	case "copilot":
-		if err := os.MkdirAll(filepath.Join(stateDir, ".copilot", "session-state"), 0755); err != nil {
-			t.Fatalf("harness: create copilot dir: %v", err)
+	// Driven by the agent's Persist field — no code change needed for new agents.
+	allAgentDefs, err := agent.LoadDefs()
+	if err != nil {
+		t.Fatalf("harness: load agent defs: %v", err)
+	}
+	if def, ok := allAgentDefs[tc.Provider]; ok {
+		for _, rel := range def.Persist {
+			if err := os.MkdirAll(filepath.Join(stateDir, rel), 0755); err != nil {
+				t.Fatalf("harness: create persist dir %s: %v", rel, err)
+			}
 		}
 	}
 	if tc.T3CodeEnabled {
@@ -217,8 +218,13 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	t.Helper()
 
 	agentReg := agent.NewRegistry()
-	agentReg.Register(newMockProvider(claude.New()))
-	agentReg.Register(newMockProvider(copilot.New()))
+	agentDefs, err := agent.LoadDefs()
+	if err != nil {
+		t.Fatalf("harness: load agent defs: %v", err)
+	}
+	for name, def := range agentDefs {
+		agentReg.Register(newMockProvider(generic.NewFromDef(name, def)))
+	}
 
 	prov, ok := agentReg.Get(tc.Provider)
 	if !ok {
@@ -242,10 +248,6 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("harness: load plugin defaults: %v", err)
-	}
-	agentDefs, err := agent.LoadDefs()
-	if err != nil {
-		t.Fatalf("harness: load agent defaults: %v", err)
 	}
 	for name, def := range agentDefs {
 		defs[name] = def.ToPluginDef()

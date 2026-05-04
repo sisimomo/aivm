@@ -94,7 +94,7 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	if !ok {
 		return nil, &CompositionError{
 			Stage:  "load_config",
-			Reason: fmt.Sprintf("unknown agent provider %q — supported: claude, copilot", providerName),
+			Reason: fmt.Sprintf("unknown agent provider %q — check agents.enabled in aivm.yaml", providerName),
 		}
 	}
 

@@ -68,6 +68,11 @@ func (svc *LifecycleService) imageManager() *vm.ImageManager {
 	return vm.NewImageManager(svc.VM, svc.Config.StateDir)
 }
 
+// activeAgentDef returns the effective agent definition for the active provider.
+func (svc *LifecycleService) activeAgentDef() agent.Def {
+	return svc.AgentDefs[svc.Provider.Name()]
+}
+
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
@@ -79,7 +84,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return fmt.Errorf("starting MCPJungle: %w", err)
 	}
 
-	opts := buildStartOptions(cfg)
+	opts := buildStartOptions(cfg, svc.activeAgentDef())
 
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
@@ -97,7 +102,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	ensureAgentPersistDirs(cfg)
+	ensureAgentPersistDirs(cfg, svc.activeAgentDef())
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
@@ -512,7 +517,7 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error
 // bootstrapFreshVM starts targetVM fresh, runs a full bootstrap, and saves the base image.
 // It records the VM creation timestamp and image reference. Returns the saved image.
 func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.VM, imgMgr *vm.ImageManager) (*vm.BaseImage, error) {
-	if err := startFreshVM(ctx, targetVM, svc.Config); err != nil {
+	if err := startFreshVM(ctx, targetVM, svc.Config, svc.activeAgentDef()); err != nil {
 		return nil, err
 	}
 	imgMgr.RecordCreation()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/sisimomo/aivm/internal/agent"
@@ -11,8 +12,7 @@ import (
 	"github.com/sisimomo/aivm/internal/lifecycle"
 	"github.com/sisimomo/aivm/internal/mcp"
 	"github.com/sisimomo/aivm/internal/monitor"
-	"github.com/sisimomo/aivm/internal/providers/claude"
-	"github.com/sisimomo/aivm/internal/providers/copilot"
+	"github.com/sisimomo/aivm/internal/providers/generic"
 	"github.com/sisimomo/aivm/internal/session"
 	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
@@ -42,10 +42,16 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		StateDir:  defaultStateDir,
 	}
 
-	// Build the agent provider registry.
+	// Load built-in agent definitions and auto-register a generic provider for each.
+	// To add a new agent, add an entry to internal/agent/defaults.yaml — no Go code needed.
+	agentDefs, err := agent.LoadDefs()
+	if err != nil {
+		return nil, fmt.Errorf("loading agent definitions: %w", err)
+	}
 	agentReg := agent.NewRegistry()
-	agentReg.Register(claude.New())
-	agentReg.Register(copilot.New())
+	for name, def := range agentDefs {
+		agentReg.Register(generic.NewFromDef(name, def))
+	}
 
 	// Compose the full configuration: load config, merge agents, merge plugins,
 	// build the registry, and load integrations.
