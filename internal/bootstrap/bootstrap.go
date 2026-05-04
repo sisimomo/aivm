@@ -65,5 +65,5 @@ func (e *Engine) LogPath() string {
 
 func init() {
 	home, _ := os.UserHomeDir()
-	os.MkdirAll(filepath.Join(home, ".aivm", "logs"), 0755)
+	_ = os.MkdirAll(filepath.Join(home, ".aivm", "logs"), 0755)
 }

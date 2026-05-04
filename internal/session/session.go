@@ -151,7 +151,7 @@ func (s *Store) LastActiveFile() string {
 }
 
 func (s *Store) WriteLastActive() {
-	os.WriteFile(s.LastActiveFile(), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+	_ = os.WriteFile(s.LastActiveFile(), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
 }
 
 func (s *Store) ReadLastActive() time.Time {
@@ -171,7 +171,7 @@ func (s *Store) vmStoppedAtFile() string {
 }
 
 func (s *Store) WriteVMStoppedAt() {
-	os.WriteFile(s.vmStoppedAtFile(), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+	_ = os.WriteFile(s.vmStoppedAtFile(), []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
 }
 
 func (s *Store) ReadVMStoppedAt() time.Time {

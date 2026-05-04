@@ -104,7 +104,7 @@ func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 
 
 func (m *ImageManager) RecordVMImageRef(imageID string) {
-	os.WriteFile(filepath.Join(m.stateDir, vmImageRefFile), []byte(imageID), 0644)
+	_ = os.WriteFile(filepath.Join(m.stateDir, vmImageRefFile), []byte(imageID), 0644)
 }
 
 // GetVMImageRef returns the base image ID this VM was created from, or "" if unknown.

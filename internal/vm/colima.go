@@ -65,7 +65,7 @@ func (c *ColimaVM) Start(ctx context.Context, opts StartOptions) error {
 	}
 
 	logDir := filepath.Join(c.stateDir, "logs")
-	os.MkdirAll(logDir, 0755)
+	_ = os.MkdirAll(logDir, 0755)
 	logFile, _ := os.OpenFile(filepath.Join(logDir, "colima.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if logFile != nil {
 		defer logFile.Close()
@@ -140,7 +140,7 @@ func (c *ColimaVM) Stop(ctx context.Context) error {
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
 		aivmlog.Warn("graceful stop failed, forcing...")
-		run.Quiet(ctx, "colima", "stop", c.profile, "--force")
+		_ = run.Quiet(ctx, "colima", "stop", c.profile, "--force")
 	}
 	aivmlog.Success("VM '%s' stopped (disk preserved)", c.profile)
 	return nil
@@ -159,7 +159,7 @@ func (c *ColimaVM) Destroy(ctx context.Context) error {
 	}
 	if status == StatusRunning {
 		_ = c.Run(ctx, "docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true", nil)
-		run.Quiet(ctx, "colima", "stop", c.profile, "--force")
+		_ = run.Quiet(ctx, "colima", "stop", c.profile, "--force")
 	}
 
 	if status != StatusNotFound {

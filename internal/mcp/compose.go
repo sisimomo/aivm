@@ -61,10 +61,10 @@ func (m *Manager) Start(ctx context.Context) error {
 	name := m.containerName()
 
 	aivmlog.Info("Pulling MCPJungle image...")
-	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "pull", "--quiet", img)
+	_ = run.RunEnv(ctx, w, m.dockerEnv(), "docker", "pull", "--quiet", img)
 
 	// Remove any existing stopped container with the same name before starting.
-	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "rm", "-f", name)
+	_ = run.RunEnv(ctx, w, m.dockerEnv(), "docker", "rm", "-f", name)
 
 	aivmlog.Info("Starting MCPJungle container...")
 	if err := run.RunEnv(ctx, w, m.dockerEnv(), "docker", "run", "-d",
@@ -105,7 +105,7 @@ func (m *Manager) Start(ctx context.Context) error {
 func (m *Manager) Stop(ctx context.Context) error {
 	w := aivmlog.Writer("mcpjungle")
 	name := m.containerName()
-	run.RunEnv(ctx, w, m.dockerEnv(), "docker", "stop", name)
+	_ = run.RunEnv(ctx, w, m.dockerEnv(), "docker", "stop", name)
 	return run.RunEnv(ctx, w, m.dockerEnv(), "docker", "rm", name)
 }
 

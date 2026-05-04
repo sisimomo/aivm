@@ -61,10 +61,10 @@ func vmCreatedRecently(stateDir string) bool {
 // Persist field so no code change is needed when adding a new agent.
 func ensureAgentPersistDirs(cfg *config.Config, agentDef agent.Def) {
 	for _, rel := range agentDef.Persist {
-		os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
+		_ = os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
 	}
 	if cfg.T3Code.Enable {
-		os.MkdirAll(filepath.Join(cfg.StateDir, ".t3"), 0755)
+		_ = os.MkdirAll(filepath.Join(cfg.StateDir, ".t3"), 0755)
 	}
 }
 

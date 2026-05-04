@@ -63,7 +63,7 @@ func (m *IdleMonitor) EnsureRunning() error {
 	if err != nil {
 		return err
 	}
-	proc.Release()
+	_ = proc.Release()
 	aivmlog.Info("idle monitor started (pid=%d)", proc.Pid)
 	return nil
 }
@@ -152,7 +152,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 			case vm.StatusNotFound:
 				// VM already gone — nothing left to monitor.
 				aivmlog.Info("VM no longer exists — idle monitor exiting")
-				m.MCP.Stop(ctx)
+				_ = m.MCP.Stop(ctx)
 				return nil
 			}
 		}
@@ -201,7 +201,7 @@ func (m *IdleMonitor) Stop() {
 	if err != nil {
 		return
 	}
-	proc.Signal(os.Interrupt)
+	_ = proc.Signal(os.Interrupt)
 	os.Remove(m.PIDFile)
 }
 

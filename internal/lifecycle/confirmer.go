@@ -31,7 +31,7 @@ func (c *TTYConfirmer) IsInteractive() bool {
 
 func (c *TTYConfirmer) ReadAnswer() string {
 	var s string
-	fmt.Fscanln(os.Stdin, &s)
+	_, _ = fmt.Fscanln(os.Stdin, &s)
 	return s
 }
 

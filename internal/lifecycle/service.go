@@ -430,7 +430,7 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 	for _, s := range sessions {
 		proc, err := os.FindProcess(s.PID)
 		if err == nil {
-			proc.Signal(syscall.SIGTERM)
+			_ = proc.Signal(syscall.SIGTERM)
 		}
 		s.Remove()
 	}

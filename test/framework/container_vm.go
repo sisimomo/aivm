@@ -242,9 +242,7 @@ func (d *DockerVM) ListSnapshots(_ context.Context) ([]vm.Snapshot, error) {
 			name = strings.SplitN(parts[1], ":", 1)[0]
 			// Remove the profile prefix: "<profile>-<name>:latest" → "<name>"
 			profileDash := d.profile + "-"
-			if strings.HasPrefix(name, profileDash) {
-				name = name[len(profileDash):]
-			}
+			name = strings.TrimPrefix(name, profileDash)
 		}
 		snaps = append(snaps, vm.Snapshot{Name: name})
 	}
