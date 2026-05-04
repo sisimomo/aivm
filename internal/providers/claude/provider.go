@@ -20,6 +20,11 @@ func (p *Provider) Description() string      { return "Claude Code (Anthropic)" 
 func (p *Provider) RequiredPlugins() []string { return []string{"claude"} }
 
 func (p *Provider) Launch(ctx context.Context, env agent.LaunchEnv) (*agent.Response, error) {
+	launchCmd, ok := env.Config["launch_command"].(string)
+	if !ok || launchCmd == "" {
+		return nil, fmt.Errorf("claude: launch_command is not configured")
+	}
+
 	script := fmt.Sprintf(`
 set -e
 export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
@@ -28,8 +33,8 @@ if [[ ! -d %s ]]; then
   exit 1
 fi
 cd %s
-exec claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"
-`, vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir))
+exec %s
+`, vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), launchCmd)
 
 	err := vm.InteractiveSSH(ctx, env.VMProfile, nil, script)
 	if err != nil {

@@ -9,8 +9,6 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-const defaultLaunchCommand = "gh copilot"
-
 // Provider implements agent.Provider for GitHub Copilot.
 type Provider struct{}
 
@@ -22,9 +20,9 @@ func (p *Provider) Description() string      { return "GitHub Copilot" }
 func (p *Provider) RequiredPlugins() []string { return []string{"copilot"} }
 
 func (p *Provider) Launch(ctx context.Context, env agent.LaunchEnv) (*agent.Response, error) {
-	launchCmd := defaultLaunchCommand
-	if v, ok := env.Config["launch_command"].(string); ok && v != "" {
-		launchCmd = v
+	launchCmd, ok := env.Config["launch_command"].(string)
+	if !ok || launchCmd == "" {
+		return nil, fmt.Errorf("copilot: launch_command is not configured")
 	}
 
 	script := fmt.Sprintf(`
