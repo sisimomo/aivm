@@ -28,7 +28,6 @@ checksum:
 
 release:
   draft: false
-  generate_release_notes: true
 
 changelog:
   sort: asc
