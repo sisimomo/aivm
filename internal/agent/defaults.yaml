@@ -16,11 +16,11 @@ claude:
 
     echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
 
-    {{ if .host_home }}
+    {{ if .state_dir }}
     mkdir -p "$HOME/.claude"
-    PROJECTS_MOUNT="{{ .host_home }}/.aivm/.claude/projects"
-    mkdir -p "$PROJECTS_MOUNT"
-    ln -sfn "$PROJECTS_MOUNT" "$HOME/.claude/projects"
+    PROJECTS_DIR="{{ .state_dir }}/.claude/projects"
+    mkdir -p "$PROJECTS_DIR"
+    ln -sfn "$PROJECTS_DIR" "$HOME/.claude/projects"
     {{ end }}
 
 copilot:
@@ -34,3 +34,10 @@ copilot:
   setup: |
     # In gh 2.x, 'gh copilot' is a built-in command; no separate extension needed.
     gh copilot --help >/dev/null 2>&1
+
+    {{ if .state_dir }}
+    mkdir -p "$HOME/.copilot"
+    SESSION_DIR="{{ .state_dir }}/.copilot/session-state"
+    mkdir -p "$SESSION_DIR"
+    ln -sfn "$SESSION_DIR" "$HOME/.copilot/session-state"
+    {{ end }}

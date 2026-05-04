@@ -147,6 +147,12 @@ t3code:
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     npm install -g t3
 
+    {{ if .state_dir }}
+    T3_DIR="{{ .state_dir }}/.t3"
+    mkdir -p "$T3_DIR"
+    ln -sfn "$T3_DIR" "$HOME/.t3"
+    {{ end }}
+
 gh:
   description: "GitHub CLI (gh) for interacting with GitHub from the command line"
   dependencies:

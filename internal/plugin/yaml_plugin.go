@@ -87,13 +87,18 @@ func (p *YAMLPlugin) Agents() []string       { return p.def.Agents }
 
 // effectiveConfig merges the plugin's bundled default config values with
 // per-plugin config from the user's aivm.yaml (user values win).
+// It also injects well-known runtime variables (state_dir) so plugin
+// setup scripts can reference them without explicit user configuration.
 func (p *YAMLPlugin) effectiveConfig(env InstallEnv) map[string]any {
-	cfg := make(map[string]any, len(p.def.Defaults)+len(env.Config))
+	cfg := make(map[string]any, len(p.def.Defaults)+len(env.Config)+1)
 	for k, v := range p.def.Defaults {
 		cfg[k] = v
 	}
 	for k, v := range env.Config {
 		cfg[k] = v
+	}
+	if env.StateDir != "" {
+		cfg["state_dir"] = env.StateDir
 	}
 	return cfg
 }

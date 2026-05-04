@@ -19,10 +19,11 @@ mounts:
     writable: true
     # Lima mounts this at the same absolute path inside the VM (e.g. /Users/simon/dev).
     # No path translation is needed — aivm passes the host CWD through unchanged.
-  - location: ~/.aivm/.claude/projects
-    writable: true
-    # Persists Claude Code conversation history across VM recreations.
-    # Inside the VM, bootstrap.sh symlinks ~/.claude/projects here.
+  # Agent-specific persistence mounts are added at runtime based on the active agent:
+  #   claude:  ~/.aivm/.claude/projects    (persists Claude Code conversation history)
+  #   copilot: ~/.aivm/.copilot/session-state (persists Copilot session state)
+  # T3 Code adds ~/.aivm/.t3 when enabled.
+  # Inside the VM, the agent/plugin setup scripts symlink these into the expected locations.
 
 # Docker is included by default in Colima VMs; no extra configuration needed.
 # docker:

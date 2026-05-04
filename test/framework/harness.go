@@ -98,11 +98,27 @@ func New(t *testing.T, opts ...Option) *Harness {
 		stateDir,
 		filepath.Join(stateDir, "logs"),
 		filepath.Join(stateDir, "sessions"),
-		filepath.Join(stateDir, ".claude", "projects"),
 		tc.DevRoot,
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatalf("harness: create dir %s: %v", dir, err)
+		}
+	}
+
+	// Create agent-specific and T3 Code persistence directories.
+	switch tc.Provider {
+	case "claude":
+		if err := os.MkdirAll(filepath.Join(stateDir, ".claude", "projects"), 0755); err != nil {
+			t.Fatalf("harness: create claude dir: %v", err)
+		}
+	case "copilot":
+		if err := os.MkdirAll(filepath.Join(stateDir, ".copilot", "session-state"), 0755); err != nil {
+			t.Fatalf("harness: create copilot dir: %v", err)
+		}
+	}
+	if tc.T3CodeEnabled {
+		if err := os.MkdirAll(filepath.Join(stateDir, ".t3"), 0755); err != nil {
+			t.Fatalf("harness: create t3code dir: %v", err)
 		}
 	}
 

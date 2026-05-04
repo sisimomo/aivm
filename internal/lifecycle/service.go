@@ -97,7 +97,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	os.MkdirAll(filepath.Join(cfg.StateDir, ".claude", "projects"), 0755)
+	ensureAgentPersistDirs(cfg)
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
