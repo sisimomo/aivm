@@ -119,7 +119,9 @@ func (m *ImageManager) GetVMImageRef() string {
 // RecordCreation writes the VM creation timestamp used for age-based rotation.
 func (m *ImageManager) RecordCreation() {
 	path := filepath.Join(m.stateDir, "vm-created-at")
-	os.WriteFile(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644)
+	if err := os.WriteFile(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
+		aivmlog.Warn("image manager: write vm-created-at: %v", err)
+	}
 }
 
 // AgeDays returns how many days ago this VM was created.

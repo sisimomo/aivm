@@ -290,7 +290,7 @@ func AgentLaunchCount(want int) fw.AssertFunc {
 }
 
 // VMFileExists asserts that a file exists inside the VM at the given path.
-// The path must be absolute (e.g. "/tmp/.aivm_test_integ_rtk_claude").
+// The path must be absolute
 func VMFileExists(path string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
 		if err := h.App.Lifecycle.VM.Run(ctx, "test -f "+path, nil); err != nil {

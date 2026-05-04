@@ -1,5 +1,5 @@
 claude:
-  description: "Claude Code CLI"
+  description: "Claude Code (Anthropic)"
   dependencies:
     - nodejs
   persist:

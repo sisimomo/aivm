@@ -271,7 +271,6 @@ Built-in plugins (all idempotent, resolved in dependency order):
 | `golang` | Go via gvm | `go1.24.0` |
 | `gh` | GitHub CLI | latest |
 | `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) | latest |
-| `rtk` | rtk (Rust Token Killer) | latest |
 
 Agent plugins are registered automatically based on `agents.enabled`:
 

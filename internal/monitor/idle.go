@@ -69,7 +69,9 @@ func (m *IdleMonitor) EnsureRunning() error {
 }
 
 func (m *IdleMonitor) Run(ctx context.Context) error {
-	os.WriteFile(m.PIDFile, []byte(strconv.Itoa(os.Getpid())), 0644)
+	if err := os.WriteFile(m.PIDFile, []byte(strconv.Itoa(os.Getpid())), 0644); err != nil {
+		aivmlog.Warn("idle monitor: write pid file: %v", err)
+	}
 	defer os.Remove(m.PIDFile)
 
 	aivmlog.Info("idle monitor started (pid=%d, stop_timeout=%s, delete_timeout=%s)",
