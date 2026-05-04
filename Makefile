@@ -5,7 +5,7 @@ INSTALL_DIR := /usr/local/bin
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -ldflags="-s -w -X main.defaultStateDir=$(STATE_DIR) -X main.version=$(VERSION)"
 
-.PHONY: build install uninstall clean test test-integration test-bootstrap build-test-image fmt vet release-snapshot release-dry-run
+.PHONY: build install uninstall clean test test-integration test-bootstrap fmt vet release-snapshot release-dry-run
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -32,14 +32,11 @@ clean:
 test:
 	go test ./...
 
-build-test-image:
-	docker build -t aivm-test-base:latest ./test/docker/
-
-test-integration: build-test-image
+test-integration:
 	@go build -tags integration ./test/... 2>&1
 	go test -tags integration -v -timeout 60m ./test/scenarios/
 
-test-bootstrap: build-test-image
+test-bootstrap:
 	@go build -tags bootstrap ./test/... 2>&1
 	go test -tags bootstrap -v -timeout 120m ./test/bootstrap/
 
