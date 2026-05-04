@@ -1,588 +1,375 @@
 # aivm
 
-**aivm** is a CLI tool for macOS that launches AI coding agents (Claude Code or GitHub Copilot) inside a secure, isolated [Colima](https://github.com/abiosoft/colima) VM. A single command handles the entire lifecycle — from first boot and toolchain installation to idle suspension and VM teardown.
+> Launch AI agents in a secure, disposable [Colima](https://github.com/abiosoft/colima) VM — with one command.
 
-```
-HOST (macOS)                            VM (Colima: aivm profile)
-──────────────────────────────────────  ──────────────────────────────────────────
-aivm CLI                                Java · Maven · Node.js · Python · Go
-MCPJungle (Docker + SQLite)             Claude Code  ─or─  GitHub Copilot
-Idle Monitor daemon                     rtk (token optimizer)
-MCP Gateway  →  port 7593               MCP client → host.lima.internal:7593/mcp
-```
+[![CI](https://github.com/sisimomo/aivm/actions/workflows/ci.yml/badge.svg)](https://github.com/sisimomo/aivm/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](go.mod)
+[![macOS only](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
+
+**aivm** manages the full lifecycle of a Colima Linux VM dedicated to running AI coding agents. It bootstraps the VM with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
+
+Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`)
 
 ---
 
-## Contents
+## Table of Contents
 
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Usage](#usage)
-- [Concepts: Plugins, Agents, Integrations](#concepts-plugins-agents-integrations)
-- [Choosing an Agent](#choosing-an-agent)
-- [Plugin System](#plugin-system)
-- [Integration System](#integration-system)
-- [MCP / MCPJungle](#mcp--mcpjungle)
-- [Idle Monitor & VM Lifecycle](#idle-monitor--vm-lifecycle)
-- [Base Image System](#base-image-system)
-- [Security Model](#security-model)
-- [Troubleshooting](#troubleshooting)
+  - [VM Resources](#vm-resources)
+  - [Mounts](#mounts)
+  - [Idle Management](#idle-management)
+  - [Plugins](#plugins)
+  - [Integrations](#integrations)
+  - [T3 Code GUI](#t3-code-gui)
+- [Commands](#commands)
+- [Plugins](#plugins-1)
+- [Agents](#agents)
+- [Building from Source](#building-from-source)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
 ## Requirements
 
-| Tool | Purpose | Install |
-|---|---|---|
-| [Colima](https://github.com/abiosoft/colima) | VM runtime | `brew install colima` |
-| Docker runtime | MCPJungle host container | Docker Desktop, OrbStack, or `colima start` (default profile) |
-
-> **Docker note:** MCPJungle runs as a Docker container *on the host*, separate from the aivm VM. If Colima is your only Docker runtime, run `colima start` (the default profile) once before using `aivm`.
-
-**Platform:** macOS only. Apple Silicon (`vz` VM type) or Intel (`qemu`).
-
----
+- **macOS** (Intel or Apple Silicon) — Linux/Windows is not supported
+- [Colima](https://github.com/abiosoft/colima) + [Docker](https://docs.docker.com/desktop/install/mac-install/) (or Docker Desktop)
+- Authentication for your chosen agent — run `claude auth` or `gh auth login` **inside** the VM after first launch
 
 ## Installation
 
-```bash
-# 1. Clone the repository
-git clone <repo-url> ~/dev/aivm
-cd ~/dev/aivm
+### One-liner (recommended)
 
-# 2. Build and install the binary
+```bash
+curl -fsSL https://raw.githubusercontent.com/sisimomo/aivm/main/install.sh | sh
+```
+
+This downloads the latest release binary for your architecture (`darwin/amd64` or `darwin/arm64`), installs it to `/usr/local/bin/aivm`, and creates a default config at `~/.aivm/aivm.yaml`.
+
+### From source
+
+```bash
+git clone https://github.com/sisimomo/aivm.git
+cd aivm
 make install
-# Builds bin/aivm, copies to /usr/local/bin/aivm, and creates ~/.aivm/ state dirs.
-# Creates aivm.yaml from aivm.example.yaml if it doesn't exist yet.
-
-# 3. Launch from any project directory under ~/dev
-cd ~/dev/my-project
-aivm
 ```
 
-On first launch, aivm bootstraps the VM (installs tools) and then opens an agent session. Subsequent launches are fast — the VM restores from a base image snapshot and skips full bootstrap.
-
-### Build targets
+Verify:
 
 ```bash
-make build        # produces bin/aivm
-make build-dev    # produces bin/aivm-dev (isolated state in ~/.aivm-dev)
-make install-dev  # install the dev build alongside the production one
-make test         # go test ./...
-make vet          # go vet
+aivm version
 ```
+
+---
+
+## Quick Start
+
+1. **Edit your config:**
+
+   ```bash
+   nano ~/.aivm/aivm.yaml
+   ```
+
+   Set `agents.enabled` to `claude` or `copilot`.
+
+2. **Launch an agent from any directory under your dev root:**
+
+   ```bash
+   cd ~/dev/my-project
+   aivm
+   ```
+
+   On the first run, aivm starts the VM, bootstraps all plugins, and drops you into an interactive agent session. Subsequent runs skip the bootstrap (idempotent).
+
+3. **Authenticate inside the VM** (first time only):
+
+   ```bash
+   aivm ssh
+   # then: claude auth   OR   gh auth login
+   ```
 
 ---
 
 ## Configuration
 
-Configuration lives in `aivm.yaml`. Copy the example and edit:
+Config file: `~/.aivm/aivm.yaml`  
+Use [`aivm.example.yaml`](aivm.example.yaml) as a reference.
 
-```bash
-cp aivm.example.yaml aivm.yaml
+```yaml
+# Which agent to launch (claude | copilot)
+agents:
+  enabled: claude
+
+vm:
+  cpus: 4
+  memory: "8GB"
+  disk: "60GB"
+  mounts:
+    - "~/dev:rw"
+    - "~/.ssh:ro"
+
+idle:
+  stop_timeout: 5m
+  delete_timeout: 5m
 ```
 
-`aivm` searches for `aivm.yaml` in this order:
-1. Path from `--config` flag
-2. Current working directory
-3. `$AIVM_REPO_ROOT` environment variable
-4. `~/.aivm/aivm.yaml`
-
-Every key can be overridden via environment variables using the `AIVM_` prefix with `_`-separated nesting:
-
-```bash
-export AIVM_VM_CPUS=8
-export AIVM_IDLE_TIMEOUT=10m
-export AIVM_AGENTS_ENABLED=copilot
-```
-
-### Full configuration reference
-
-> **Breaking change notice:** The configuration schema was updated in a recent release. All old keys have been removed. There is no backward compatibility — update your `aivm.yaml` using the reference below.
-
-#### `vm` — Virtual machine
+### VM Resources
 
 | Key | Default | Description |
-|---|---|---|
+|-----|---------|-------------|
 | `vm.cpus` | `4` | Number of vCPUs |
-| `vm.memory` | `"8GB"` | RAM — string with unit: `"8GB"`, `"512MB"`, `"1TB"` |
-| `vm.disk` | `"60GB"` | Disk size — string with unit: `"60GB"`, `"1TB"` |
-| `vm.type` | _(auto)_ | Hypervisor: `"vz"` (Apple Silicon) or `"qemu"` (Intel). Omit to auto-detect. |
-| `vm.mounts` | `["~/dev:rw"]` | Host directories to mount. Format: `<path>:<mode>` where mode is `rw` or `ro`. `~` is expanded. |
-| `vm.colima_profile` | `aivm` | Colima profile name (allows multiple isolated VMs) |
-| `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this staleness. Accepts `"7d"`, `"12h"`, etc. Set to `-1` to disable. |
-| `vm.base_image_rebuild_prompt_after` | `"7d"` | Prompt to rebuild base image after this age. Same format. Set to `-1` to disable. |
+| `vm.memory` | `"8GB"` | RAM (supports `MB`, `GB`) |
+| `vm.disk` | `"60GB"` | Disk size (supports `MB`, `GB`, `TB`) |
 
-**Duration format:** `Nd` (days), `Nh` (hours), e.g. `"30d"`, `"12h"`. Use `-1` to disable a prompt entirely.
+### Mounts
 
-**Mount format:**
+Directories listed under `vm.mounts` are bind-mounted into the VM. Format: `<host_path>:<mode>` where mode is `rw` (read-write) or `ro` (read-only). `~` expands to your home directory.
+
 ```yaml
 vm:
   mounts:
-    - "~/dev:rw"      # read-write (default if mode omitted)
-    - "~/.ssh:ro"     # read-only
+    - "~/dev:rw"
+    - "~/.ssh:ro"
+    - "~/work:rw"
 ```
 
-**VM type auto-detection:** When `vm.type` is not set, aivm detects the architecture at startup — Apple Silicon (`arm64`) uses `vz`, Intel uses `qemu`.
+### Idle Management
 
-#### `mcp_jungle` — MCPJungle gateway
-
-| Key | Default | Description |
-|---|---|---|
-| `mcp_jungle.enable` | `true` | Whether to start MCPJungle with the VM |
-| `mcp_jungle.port` | `7593` | Host port MCPJungle listens on |
-| `mcp_jungle.data_dir` | `~/.aivm/mcpjungle-data` | SQLite database and persistent data directory |
-| `mcp_jungle.image_tag` | `latest-stdio` | Docker image tag for the MCPJungle container |
-| `mcp_jungle.server_mode` | `development` | MCPJungle server mode |
-
-#### `idle` — Idle monitor
-
-| Key | Default | Description |
-|---|---|---|
-| `idle.stop_timeout` | `5m` | Suspend the VM after this idle duration (Phase 1) |
-| `idle.delete_timeout` | `5m` | Delete the suspended VM after this additional duration (Phase 2) |
-
-#### `agents` — Agent configuration
-
-| Key | Default | Description |
-|---|---|---|
-| `agents.enabled` | `claude` | Active agent: `claude` or `copilot` |
-
-`agents.define` lets you override any built-in agent definition field-by-field:
+aivm runs an idle monitor daemon that watches session activity and automatically tears down the VM when unused:
 
 ```yaml
-agents:
-  enabled: copilot
-  define:
-    copilot:
-      launch_command: "gh copilot suggest"
+idle:
+  stop_timeout: 5m    # stop VM this long after last active session ends
+  delete_timeout: 5m  # delete the stopped VM after this additional wait
 ```
 
-Agent definition fields (all optional when overriding):
+Set either value to `0` to disable that stage. Idle monitoring is automatically disabled when [T3 Code](#t3-code-gui) is enabled.
 
-| Field | Description |
-|---|---|
-| `description` | Human-readable description |
-| `dependencies` | Plugin names this agent depends on |
-| `check` | Shell script to test if the agent is installed (exit 0 = skip install) |
-| `install` | Shell script to install the agent |
-| `configure` | Shell script to configure the agent post-install |
-| `launch_command` | Command used to launch the agent session |
+### Plugins
 
-#### `plugins` — Plugin system
+Plugins install toolchains inside the VM during bootstrap. They are resolved in dependency order and are idempotent (skipped if already installed).
 
-| Key | Default | Description |
-|---|---|---|
-| `plugins.enabled` | `[system, java, maven, nodejs, python, rtk]` | Plugins to install; the active agent plugin is added automatically |
-
-**`plugins.config`** — per-plugin configuration (overrides each plugin's built-in defaults):
-
-| Plugin | Key | Default | Description |
-|---|---|---|---|
-| `java` | `version` | `25` | JDK major version |
-| `java` | `distribution` | `temurin` | JDK distribution (Adoptium apt repo) |
-| `nodejs` | `version` | `lts` | Node.js version passed to NodeSource setup script |
-| `python` | `tool` | `uv` | Python package manager |
-
-Example:
+**Override built-in plugin defaults:**
 
 ```yaml
 plugins:
   config:
     java:
       version: "21"
+      distribution: temurin
+    nodejs:
+      version: "20"
+    python:
+      version: "3.11.9"
+    golang:
+      version: "go1.22.4"
+    maven:
+      version: "3.9.6"
 ```
 
-**`plugins.define`** — define custom plugins or override built-in ones (YAML only, no Go required):
+**Add custom plugins or restrict the enabled set:**
 
 ```yaml
 plugins:
   enabled:
     - system
     - nodejs
-    - rust
+    - rust       # your custom plugin
+
   define:
     rust:
       description: "Rust toolchain via rustup"
       dependencies: [system]
-      check: |
+      skip_if: |
         rustc --version >/dev/null 2>&1
-      install: |
+      setup: |
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
 ```
 
-Plugin definition fields:
+### Integrations
 
-| Field | Description |
-|---|---|
-| `description` | Human-readable description |
-| `dependencies` | Plugin names that must run before this one |
-| `agents` | Restrict plugin to these agent names (empty = all agents) |
-| `defaults` | Default template variables for `check`/`install`/`configure` scripts |
-| `check` | Shell script to test if already installed (exit 0 = skip install) |
-| `install` | Shell script to install the tool |
-| `configure` | Shell script to configure the tool post-install |
-
-Use Go template syntax (`{{ .key }}`) in scripts to reference values from `plugins.config.<name>` or the plugin's `defaults` map.
-
-#### `integrations` — Cross-cutting configuration
-
-User-defined integrations run a `configure` script when a specific plugin is installed *and* a specific agent is active. They run after all plugins are installed and are idempotent.
+Integrations run a configure script when a specific plugin is installed **and** a specific agent is active. Use them to wire tools into an agent's context (e.g. register an MCP server).
 
 ```yaml
 integrations:
-  - from: my-tool
-    to: claude
+  - from: my-tool       # plugin that must be installed
+    to: claude          # agent that must be active
+    skip_if: |
+      my-tool status --agent claude >/dev/null 2>&1
     configure: |
       my-tool configure --agent claude
 ```
 
-Integration fields:
+Omit `from` to run the integration whenever a given agent is active, regardless of plugins.
 
-| Field | Description |
-|---|---|
-| `name` | Optional unique key (defaults to `from:to`); required when `from` is empty |
-| `from` | Plugin name that must be installed; omit for agent-only integrations |
-| `to` | Agent name that must be active |
-| `when` | Condition — only `installed` is currently supported |
-| `configure` | Shell script run inside the VM when all conditions are met |
+### T3 Code GUI
 
-#### `debug`
-
-| Key | Default | Description |
-|---|---|---|
-| `debug` | `false` | Enable verbose debug output |
-
----
-
-## Usage
-
-```bash
-# Launch the configured AI agent in the current directory
-# (starts the VM and services if not already running)
-aivm
-aivm /path/to/project     # explicit path
-
-# VM lifecycle
-aivm start                # start VM + MCPJungle (no agent session)
-aivm stop                 # suspend VM + stop MCPJungle (disk preserved)
-aivm restart              # stop then start
-aivm destroy              # delete VM entirely (host state preserved)
-
-# Status and diagnostics
-aivm status               # VM state, base image info, sessions, idle countdown
-aivm ssh                  # interactive shell inside the VM
-
-# Bootstrap
-aivm bootstrap            # install any missing tools
-aivm bootstrap --force    # re-run all plugins unconditionally
-aivm bootstrap --list     # list all plugins and their status
-aivm bootstrap --plugin java   # run only the java plugin
-
-# Base image
-aivm rebuild-image        # rebuild the base image from scratch
-
-# Logs
-aivm logs mcpjungle       # MCPJungle container logs (live)
-aivm logs monitor         # idle monitor daemon log
-aivm logs bootstrap       # bootstrap log from inside VM
-aivm logs colima          # Colima VM log
-
-aivm version
-aivm help
-```
-
-### Path mapping
-
-`aivm` runs the agent in your current directory inside the VM. Colima mounts `~/dev` at the **same absolute path**, so no translation is needed:
-
-| Host | VM |
-|---|---|
-| `/Users/you/dev/my-project` | `/Users/you/dev/my-project` |
-
-You must run `aivm` from within one of the configured `vm.mounts` directories. Paths outside any mount produce a clear error.
-
-### Multiple sessions
-
-Multiple `aivm` invocations can run simultaneously in the same VM — each gets its own agent process and session lock file. The idle monitor only suspends the VM when *all* sessions have ended.
-
----
-
-## Concepts: Plugins, Agents, Integrations
-
-aivm is built around three cleanly separated concepts:
-
-### Plugins — capabilities
-
-A **plugin** installs a tool or configures the VM environment. Plugins are independent of agents — they know nothing about Claude, Copilot, or any other AI provider. Each plugin declares:
-
-- A `check` script (idempotency: skip if already installed)
-- An `install` script (run once)
-- Optional `dependencies` (resolved automatically)
-- Optional `configure` script (post-install)
-
-Examples: `java`, `nodejs`, `rtk`, `claude`, `copilot`
-
-### Agents — runtime identities
-
-An **agent** is an AI coding assistant (Claude Code, GitHub Copilot, etc.). Agents are fully decoupled from plugins. You configure the active agent via `agents.enabled`. Each provider:
-
-- Identifies itself by name (`claude`, `copilot`)
-- Declares its required VM plugin (e.g. the `claude` plugin)
-- Handles its own launch command
-
-Agents have no knowledge of which plugins are installed.
-
-### Integrations — cross-cutting configuration
-
-An **integration** bridges a plugin and an agent. It runs a `configure` script when:
-
-1. The specified plugin is **installed**
-2. The specified agent is **active**
-3. The `when` condition is satisfied (currently `installed`)
-
-Integrations are the *only* mechanism for agent-specific plugin configuration. Plugins never contain agent-specific logic; agents never contain plugin-specific logic.
-
-Built-in example: when `rtk` is installed *and* `claude` (or `copilot`) is active, the rtk→claude (or rtk→copilot) integration runs `rtk init -g --auto-patch` to wire rtk into the agent's global config.
-
-### Execution model
-
-```
-1. Install plugins   — resolve dependency graph, run check+install for each
-2. Initialize agents — select active provider from agents.enabled
-3. Resolve integrations — find matching (installed plugin × active agent) pairs
-4. Execute integrations — run configure scripts for each match
-```
-
-Integrations are **idempotent**: each `from:to` pair runs exactly once, tracked in bootstrap state.
-
----
-
-## Choosing an Agent
-
-Set `agents.enabled` in `aivm.yaml` (or `AIVM_AGENTS_ENABLED` env var):
-
-| Provider | Value | Authentication |
-|---|---|---|
-| [Claude Code](https://www.anthropic.com/claude-code) | `claude` | Run `claude auth` inside the VM (`aivm ssh`) |
-| [GitHub Copilot](https://github.com/features/copilot) | `copilot` | Run `gh auth login` inside the VM (`aivm ssh`) |
-
-Switching agents is enough — aivm automatically adds the right bootstrap plugin (`claude` or `copilot`) based on `agents.enabled`. You do not need to edit the `plugins.enabled` list.
-
----
-
-## Plugin System
-
-When a VM is first created, aivm runs a **bootstrap** process that installs all required tools using a plugin system. Each plugin declares what it installs and which plugins must run before it. The engine resolves the full dependency graph and executes plugins in order.
-
-All plugins are defined in YAML — no Go code required.
-
-### Built-in plugins
-
-| Plugin | Installs | Depends on |
-|---|---|---|
-| `system` | `git`, `curl`, `jq`, common apt packages, PATH setup | — |
-| `java` | Temurin JDK (default: 25) via Adoptium | `system` |
-| `maven` | Apache Maven (latest 3.x) | `java` |
-| `nodejs` | Node.js LTS via NodeSource | `system` |
-| `python` | Python via `uv` | `system` |
-| `golang` | Go via apt | `system` |
-| `rtk` | rtk (token optimizer CLI) | `system` |
-| `claude` | Claude Code CLI + MCP config | `nodejs` |
-| `copilot` | GitHub CLI + Copilot extension + MCP config | `system` |
-
-Enable or disable plugins under `plugins.enabled`. Dependency order is handled automatically.
-
-Each plugin is **idempotent**: it checks whether the tool is already installed before running.
-
-> **Note:** Agent-specific setup (e.g. wiring rtk into Claude's config) is handled by [integrations](#integration-system), not by the plugin itself.
-
-### Custom plugins
-
-Add your own plugins directly in `aivm.yaml` — no forking needed:
+When enabled, `aivm launch` starts the [T3 Code](https://t3.tools/) web UI inside the VM and port-forwards it to your host:
 
 ```yaml
-plugins:
-  enabled:
-    - system
-    - nodejs
-    - rust          # ← add your plugin name here
+t3code:
+  enable: true
+  port: 3773   # http://localhost:3773
+```
 
+> **Note:** `agents.enabled` is still required — T3 Code is a frontend, not an agent. Idle monitoring is disabled in this mode; use `aivm stop` to shut down explicitly.
+
+---
+
+## Commands
+
+```
+aivm [directory]       Launch the configured AI agent (default command)
+```
+
+| Command | Description |
+|---------|-------------|
+| `aivm` | Start VM + services, then launch agent in current directory |
+| `aivm start` | Start VM and services only |
+| `aivm stop` | Stop VM and services (disk preserved) |
+| `aivm restart` | Stop then start VM and services |
+| `aivm destroy` | Delete the VM entirely (host state in `~/.aivm` is preserved) |
+| `aivm status` | Show VM and service status |
+| `aivm ssh` | Open an interactive shell in the VM |
+| `aivm logs [service]` | Show logs for a service (`mcpjungle` · `monitor` · `bootstrap` · `colima`) |
+| `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
+| `aivm version` | Print version |
+
+**Global flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--config <path>` | Path to `aivm.yaml` (default: `~/.aivm/aivm.yaml`) |
+| `--debug` | Enable verbose debug logging |
+
+### `aivm rebuild-image`
+
+Re-runs the full bootstrap process on a clean blank VM, unconditionally installing all plugins. Useful after adding new plugins or when the image has drifted.
+
+```bash
+aivm rebuild-image          # prompts if active sessions exist
+aivm rebuild-image --force  # stop active sessions without prompting
+```
+
+---
+
+## Plugins
+
+Built-in plugins (all idempotent, resolved in dependency order):
+
+| Plugin | Description | Default Version |
+|--------|-------------|-----------------|
+| `system` | Base packages via apt (`git`, `curl`, `jq`, etc.) | — |
+| `nodejs` | Node.js via nvm | `22` |
+| `java` | Temurin JDK via Adoptium | `25` |
+| `maven` | Apache Maven | `3.9.9` |
+| `python` | Python via pyenv | `3.12.7` |
+| `uv` | uv — fast Python package manager | latest |
+| `golang` | Go via gvm | `go1.24.0` |
+| `gh` | GitHub CLI | latest |
+| `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) | latest |
+| `rtk` | rtk (Rust Token Killer) | latest |
+
+Agent plugins are registered automatically based on `agents.enabled`:
+
+| Agent plugin | Description |
+|--------------|-------------|
+| `claude` | Claude Code CLI (depends on `nodejs`) |
+| `copilot` | GitHub Copilot CLI (depends on `system`, `gh`) |
+
+---
+
+## Agents
+
+### Claude Code
+
+```yaml
+agents:
+  enabled: claude
+```
+
+Runs `claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"`. Claude's project history is persisted to `~/.aivm/.claude/projects/` on the host.
+
+Authenticate inside the VM once:
+
+```bash
+aivm ssh
+claude auth
+```
+
+### GitHub Copilot
+
+```yaml
+agents:
+  enabled: copilot
+```
+
+Runs `gh copilot --yolo`. Session state is persisted to `~/.aivm/.copilot/session-state/`.
+
+Authenticate inside the VM once:
+
+```bash
+aivm ssh
+gh auth login
+```
+
+### Custom Agents
+
+Override a built-in agent's launch command or install steps:
+
+```yaml
+agents:
   define:
-    rust:
-      description: "Rust toolchain via rustup"
-      dependencies: [system]
-      check: |
-        rustc --version >/dev/null 2>&1
-      install: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-        rustc --version
+    copilot:
+      launch_command: "gh copilot suggest"
 ```
 
-Then run:
+---
+
+## Building from Source
 
 ```bash
-aivm bootstrap --plugin rust   # install only this plugin
-# or
-aivm bootstrap                 # install all missing plugins
+git clone https://github.com/sisimomo/aivm.git
+cd aivm
+
+# Build binary to bin/aivm
+make build
+
+# Install to /usr/local/bin/aivm
+make install
+
+# Run unit tests
+make test
+
+# Lint
+make vet
+
+# Format
+make fmt
 ```
 
-Plugin scripts run **inside the Colima VM**, so you can freely install system packages, compile from source, etc.
-
-You can also use Go template syntax in scripts. Values from `plugins.config.<name>` are available as template variables (e.g. `{{ .version }}`).
-
----
-
-## Integration System
-
-Integrations apply cross-cutting configuration when a plugin is installed *and* an agent is active. They run after all plugins are installed.
-
-### Built-in integrations
-
-| Integration | Runs when | Effect |
-|---|---|---|
-| `rtk → claude` | rtk installed + claude active | `rtk init -g --auto-patch` |
-| `rtk → copilot` | rtk installed + copilot active | `rtk init -g --auto-patch` |
-
-### Custom integrations
-
-Add your own in `aivm.yaml`:
-
-```yaml
-integrations:
-  - from: rtk
-    to: claude
-    when: installed
-    configure: |
-      rtk init -g --auto-patch 2>/dev/null || true
-  - from: rtk
-    to: copilot
-    when: installed
-    configure: |
-      rtk init -g --auto-patch 2>/dev/null || true
-```
-
-- `from`: plugin name that must be installed
-- `to`: agent name that must be active
-- `when`: condition — currently only `installed` is supported
-- `configure`: shell script run inside the VM when the condition is satisfied
-
-Integrations are **idempotent**: each `from:to` pair is tracked in bootstrap state and runs exactly once.
-
----
-
-## MCP / MCPJungle
-
-[MCPJungle](https://github.com/mcpjungle/mcpjungle) is an MCP gateway that runs as a Docker container on the host. All agent sessions inside the VM connect to it via `host.lima.internal:7593/mcp`.
-
-```
-Agent (VM)
-    │  http://host.lima.internal:7593/mcp
-    ▼
-MCPJungle Gateway  (host Docker, port 7593)
-    │  SQLite at ~/.aivm/mcpjungle-data/
-    ├── Registered MCP server A
-    ├── Registered MCP server B
-    └── ...
-```
-
-MCPJungle starts automatically with `aivm start` and stops when the VM goes idle.
-
-**Register an MCP server** (from the host, after `aivm start`):
+**Release snapshot (requires [goreleaser](https://goreleaser.com/)):**
 
 ```bash
-mcpjungle register \
-  --name context7 \
-  --url https://mcp.context7.com/mcp \
-  --description "Context7 documentation"
+make release-snapshot
 ```
 
-MCP registrations persist in SQLite — you only need to register once. They survive VM deletion.
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes, please open an issue first.
+
+1. Fork the repo and create a feature branch
+2. Make your changes with tests where applicable
+3. Run `make fmt vet test` to verify
+4. Open a pull request against `main`
 
 ---
 
-## Idle Monitor & VM Lifecycle
+## License
 
-A background daemon watches for active sessions and automatically manages the VM when idle. It operates in two phases:
-
-**Phase 1 — Suspend** (after `idle.stop_timeout`, default `5m` of no active sessions):
-- Suspends the Colima VM (disk preserved)
-- Stops MCPJungle
-
-**Phase 2 — Delete** (after `idle.delete_timeout`, default `5m` of suspension):
-- Deletes the VM entirely to reclaim disk and memory
-- On next `aivm` or `aivm start`, the VM is recreated from the base image snapshot (fast) or re-bootstrapped from scratch
-
-Running `aivm start` or `aivm` at any point cancels the pending deletion.
-
-The daemon starts automatically and exits when it has nothing left to monitor. Check its log with `aivm logs monitor`.
-
----
-
-## Base Image System
-
-To make VM recreation fast, aivm maintains a **base image** — a snapshot of the VM taken after a successful bootstrap.
-
-- On first boot: full bootstrap runs, then a snapshot is saved as the base image
-- On subsequent VM creations (after idle deletion or `vm.recreate_prompt_after` rotation): the base image is restored in seconds, skipping bootstrap entirely
-- If any plugins have changed since the base image was taken, `syncBootstrap` installs only the missing ones
-
-When the base image is older than `vm.base_image_rebuild_prompt_after` (default: `"7d"`), aivm prompts you to rebuild it on the next session launch.
-
-**Rebuild manually:**
-
-```bash
-aivm rebuild-image
-```
-
-If you have active sessions, you can choose:
-- **Hard rebuild**: kill all sessions, destroy and recreate the VM now
-- **Soft rebuild**: bootstrap a temporary VM in parallel; the current VM keeps running until all its sessions end, then auto-deletes
-
----
-
-## Security Model
-
-| Concern | Decision |
-|---|---|
-| SSH keys | **None** inside the VM |
-| Git credentials | **None** inside the VM |
-| Agent credentials | Managed externally via `claude auth` or `gh auth login` inside the VM |
-| MCPJungle | Binds to `127.0.0.1` only — not reachable outside the host |
-| VM isolation | Colima VM has no inbound network exposure |
-| Disposal | `aivm destroy` wipes the VM; the next `aivm` rebuilds from the base image |
-| State persistence | MCPJungle data and Claude projects at `~/.aivm/` — survive VM deletion |
-
-The VM is designed to be **disposable**. When it exceeds `vm.recreate_prompt_after` (default: `"7d"`), `aivm start` offers to recreate it interactively.
-
----
-
-## Troubleshooting
-
-**`No suitable host Docker runtime found`**
-> MCPJungle needs a Docker runtime on the host. Install Docker Desktop, OrbStack, or run `colima start` (the default profile).
-
-**Agent can't reach MCPJungle**
-> From inside the VM (`aivm ssh`), run: `curl http://host.lima.internal:7593/health`
-> If that fails, check: `aivm status` and `aivm logs mcpjungle`.
-
-**Bootstrap fails for a plugin**
-> Run `aivm bootstrap --plugin <name>` to retry just that plugin. Add `--debug` for verbose output.
-> Open a shell with `aivm ssh` to inspect the VM directly.
-
-**Idle monitor doesn't suspend the VM**
-> Check `aivm logs monitor`. Ensure no stale lock files remain: `ls ~/.aivm/sessions/`.
-
-**VM is slow or running out of disk**
-> Increase resources in `aivm.yaml` (`vm.cpus`, `vm.memory`, `vm.disk`), then `aivm destroy && aivm start` to apply.
-
-**Reset everything**
-
-```bash
-aivm destroy                 # delete VM (host state preserved)
-rm -rf ~/.aivm/sessions/     # clear stale session locks if any
-aivm                         # fresh VM, restores from base image or bootstraps
-```
+[MIT](LICENSE)
