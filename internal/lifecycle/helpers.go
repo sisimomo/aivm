@@ -2,9 +2,11 @@ package lifecycle
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +90,35 @@ func buildStartOptions(cfg *config.Config, agentDef agent.Def) vm.StartOptions {
 		VMType:      cfg.VM.Type,
 		Mounts:      mounts,
 	}
+}
+
+// applyVMEnv writes vm.env as shell exports to /etc/profile.d/aivm-user-env.sh
+// inside the VM, making the variables available in every login shell session.
+// If env is empty, the file is written with no exports (clearing any prior values).
+func applyVMEnv(ctx context.Context, v vm.VM, env map[string]string) error {
+	var sb strings.Builder
+	sb.WriteString("# Managed by aivm — do not edit manually\n")
+
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		sb.WriteString("export ")
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(vm.ShellEscape(env[k]))
+		sb.WriteString("\n")
+	}
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(sb.String()))
+	script := fmt.Sprintf(
+		`echo %s | base64 -d | sudo tee /etc/profile.d/aivm-user-env.sh > /dev/null
+sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
+		vm.ShellEscape(encoded),
+	)
+	return v.Run(ctx, script, nil)
 }
 
 // startFreshVM starts v using config-derived options and waits until ready.

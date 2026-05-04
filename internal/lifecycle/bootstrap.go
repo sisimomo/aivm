@@ -41,6 +41,9 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context, targetVM vm.VM, 
 	if err := eng.Run(ctx, force); err != nil {
 		return err
 	}
+	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
+		return fmt.Errorf("applying vm.env: %w", err)
+	}
 	if err := svc.recordBootstrapState(); err != nil {
 		return err
 	}

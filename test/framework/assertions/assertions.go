@@ -314,6 +314,25 @@ type bootstrapState struct {
 	Version    string `json:"version"`
 	Provider   string `json:"provider"`
 	ConfigHash string `json:"config_hash"`
+	EnvHash    string `json:"env_hash"`
+}
+
+// BootstrapEnvHashSet asserts that the bootstrap state records a non-empty
+// env_hash, indicating that vm.env was applied and tracked.
+func BootstrapEnvHashSet() fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		state, err := loadBootstrapState(h.StateDir)
+		if err != nil {
+			return err
+		}
+		if state == nil {
+			return fmt.Errorf("no bootstrap state found")
+		}
+		if state.EnvHash == "" {
+			return fmt.Errorf("expected bootstrap state to record a non-empty env_hash")
+		}
+		return nil
+	}
 }
 
 func loadBootstrapState(stateDir string) (*bootstrapState, error) {

@@ -19,6 +19,13 @@ vm:
     - "~/dev:rw"
     - "~/.ssh:ro"
 
+  # Arbitrary environment variables injected into every VM session.
+  # Values support ${HOST_VAR} expansion from the host shell environment.
+  # Changes are applied in-place the next time you run aivm — no VM recreation needed.
+  # env:
+  #   MY_API_TOKEN: "${MY_API_TOKEN}"
+  #   CUSTOM_SETTING: "some-value"
+
 # Idle VM management.
 idle:
   stop_timeout: 5m      # stop VM after this much idle time

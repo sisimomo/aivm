@@ -21,6 +21,8 @@ type testConfig struct {
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
 	Plugins       []string
+	// VMEnv sets vm.env for the test Harness.
+	VMEnv         map[string]string
 	// RecreatePromptAfter sets VM.RecreatePromptAfterDuration.
 	// Use config.DisabledDuration to disable. Zero means use default (disabled).
 	RecreatePromptAfter time.Duration
@@ -143,6 +145,12 @@ func WithT3Code(port int) Option {
 	}
 }
 
+// WithVMEnv sets vm.env for the test Harness. Env vars are written to the VM's
+// /etc/profile.d/aivm-user-env.sh on every bootstrap.
+func WithVMEnv(env map[string]string) Option {
+	return func(c *testConfig) { c.VMEnv = env }
+}
+
 // WithIntegrations appends extra integrations to the test harness alongside the
 // default stub integrations. Use this to test custom user-defined integrations.
 func WithIntegrations(defs ...integration.IntegrationDef) Option {
@@ -191,6 +199,7 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			BaseImageRebuildPromptAfterDuration:  baseImageRebuildPromptAfter,
 			ParsedMounts:                         parsedMounts,
 			ColimaProfile:                        profile,
+			Env:                                  tc.VMEnv,
 		},
 		MCP: config.MCPConfig{
 			Enable:     true,

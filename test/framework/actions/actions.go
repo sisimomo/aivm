@@ -16,6 +16,14 @@ import (
 	fw "github.com/sisimomo/aivm/test/framework"
 )
 
+// RunFunc wraps a plain function as a StepFunc. Use it for inline side-effects
+// that don't need access to the harness (e.g., modifying host env vars).
+func RunFunc(fn func() error) fw.StepFunc {
+	return func(_ context.Context, _ *fw.Harness) error {
+		return fn()
+	}
+}
+
 // CLI invokes an aivm command through the real Cobra CLI entry point, identical
 // to how a user runs the tool from a terminal. Use this in preference to the
 // individual Do* actions when you want to test flag parsing, cobra routing, or
@@ -183,6 +191,15 @@ func AddPlugin(name string) fw.StepFunc {
 		h.App.Lifecycle.Config.Plugins.Enabled = append(
 			h.App.Lifecycle.Config.Plugins.Enabled, name,
 		)
+		return nil
+	}
+}
+
+// ChangeVMEnv replaces the vm.env map in the app config.
+// The change takes effect on the next DoStart call via the envChangedStep.
+func ChangeVMEnv(env map[string]string) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		h.App.Lifecycle.Config.VM.Env = env
 		return nil
 	}
 }

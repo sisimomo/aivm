@@ -22,6 +22,7 @@ configHash string
 // The first applicable step is executed; subsequent steps are skipped.
 var syncPipeline = []syncStep{
 &missingOrStaleStep{},
+&envChangedStep{},
 &configChangedStep{},
 &upToDateStep{},
 }
@@ -55,6 +56,32 @@ return ss.state == nil || ss.state.NeedsMigration()
 
 func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
 return svc.fullBootstrap(ctx, svc.VM, false)
+}
+
+// envChangedStep handles changes to vm.env without recreating the VM.
+// It only runs when the main config hash is unchanged — if both env and config
+// changed, configChangedStep takes over and fullBootstrap re-applies the env.
+type envChangedStep struct{}
+
+func (s *envChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {
+return ss.state != nil &&
+ss.state.ConfigHash == ss.configHash &&
+ss.state.Provider == svc.Provider.Name() &&
+ss.state.EnvHash != svc.currentEnvHash()
+}
+
+func (s *envChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+svc.log().Step("VM env changed — re-applying environment variables")
+if err := applyVMEnv(ctx, svc.VM, svc.Config.VM.ResolvedEnv()); err != nil {
+return err
+}
+state, _ := loadBootstrapState(svc.Config.StateDir)
+if state != nil {
+state.EnvHash = svc.currentEnvHash()
+_ = saveBootstrapState(svc.Config.StateDir, state)
+}
+svc.log().Success("Environment variables updated")
+return nil
 }
 
 // configChangedStep handles any config change (provider or hash) since the last

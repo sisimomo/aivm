@@ -76,7 +76,30 @@ func ParseResourceBytes(s string) (int64, error) {
 	return int64(val * multiplier), nil
 }
 
-// ParseMount parses a mount specification string of the form "<host_path>:<mode>"
+// ValidateEnvVarName returns an error if name is not a valid POSIX environment
+// variable name. Valid names start with a letter or underscore, followed by
+// letters, digits, or underscores.
+func ValidateEnvVarName(name string) error {
+	if name == "" {
+		return fmt.Errorf("env var name must not be empty")
+	}
+	for i, ch := range name {
+		switch {
+		case ch == '_':
+			// always valid
+		case ch >= 'A' && ch <= 'Z', ch >= 'a' && ch <= 'z':
+			// always valid
+		case ch >= '0' && ch <= '9':
+			if i == 0 {
+				return fmt.Errorf("invalid env var name %q: must not start with a digit", name)
+			}
+		default:
+			return fmt.Errorf("invalid env var name %q: character %q is not allowed (use letters, digits, or underscores)", name, string(ch))
+		}
+	}
+	return nil
+}
+
 // or "<host_path>" (defaults to rw). The host path is expanded (~ → home).
 // Valid modes: "ro" (read-only), "rw" (read-write). Any other mode is an error.
 func ParseMount(spec, home string) (Mount, error) {

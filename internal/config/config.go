@@ -42,12 +42,13 @@ type Mount struct {
 // (e.g. "8GB", "7d") and are validated and parsed into the Parsed* fields
 // during config loading via validateAndParse.
 type VMConfig struct {
-	CPUs          int      `mapstructure:"cpus"`
-	Memory        string   `mapstructure:"memory"`        // "8GB", "512MB", "1TB"
-	Disk          string   `mapstructure:"disk"`          // "60GB"
-	Type          string   `mapstructure:"type"`          // "vz", "qemu", or "" for auto-detect
-	Mounts        []string `mapstructure:"mounts"`        // ["~/dev:rw", "~/.ssh:ro"]
-	ColimaProfile string   `mapstructure:"colima_profile"`
+	CPUs          int               `mapstructure:"cpus"`
+	Memory        string            `mapstructure:"memory"`        // "8GB", "512MB", "1TB"
+	Disk          string            `mapstructure:"disk"`          // "60GB"
+	Type          string            `mapstructure:"type"`          // "vz", "qemu", or "" for auto-detect
+	Mounts        []string          `mapstructure:"mounts"`        // ["~/dev:rw", "~/.ssh:ro"]
+	Env           map[string]string `mapstructure:"env"`           // arbitrary env vars injected into every VM session
+	ColimaProfile string            `mapstructure:"colima_profile"`
 
 	// RecreatePromptAfter is the staleness threshold after which the user is
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
@@ -121,6 +122,20 @@ func (c *Config) ActiveAgents() []string {
 		return []string{c.Agents.Enabled}
 	}
 	return nil
+}
+
+// ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references
+// expanded from the host environment. Use this whenever env values are
+// applied to the VM or hashed for change detection.
+func (vm *VMConfig) ResolvedEnv() map[string]string {
+	if len(vm.Env) == 0 {
+		return nil
+	}
+	resolved := make(map[string]string, len(vm.Env))
+	for k, v := range vm.Env {
+		resolved[k] = os.ExpandEnv(v)
+	}
+	return resolved
 }
 
 // Load reads aivm.yaml from the given path (or searches standard locations).
@@ -217,6 +232,13 @@ func validateAndParse(cfg *Config, home string) error {
 		return fmt.Errorf("vm.base_image_rebuild_prompt_after: %w", err)
 	}
 	vm.BaseImageRebuildPromptAfterDuration = bipa
+
+	// --- env ---
+	for name := range vm.Env {
+		if err := ValidateEnvVarName(name); err != nil {
+			return fmt.Errorf("vm.env: %w", err)
+		}
+	}
 
 	// --- mounts ---
 	parsed := make([]Mount, 0, len(vm.Mounts))

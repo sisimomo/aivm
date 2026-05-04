@@ -98,3 +98,38 @@ Assert("User saw reconcile header (force=false re-bootstrap)", assertions.Output
 Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
 Run()
 }
+
+// TestVMEnvChangedAppliesInPlace verifies that changing vm.env triggers the
+// lightweight envChangedStep — re-applying the env file without recreating the VM.
+//
+//  1. First start: VM bootstrapped, env_hash recorded in bootstrap state.
+//  2. Reset run counter.
+//  3. Add an env var to vm.env.
+//  4. Second start: envChangedStep detects env change, applies it via SSH.
+//  5. VM was NOT recreated (script count is exactly 1 — just the env file write).
+//  6. Env file exists in the VM.
+//  7. EnvHash updated in bootstrap state.
+func TestVMEnvChangedAppliesInPlace(t *testing.T) {
+t.Parallel()
+h := framework.New(t)
+
+h.Scenario("vm.env changed — applied in-place without VM recreation").
+Step("Start VM (first boot)", actions.CLI("start")).
+Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
+Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+Step("Reset output buffer", actions.ResetOutput()).
+Step("Change vm.env", actions.ChangeVMEnv(map[string]string{"AIVM_TEST_VAR": "hello"})).
+Step("Start VM again — env changed, no VM recreation", actions.CLI("start")).
+Assert("VM still running (not recreated)", assertions.VMStatus(vm.StatusRunning)).
+Assert("Exactly one VM Run call (env file write only)", assertions.VMRunCountIs(1)).
+Assert("Bootstrap state still complete", assertions.BootstrapComplete()).
+Assert("Bootstrap state records env_hash", assertions.BootstrapEnvHashSet()).
+Assert("User saw env update message", assertions.OutputContains("Environment variables updated")).
+Assert("Env file exists in VM", assertions.VMFileExists("/etc/profile.d/aivm-user-env.sh")).
+Assert("Env file contains the variable", assertions.VMRunOutput(
+"grep AIVM_TEST_VAR /etc/profile.d/aivm-user-env.sh",
+"AIVM_TEST_VAR",
+)).
+Run()
+}

@@ -22,6 +22,7 @@ type BootstrapState struct {
 	Version    string `json:"version"`
 	Provider   string `json:"provider"`
 	ConfigHash string `json:"config_hash"`
+	EnvHash    string `json:"env_hash"`
 }
 
 func bootstrapStatePath(stateDir string) string {
@@ -67,7 +68,28 @@ func (svc *LifecycleService) recordBootstrapState() error {
 		Version:    bootstrap.BootstrapVersion,
 		Provider:   svc.Provider.Name(),
 		ConfigHash: svc.currentConfigHash(),
+		EnvHash:    svc.currentEnvHash(),
 	})
+}
+
+// currentEnvHash returns a deterministic SHA-256 hex digest of the resolved
+// vm.env values. It is tracked separately from configHash so that env changes
+// can be applied as a lightweight in-place update without recreating the VM.
+func (svc *LifecycleService) currentEnvHash() string {
+	env := svc.Config.VM.ResolvedEnv()
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	type kv struct{ K, V string }
+	pairs := make([]kv, 0, len(keys))
+	for _, k := range keys {
+		pairs = append(pairs, kv{k, env[k]})
+	}
+	data, _ := json.Marshal(pairs)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // currentConfigHash computes the hash covering all execution-relevant config.
