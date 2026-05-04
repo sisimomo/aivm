@@ -1,13 +1,3 @@
-- from: rtk
-  to: claude
-  configure: |
-    rtk init -g --auto-patch 2>/dev/null || true
-
-- from: rtk
-  to: copilot
-  configure: |
-    rtk init -g --auto-patch 2>/dev/null || true
-
 - name: mcpjungle:claude
   to: claude
   skip_if: |

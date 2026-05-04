@@ -29,10 +29,8 @@ agents:
 plugins:
   enabled:
     - system
-    - java
-    - maven
     - nodejs
     - python
-    - rtk
+    - uv
 
 debug: false
