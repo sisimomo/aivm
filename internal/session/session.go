@@ -204,5 +204,3 @@ func (s *Store) KillAll() []int {
 	}
 	return killed
 }
-
-

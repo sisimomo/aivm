@@ -30,9 +30,9 @@ func (l *LifecycleLock) Acquire(timeout time.Duration) (func(), error) {
 		if err == nil {
 			pidFile := filepath.Join(lockDir, "pid")
 			if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
-			_ = os.RemoveAll(lockDir)
-			return nil, fmt.Errorf("lifecycle lock: write pid file: %w", err)
-		}
+				_ = os.RemoveAll(lockDir)
+				return nil, fmt.Errorf("lifecycle lock: write pid file: %w", err)
+			}
 			release := func() { os.RemoveAll(lockDir) }
 			return release, nil
 		}

@@ -11,10 +11,10 @@ import (
 // testConfig holds configuration for a test Harness. It uses small defaults
 // suitable for tests (minimal VM resources, short idle timeouts).
 type testConfig struct {
-	CPUs          int
-	MemoryBytes   int64
-	DiskBytes     int64
-	VMType        string
+	CPUs        int
+	MemoryBytes int64
+	DiskBytes   int64
+	VMType      string
 	// DevRoot is a convenience field: if set, a single rw ParsedMount is created.
 	DevRoot       string
 	IdleTimeout   time.Duration
@@ -22,7 +22,7 @@ type testConfig struct {
 	PollInterval  time.Duration
 	Plugins       []string
 	// VMEnv sets vm.env for the test Harness.
-	VMEnv         map[string]string
+	VMEnv map[string]string
 	// RecreatePromptAfter sets VM.RecreatePromptAfterDuration.
 	// Use config.DisabledDuration to disable. Zero means use default (disabled).
 	RecreatePromptAfter time.Duration
@@ -47,7 +47,7 @@ type testConfig struct {
 func defaultTestConfig() testConfig {
 	return testConfig{
 		CPUs:          1,
-		MemoryBytes:   2 << 30, // 2 GiB
+		MemoryBytes:   2 << 30,  // 2 GiB
 		DiskBytes:     10 << 30, // 10 GiB
 		VMType:        "vz",
 		DevRoot:       "", // computed in New() as <testRunDir>/dev unless overridden
@@ -191,15 +191,15 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 
 	return &config.Config{
 		VM: config.VMConfig{
-			CPUs:                                 tc.CPUs,
-			MemoryBytes:                          tc.MemoryBytes,
-			DiskBytes:                            tc.DiskBytes,
-			Type:                                 tc.VMType,
-			RecreatePromptAfterDuration:          recreatePromptAfter,
-			BaseImageRebuildPromptAfterDuration:  baseImageRebuildPromptAfter,
-			ParsedMounts:                         parsedMounts,
-			ColimaProfile:                        profile,
-			Env:                                  tc.VMEnv,
+			CPUs:                                tc.CPUs,
+			MemoryBytes:                         tc.MemoryBytes,
+			DiskBytes:                           tc.DiskBytes,
+			Type:                                tc.VMType,
+			RecreatePromptAfterDuration:         recreatePromptAfter,
+			BaseImageRebuildPromptAfterDuration: baseImageRebuildPromptAfter,
+			ParsedMounts:                        parsedMounts,
+			ColimaProfile:                       profile,
+			Env:                                 tc.VMEnv,
 		},
 		MCP: config.MCPConfig{
 			Enable:     true,
@@ -225,4 +225,3 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 		StateDir: stateDir,
 	}
 }
-

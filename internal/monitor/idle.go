@@ -206,4 +206,3 @@ func (m *IdleMonitor) Stop() {
 	_ = proc.Signal(os.Interrupt)
 	os.Remove(m.PIDFile)
 }
-

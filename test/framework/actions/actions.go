@@ -276,4 +276,3 @@ func StartWithOptions(opts vm.StartOptions) fw.StepFunc {
 		return h.App.Lifecycle.VM.Start(ctx, opts)
 	}
 }
-

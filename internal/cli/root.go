@@ -110,4 +110,3 @@ func monitorCmd(getApp func() (*App, error)) *cobra.Command {
 		},
 	}
 }
-

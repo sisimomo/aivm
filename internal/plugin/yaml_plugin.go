@@ -18,14 +18,14 @@ var defaultsYAML []byte
 // It is used both for the embedded defaults.yaml and for user-defined plugins
 // in aivm.yaml (plugins.define).
 type PluginDef struct {
-	Description  string         `yaml:"description"  mapstructure:"description"`
-	Dependencies []string       `yaml:"dependencies" mapstructure:"dependencies"`
+	Description  string   `yaml:"description"  mapstructure:"description"`
+	Dependencies []string `yaml:"dependencies" mapstructure:"dependencies"`
 	// Agents restricts the plugin to the listed provider names.
 	// An empty slice means the plugin applies to all providers.
-	Agents       []string       `yaml:"agents"       mapstructure:"agents"`
-	Defaults     map[string]any `yaml:"defaults"     mapstructure:"defaults"`
-	SkipIf       string         `yaml:"skip_if"      mapstructure:"skip_if"`
-	Setup        string         `yaml:"setup"        mapstructure:"setup"`
+	Agents   []string       `yaml:"agents"       mapstructure:"agents"`
+	Defaults map[string]any `yaml:"defaults"     mapstructure:"defaults"`
+	SkipIf   string         `yaml:"skip_if"      mapstructure:"skip_if"`
+	Setup    string         `yaml:"setup"        mapstructure:"setup"`
 }
 
 // LoadDefaults parses the embedded defaults.yaml and returns plugin definitions keyed by name.

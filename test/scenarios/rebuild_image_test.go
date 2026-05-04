@@ -145,5 +145,3 @@ func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 		Assert("No sessions remain after rebuild", assertions.SessionCount(0)).
 		Run()
 }
-
-

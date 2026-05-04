@@ -294,4 +294,3 @@ func shellescape(s string) string {
 func (c *ColimaVM) AgeFile() string {
 	return filepath.Join(c.stateDir, "vm-created-at")
 }
-

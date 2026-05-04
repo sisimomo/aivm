@@ -290,17 +290,17 @@ sudo chmod +x /usr/local/bin/t3`
 	t3codeMgr := &t3code.NoopManager{}
 
 	svc := &lifecycle.LifecycleService{
-		Config:       cfg,
-		VM:           vmInst,
-		MCP:          mcpStub,
-		T3Code:       t3codeMgr,
-		Sessions:     sessions,
-		Monitor:      mon,
-		Registry:     reg,
-		Agents:       agentReg,
-		Provider:     prov,
-		AgentDefs:    agentDefs,
-		PluginDefs:   stubDefs,
+		Config:     cfg,
+		VM:         vmInst,
+		MCP:        mcpStub,
+		T3Code:     t3codeMgr,
+		Sessions:   sessions,
+		Monitor:    mon,
+		Registry:   reg,
+		Agents:     agentReg,
+		Provider:   prov,
+		AgentDefs:  agentDefs,
+		PluginDefs: stubDefs,
 		// Integrations: replace production scripts with lightweight marker-file
 		// stubs so tests don't run real tool setup inside the container.
 		Integrations: buildTestIntegrations(tc),
@@ -357,4 +357,3 @@ func buildTestIntegrations(tc testConfig) []integration.IntegrationDef {
 	stubs = append(stubs, tc.Integrations...)
 	return stubs
 }
-

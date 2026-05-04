@@ -8,8 +8,8 @@ import (
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/cli"
 	"github.com/sisimomo/aivm/internal/config"
-	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/lifecycle"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/mcp"
 	"github.com/sisimomo/aivm/internal/monitor"
 	"github.com/sisimomo/aivm/internal/providers/generic"
@@ -39,7 +39,7 @@ func main() {
 
 func buildApp(cfgPath string) (*cli.App, error) {
 	d := config.Defaults{
-		StateDir:  defaultStateDir,
+		StateDir: defaultStateDir,
 	}
 
 	// Load built-in agent definitions and auto-register a generic provider for each.

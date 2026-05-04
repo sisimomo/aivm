@@ -548,4 +548,3 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 	svc.log().Info("Future VMs will start from this image.")
 	return nil
 }
-

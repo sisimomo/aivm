@@ -68,5 +68,3 @@ func TestBaseImageRebuildImpact(t *testing.T) {
 		Assert("VM image ref is current (v2)", assertions.VMImageRefCurrent()).
 		Run()
 }
-
-

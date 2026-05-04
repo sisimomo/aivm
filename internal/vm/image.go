@@ -101,8 +101,6 @@ func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 	return true
 }
 
-
-
 func (m *ImageManager) RecordVMImageRef(imageID string) {
 	_ = os.WriteFile(filepath.Join(m.stateDir, vmImageRefFile), []byte(imageID), 0644)
 }

@@ -31,12 +31,12 @@ const (
 // DockerVM also implements RunCounter so that existing run-count assertions
 // continue to work without any changes to test cases.
 type DockerVM struct {
-	mu           sync.Mutex
-	profile      string
-	stateDir     string
+	mu            sync.Mutex
+	profile       string
+	stateDir      string
 	containerName string
-	runCount     int
-	snapshots    []string // image tags committed as snapshots
+	runCount      int
+	snapshots     []string // image tags committed as snapshots
 }
 
 var _ vm.VM = (*DockerVM)(nil)

@@ -43,11 +43,11 @@ type Mount struct {
 // during config loading via validateAndParse.
 type VMConfig struct {
 	CPUs          int               `mapstructure:"cpus"`
-	Memory        string            `mapstructure:"memory"`        // "8GB", "512MB", "1TB"
-	Disk          string            `mapstructure:"disk"`          // "60GB"
-	Type          string            `mapstructure:"type"`          // "vz", "qemu", or "" for auto-detect
-	Mounts        []string          `mapstructure:"mounts"`        // ["~/dev:rw", "~/.ssh:ro"]
-	Env           map[string]string `mapstructure:"env"`           // arbitrary env vars injected into every VM session
+	Memory        string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
+	Disk          string            `mapstructure:"disk"`   // "60GB"
+	Type          string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
+	Mounts        []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
+	Env           map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
 	ColimaProfile string            `mapstructure:"colima_profile"`
 
 	// RecreatePromptAfter is the staleness threshold after which the user is

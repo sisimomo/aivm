@@ -71,4 +71,3 @@ func OutputMatches(pattern string) fw.AssertFunc {
 func VMOutputContains(script, contains string) fw.AssertFunc {
 	return VMRunOutput(script, contains)
 }
-

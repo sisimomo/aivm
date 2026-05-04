@@ -119,4 +119,3 @@ func TestVMFileOutputCapture(t *testing.T) {
 			assertions.VMRunOutput("echo test-output", "test-output")).
 		Run()
 }
-

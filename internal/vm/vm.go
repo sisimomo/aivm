@@ -59,4 +59,3 @@ type VM interface {
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)
 	ListSnapshots(ctx context.Context) ([]Snapshot, error)
 }
-
