@@ -36,6 +36,10 @@ type testConfig struct {
 	Interactive bool
 	// StdinAnswers is fed to App.Stdin, one answer per prompt (newline-separated).
 	StdinAnswers []string
+	// T3CodeEnabled, when true, sets cfg.T3Code.Enable and injects a NoopManager.
+	T3CodeEnabled bool
+	// T3CodePort sets the T3 Code port (default 3773).
+	T3CodePort int
 }
 
 func defaultTestConfig() testConfig {
@@ -50,6 +54,7 @@ func defaultTestConfig() testConfig {
 		PollInterval:  1 * time.Second,
 		Plugins:       []string{},
 		Provider:      "claude",
+		T3CodePort:    3773,
 	}
 }
 
@@ -126,6 +131,18 @@ func WithInteractive(answers ...string) Option {
 	}
 }
 
+// WithT3Code enables T3 Code mode for the test harness. Idle monitoring is
+// automatically disabled (as in production). The NoopManager is injected so
+// no real SSH tunnel is started.
+func WithT3Code(port int) Option {
+	return func(c *testConfig) {
+		c.T3CodeEnabled = true
+		if port > 0 {
+			c.T3CodePort = port
+		}
+	}
+}
+
 // WithIntegrations appends extra integrations to the test harness alongside the
 // default stub integrations. Use this to test custom user-defined integrations.
 func WithIntegrations(defs ...integration.IntegrationDef) Option {
@@ -149,6 +166,21 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 		baseImageRebuildPromptAfter = config.DisabledDuration
 	}
 
+	plugins := tc.Plugins
+	// Mirror CompositionEngine plugin injection: auto-inject "t3code" when T3 Code is enabled.
+	if tc.T3CodeEnabled {
+		alreadyListed := false
+		for _, name := range plugins {
+			if name == "t3code" {
+				alreadyListed = true
+				break
+			}
+		}
+		if !alreadyListed {
+			plugins = append(append([]string{}, plugins...), "t3code")
+		}
+	}
+
 	return &config.Config{
 		VM: config.VMConfig{
 			CPUs:                                 tc.CPUs,
@@ -167,6 +199,10 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			ImageTag:   "latest",
 			ServerMode: "development",
 		},
+		T3Code: config.T3CodeConfig{
+			Enable: tc.T3CodeEnabled,
+			Port:   tc.T3CodePort,
+		},
 		Idle: config.IdleConfig{
 			StopTimeout:   tc.IdleTimeout,
 			DeleteTimeout: tc.DeleteTimeout,
@@ -175,7 +211,7 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			Enabled: tc.Provider,
 		},
 		Plugins: config.PluginsConfig{
-			Enabled: tc.Plugins,
+			Enabled: plugins,
 		},
 		StateDir: stateDir,
 	}

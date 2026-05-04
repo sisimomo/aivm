@@ -24,6 +24,20 @@ idle:
   stop_timeout: 5m      # stop VM after this much idle time
   delete_timeout: 5m    # delete stopped VM after this long
 
+# T3 Code web GUI (optional).
+# When enabled, `aivm launch` starts t3 serve inside the VM and port-forwards
+# it to http://localhost:<port> on the host, letting you interact with your
+# configured agent in a browser instead of a terminal.
+#
+# Notes:
+#   - idle monitoring is automatically disabled in this mode (the VM runs until
+#     you explicitly run `aivm stop`)
+#   - agents.enabled is still required — T3 Code is a frontend, not an agent
+#   - `aivm stop` / `aivm destroy` kill the port-forward tunnel automatically
+# t3code:
+#   enable: false
+#   port: 3773
+
 # Per-plugin configuration — override built-in defaults.
 # plugins:
 #   config:

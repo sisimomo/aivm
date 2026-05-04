@@ -15,6 +15,10 @@ mcp_jungle:
   image_tag: latest-stdio
   server_mode: development
 
+t3code:
+  enable: false
+  port: 3773
+
 idle:
   stop_timeout: 5m
   delete_timeout: 5m

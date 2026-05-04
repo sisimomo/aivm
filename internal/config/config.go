@@ -22,6 +22,7 @@ var defaultsYAML []byte
 type Config struct {
 	VM           VMConfig                     `mapstructure:"vm"`
 	MCP          MCPConfig                    `mapstructure:"mcp_jungle"`
+	T3Code       T3CodeConfig                 `mapstructure:"t3code"`
 	Idle         IdleConfig                   `mapstructure:"idle"`
 	Agents       AgentsConfig                 `mapstructure:"agents"`
 	Plugins      PluginsConfig                `mapstructure:"plugins"`
@@ -70,6 +71,15 @@ type MCPConfig struct {
 	DataDir    string `mapstructure:"data_dir"`
 	ImageTag   string `mapstructure:"image_tag"`
 	ServerMode string `mapstructure:"server_mode"`
+}
+
+// T3CodeConfig holds configuration for the optional T3 Code web GUI integration.
+// When enabled, `aivm launch` starts t3 serve inside the VM and port-forwards it
+// to the host instead of launching an agent CLI session. Idle monitoring is
+// automatically disabled when T3 Code is enabled.
+type T3CodeConfig struct {
+	Enable bool `mapstructure:"enable"`
+	Port   int  `mapstructure:"port"`
 }
 
 type IdleConfig struct {

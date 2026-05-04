@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/vm"
@@ -48,42 +49,54 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 	}
 	fmt.Fprintf(out, "  │  MCPJungle:         %s port %d\n", mcpIcon, cfg.MCP.Port)
 
-	monitorPID := filepath.Join(cfg.StateDir, "idle-monitor.pid")
-	monitorIcon := "❌"
-	if _, err := os.Stat(monitorPID); err == nil {
-		monitorIcon = "✅"
+	if cfg.T3Code.Enable {
+		t3Icon := "❌"
+		if svc.T3Code.IsRunning() {
+			t3Icon = "✅"
+		}
+		t3URL := readT3CodeURL(cfg.StateDir, cfg.T3Code.Port)
+		fmt.Fprintf(out, "  │  T3 Code:           %s %s\n", t3Icon, t3URL)
+		fmt.Fprintf(out, "  │  Idle monitor:      — (disabled in T3 Code mode)\n")
+	} else {
+		monitorPID := filepath.Join(cfg.StateDir, "idle-monitor.pid")
+		monitorIcon := "❌"
+		if _, err := os.Stat(monitorPID); err == nil {
+			monitorIcon = "✅"
+		}
+		fmt.Fprintf(out, "  │  Idle monitor:      %s\n", monitorIcon)
 	}
-	fmt.Fprintf(out, "  │  Idle monitor:      %s\n", monitorIcon)
 
 	sessions, _ := svc.Sessions.List()
 	fmt.Fprintf(out, "  │  Active sessions:   %d\n", len(sessions))
 
-	if len(sessions) == 0 {
-		last := svc.Sessions.ReadLastActive()
-		idle := time.Since(last).Round(time.Second)
+	if !cfg.T3Code.Enable {
+		if len(sessions) == 0 {
+			last := svc.Sessions.ReadLastActive()
+			idle := time.Since(last).Round(time.Second)
 
-		switch status {
-		case vm.StatusRunning:
-			remaining := cfg.Idle.StopTimeout - idle
-			if remaining > 0 {
-				fmt.Fprintf(out, "  │  Idle suspend:      in %s\n", remaining)
-			} else {
-				fmt.Fprintf(out, "  │  Idle suspend:      ⚠️  imminent\n")
-			}
-		case vm.StatusStopped:
-			stoppedAt := svc.Sessions.ReadVMStoppedAt()
-			if !stoppedAt.IsZero() {
-				elapsed := time.Since(stoppedAt).Round(time.Second)
-				remaining := cfg.Idle.DeleteTimeout - elapsed
+			switch status {
+			case vm.StatusRunning:
+				remaining := cfg.Idle.StopTimeout - idle
 				if remaining > 0 {
-					fmt.Fprintf(out, "  │  VM deletion:       in %s\n", remaining)
+					fmt.Fprintf(out, "  │  Idle suspend:      in %s\n", remaining)
 				} else {
-					fmt.Fprintf(out, "  │  VM deletion:       ⚠️  imminent\n")
+					fmt.Fprintf(out, "  │  Idle suspend:      ⚠️  imminent\n")
+				}
+			case vm.StatusStopped:
+				stoppedAt := svc.Sessions.ReadVMStoppedAt()
+				if !stoppedAt.IsZero() {
+					elapsed := time.Since(stoppedAt).Round(time.Second)
+					remaining := cfg.Idle.DeleteTimeout - elapsed
+					if remaining > 0 {
+						fmt.Fprintf(out, "  │  VM deletion:       in %s\n", remaining)
+					} else {
+						fmt.Fprintf(out, "  │  VM deletion:       ⚠️  imminent\n")
+					}
 				}
 			}
+		} else {
+			fmt.Fprintf(out, "  │  Idle suspend:      ─ sessions active\n")
 		}
-	} else {
-		fmt.Fprintf(out, "  │  Idle suspend:      ─ sessions active\n")
 	}
 
 	fmt.Fprintln(out, "  └───────────────────────────────────────────────┘")
@@ -135,6 +148,17 @@ func (svc *LifecycleService) Logs(service string) error {
 	default:
 		return fmt.Errorf("unknown service: %s\nAvailable: mcpjungle | monitor | bootstrap | colima", service)
 	}
+}
+
+// readT3CodeURL reads the persisted T3 Code pairing URL (which includes the
+// auth token) from the state directory. Falls back to a bare URL if the file
+// is absent (e.g. tunnel not yet started or server did not emit a pairing URL).
+func readT3CodeURL(stateDir string, port int) string {
+	data, err := os.ReadFile(filepath.Join(stateDir, "t3code-url"))
+	if err != nil || len(strings.TrimSpace(string(data))) == 0 {
+		return fmt.Sprintf("http://localhost:%d", port)
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func tailFile(path string) error {

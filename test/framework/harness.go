@@ -40,6 +40,7 @@ import (
 	"github.com/sisimomo/aivm/internal/providers/claude"
 	"github.com/sisimomo/aivm/internal/providers/copilot"
 	"github.com/sisimomo/aivm/internal/session"
+	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
@@ -187,6 +188,15 @@ func (h *Harness) ImageManager() *vm.ImageManager {
 	return vm.NewImageManager(h.App.Lifecycle.VM, h.StateDir)
 }
 
+// T3CodeLaunchCount returns the number of times T3Code.Launch was called.
+// Only accurate when the harness was built with WithT3Code (otherwise returns 0).
+func (h *Harness) T3CodeLaunchCount() int {
+	if nm, ok := h.App.Lifecycle.T3Code.(*t3code.NoopManager); ok {
+		return nm.LaunchCallCount()
+	}
+	return 0
+}
+
 func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM, output *OutputBuffer) *cli.App {
 	t.Helper()
 
@@ -231,6 +241,23 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 			SkipIf:      "[ -f /tmp/.aivm_test_" + name + "_installed ]",
 			Setup:       "touch /tmp/.aivm_test_" + name + "_installed",
 		}
+		// t3code stub also installs a mock `t3` binary so that launchT3Code()
+		// can start a background server and read its pairing token output.
+		if name == "t3code" {
+			stub.Setup = `touch /tmp/.aivm_test_t3code_installed
+sudo tee /usr/local/bin/t3 > /dev/null << 'EOFT3'
+#!/bin/bash
+if [ "$1" = "serve" ]; then
+    echo "T3 Code server is ready."
+    echo "Connection string: http://127.0.0.1:3773"
+    echo "Token: test-pairing-token-stub"
+    echo "Pairing URL: http://127.0.0.1:3773/pair#token=test-pairing-token-stub"
+    # Stay alive so the background nohup process keeps running.
+    while true; do sleep 60; done
+fi
+EOFT3
+sudo chmod +x /usr/local/bin/t3`
+		}
 		stubDefs[name] = stub
 		reg.Set(plugin.NewYAMLPlugin(name, stub))
 	}
@@ -242,10 +269,13 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 		confirmer = &lifecycle.SilentConfirmer{}
 	}
 
+	t3codeMgr := &t3code.NoopManager{}
+
 	svc := &lifecycle.LifecycleService{
 		Config:       cfg,
 		VM:           vmInst,
 		MCP:          mcpStub,
+		T3Code:       t3codeMgr,
 		Sessions:     sessions,
 		Monitor:      mon,
 		Registry:     reg,

@@ -19,6 +19,7 @@ import (
 	"github.com/sisimomo/aivm/internal/monitor"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/session"
+	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
@@ -28,6 +29,7 @@ type LifecycleService struct {
 	Config   *config.Config
 	VM       vm.VM
 	MCP      mcp.MCPManager
+	T3Code   t3code.Manager
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
@@ -117,8 +119,15 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return err
 	}
 
-	if err := svc.Monitor.EnsureRunning(); err != nil {
-		svc.log().Warn("could not start idle monitor: %v", err)
+	if cfg.T3Code.Enable {
+		svc.log().Info("T3 Code mode — idle monitoring disabled")
+		if err := svc.launchT3Code(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := svc.Monitor.EnsureRunning(); err != nil {
+			svc.log().Warn("could not start idle monitor: %v", err)
+		}
 	}
 
 	svc.log().Success("aivm is ready")
@@ -176,6 +185,10 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 func (svc *LifecycleService) Stop(ctx context.Context) error {
 	svc.log().Step("Stopping aivm")
 	svc.Monitor.Stop()
+	if err := svc.T3Code.Stop(); err != nil {
+		svc.log().Warn("T3 Code tunnel stop error: %v", err)
+	}
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
 	}
@@ -189,6 +202,10 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 // Destroy deletes the VM and stops all services.
 func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	svc.Monitor.Stop()
+	if err := svc.T3Code.Stop(); err != nil {
+		svc.log().Warn("T3 Code tunnel stop error: %v", err)
+	}
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return err
 	}
@@ -200,6 +217,8 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 }
 
 // Launch launches the configured AI agent in the VM for the current working directory.
+// T3 Code, when enabled, is started by Start() as a background service and does not
+// affect this path — the agent terminal always launches regardless.
 func (svc *LifecycleService) Launch(ctx context.Context) error {
 	cfg := svc.Config
 
@@ -278,6 +297,83 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 		return fmt.Errorf("agent exited with code %d", resp.ExitCode)
 	}
 	return nil
+}
+
+// launchT3Code starts t3 serve inside the VM and port-forwards the configured
+// port to the host. It returns immediately after starting the tunnel — no
+// session lock is created and no terminal is blocked.
+func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
+	cfg := svc.Config
+
+	status, err := svc.VM.Status(ctx)
+	if err != nil || status != vm.StatusRunning {
+		return fmt.Errorf("VM is not running — run 'aivm start' first")
+	}
+
+	if svc.T3Code.IsRunning() {
+		svc.log().Success("T3 Code is already running at http://localhost:%d", cfg.T3Code.Port)
+		return nil
+	}
+
+	// Daemonize t3 serve inside the VM. nohup + & ensures it survives the SSH
+	// session closing. NVM must be sourced because nodejs is installed via nvm.
+	startScript := fmt.Sprintf(`
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nohup t3 serve --host 127.0.0.1 --port %d > /tmp/t3code.log 2>&1 &
+echo "t3 serve started with PID $!"
+`, cfg.T3Code.Port)
+
+	svc.log().Info("Starting T3 Code server in VM...")
+	if err := svc.VM.Run(ctx, startScript, nil); err != nil {
+		return fmt.Errorf("starting t3 serve in VM: %w", err)
+	}
+
+	svc.log().Info("Starting SSH port-forward tunnel...")
+	if err := svc.T3Code.Launch(ctx, cfg.T3Code.Port); err != nil {
+		return fmt.Errorf("starting T3 Code tunnel: %w", err)
+	}
+
+	// Wait for the server to print its pairing info (up to 30 s), then display
+	// everything from "T3 Code server is ready." onwards — this skips the noisy
+	// migration logs and bash login-shell warnings that precede it.
+	pairingScript := `
+for i in $(seq 1 60); do
+    if grep -q "T3 Code server is ready" /tmp/t3code.log 2>/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
+`
+	pairingInfo, err := svc.VM.RunOutput(ctx, pairingScript, nil)
+	if err != nil {
+		svc.log().Warn("Could not read T3 Code pairing info: %v", err)
+		svc.log().Success("T3 Code is running at http://localhost:%d", cfg.T3Code.Port)
+	} else if strings.TrimSpace(pairingInfo) != "" {
+		// Rewrite the VM-internal address to localhost (SSH-tunnel side) so every
+		// URL the user sees is consistent and actually reachable from the host.
+		displayInfo := strings.ReplaceAll(strings.TrimSpace(pairingInfo), "127.0.0.1", "localhost")
+		// Persist the token-bearing URL so 'aivm status' can show it later.
+		pairingURL := parsePairingURL(pairingInfo, cfg.T3Code.Port)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0644)
+		fmt.Fprintln(svc.log().Out, displayInfo)
+	} else {
+		svc.log().Success("T3 Code is running at http://localhost:%d", cfg.T3Code.Port)
+	}
+	return nil
+}
+
+// parsePairingURL extracts the "Pairing URL:" line from t3 serve startup output,
+// rewrites the VM-internal address (127.0.0.1) to localhost (exposed by the SSH
+// tunnel), and returns the result. Falls back to a bare URL if not found.
+func parsePairingURL(output string, port int) string {
+	for _, line := range strings.Split(output, "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "Pairing URL:"); ok {
+			return strings.ReplaceAll(strings.TrimSpace(after), "127.0.0.1", "localhost")
+		}
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
 }
 
 // checkBaseImageAge prompts the user when the base image is older than the configured

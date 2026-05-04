@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -198,6 +199,29 @@ func (c *ColimaVM) Run(ctx context.Context, script string, env map[string]string
 	cmd.Stdout = w
 	cmd.Stderr = w
 	return cmd.Run()
+}
+
+// RunOutput executes a script inside the VM and returns its combined stdout+stderr.
+func (c *ColimaVM) RunOutput(ctx context.Context, script string, env map[string]string) (string, error) {
+	full := script
+	if len(env) > 0 {
+		var sb strings.Builder
+		for k, v := range env {
+			fmt.Fprintf(&sb, "export %s=%s\n", k, shellescape(v))
+		}
+		full = sb.String() + script
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(full))
+	bashScript := "echo " + encoded + " | base64 -d | bash -l"
+
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "colima", "ssh", "--profile", c.profile, "--", "bash", "-lc", bashScript)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("run output: %w\n%s", err, buf.String())
+	}
+	return buf.String(), nil
 }
 
 func (c *ColimaVM) SSH(ctx context.Context) error {

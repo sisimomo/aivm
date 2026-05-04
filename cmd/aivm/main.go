@@ -14,6 +14,7 @@ import (
 	"github.com/sisimomo/aivm/internal/providers/claude"
 	"github.com/sisimomo/aivm/internal/providers/copilot"
 	"github.com/sisimomo/aivm/internal/session"
+	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
@@ -90,11 +91,22 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	sessions := session.NewStore(cfg.StateDir)
 	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 
+	var t3codeMgr t3code.Manager
+	if cfg.T3Code.Enable {
+		t3codeMgr = &t3code.Tunnel{
+			Profile:  cfg.VM.ColimaProfile,
+			StateDir: cfg.StateDir,
+		}
+	} else {
+		t3codeMgr = &t3code.NoopManager{}
+	}
+
 	return &cli.App{
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,
 			MCP:          mcpMgr,
+			T3Code:       t3codeMgr,
 			Sessions:     sessions,
 			Monitor:      mon,
 			Registry:     compResult.Plugins,

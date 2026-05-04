@@ -255,6 +255,28 @@ func AgentLaunched() fw.AssertFunc {
 	}
 }
 
+// T3CodeLaunched asserts that T3Code.Launch was called at least once.
+// Use after running `aivm launch` with T3 Code enabled.
+func T3CodeLaunched() fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		if n := h.T3CodeLaunchCount(); n == 0 {
+			return fmt.Errorf("expected T3Code.Launch to be called, but it was not")
+		}
+		return nil
+	}
+}
+
+// T3CodeLaunchCount asserts that T3Code.Launch was called exactly n times.
+func T3CodeLaunchCount(want int) fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		got := h.T3CodeLaunchCount()
+		if got != want {
+			return fmt.Errorf("expected %d T3Code.Launch call(s), got %d", want, got)
+		}
+		return nil
+	}
+}
+
 // AgentLaunchCount asserts that the active agent provider's Launch method was
 // called exactly n times.
 func AgentLaunchCount(want int) fw.AssertFunc {

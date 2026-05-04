@@ -158,6 +158,21 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	// Merge user integration overrides.
 	integDefs = append(integDefs, cfg.Integrations...)
 
+	// Auto-inject the t3code plugin when T3 Code mode is enabled, ensuring it's
+	// always installed without requiring the user to list it in plugins.enabled.
+	if cfg.T3Code.Enable {
+		alreadyListed := false
+		for _, name := range cfg.Plugins.Enabled {
+			if name == "t3code" {
+				alreadyListed = true
+				break
+			}
+		}
+		if !alreadyListed {
+			cfg.Plugins.Enabled = append(cfg.Plugins.Enabled, "t3code")
+		}
+	}
+
 	return &CompositionResult{
 		Config:         cfg,
 		Plugins:        pluginReg,
