@@ -1,0 +1,164 @@
+system:
+  description: "System packages (apt: git, curl, jq, etc.)"
+  skip_if: |
+    which jq >/dev/null 2>&1
+  setup: |
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt-get update -qq
+    sudo apt-get install -y --no-install-recommends \
+      git curl wget unzip zip ca-certificates gnupg lsb-release \
+      bash-completion jq
+    printf 'export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.claude/local/bin:$PATH"\n' | sudo tee /etc/profile.d/aivm.sh > /dev/null
+    sudo chmod 0644 /etc/profile.d/aivm.sh
+
+java:
+  description: "Temurin JDK via Adoptium apt repo"
+  dependencies:
+    - system
+  defaults:
+    version: "25"
+    distribution: temurin
+  skip_if: |
+    java -version 2>&1 | grep -qE 'version "{{ .version }}|"{{ .version }}\.'
+  setup: |
+    export DEBIAN_FRONTEND=noninteractive
+    sudo mkdir -p /etc/apt/keyrings
+    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
+      | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -sc) main" \
+      | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
+    sudo apt-get update -qq
+    sudo apt-get install -y {{ .distribution }}-{{ .version }}-jdk
+
+maven:
+  description: "Apache Maven"
+  dependencies:
+    - java
+  defaults:
+    version: "3.9.9"
+  skip_if: |
+    mvn --version 2>&1 | grep -q 'Apache Maven {{ .version }}'
+  setup: |
+    set -euo pipefail
+    MAVEN_INSTALL_DIR="/opt/maven"
+    MAVEN_VERSION="{{ .version }}"
+    echo "Installing Maven ${MAVEN_VERSION}"
+    MAVEN_URL="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+    TMP=$(mktemp -d)
+    curl -fsSL "$MAVEN_URL" -o "$TMP/maven.tar.gz"
+    sudo mkdir -p "$MAVEN_INSTALL_DIR"
+    sudo tar -xzf "$TMP/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
+    sudo ln -sf "$MAVEN_INSTALL_DIR/bin/mvn" /usr/local/bin/mvn
+    rm -rf "$TMP"
+    mvn --version
+
+nodejs:
+  description: "Node.js (via nvm)"
+  dependencies:
+    - system
+  defaults:
+    version: "22"
+  skip_if: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    node --version 2>&1 | grep -qE '^v{{ .version }}(\.|$)'
+  setup: |
+    export DEBIAN_FRONTEND=noninteractive
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install {{ .version }}
+    nvm use {{ .version }}
+    nvm alias default {{ .version }}
+
+uv:
+  description: "uv — fast Python package and project manager"
+  dependencies:
+    - system
+  skip_if: |
+    uv --version >/dev/null 2>&1
+  setup: |
+    INSTALLER_NO_MODIFY_PATH=1 curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    uv --version >/dev/null 2>&1 || { echo "uv not found after install"; exit 1; }
+
+python:
+  description: "Python (via pyenv)"
+  dependencies:
+    - system
+  defaults:
+    version: "3.12.7"
+  skip_if: |
+    export PYENV_ROOT="$HOME/.pyenv"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init -)" 2>/dev/null
+    python --version 2>&1 | grep -qE '^Python {{ .version }}$'
+  setup: |
+    set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt-get install -y --no-install-recommends \
+      git build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
+      libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
+      libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+    curl https://pyenv.run | bash
+    export PYENV_ROOT="$HOME/.pyenv"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init -)"
+    pyenv install {{ .version }}
+    pyenv global {{ .version }}
+    python --version
+
+golang:
+  description: "Go (Golang) programming language (via gvm)"
+  dependencies:
+    - system
+  defaults:
+    version: "go1.24.0"
+  skip_if: |
+    [[ -s "$HOME/.gvm/scripts/gvm" ]] && source "$HOME/.gvm/scripts/gvm" 2>/dev/null
+    go version 2>&1 | grep -q '{{ .version }}'
+  setup: |
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt-get install -y --no-install-recommends bison gcc make bsdmainutils
+    bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)
+    [[ -s "$HOME/.gvm/scripts/gvm" ]] && source "$HOME/.gvm/scripts/gvm"
+    gvm install {{ .version }} -B
+    gvm use {{ .version }} --default
+
+t3code:
+  description: "T3 Code web GUI for AI coding agents"
+  dependencies:
+    - nodejs
+  skip_if: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    command -v t3 >/dev/null 2>&1
+  setup: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    npm install -g t3
+
+    {{ if .state_dir }}
+    T3_DIR="{{ .state_dir }}/.t3"
+    mkdir -p "$T3_DIR"
+    ln -sfn "$T3_DIR" "$HOME/.t3"
+    {{ end }}
+
+gh:
+  description: "GitHub CLI (gh) for interacting with GitHub from the command line"
+  dependencies:
+    - system
+  skip_if: |
+    gh --version >/dev/null 2>&1
+  setup: |
+    export DEBIAN_FRONTEND=noninteractive
+    
+    (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+      && sudo mkdir -p -m 755 /etc/apt/keyrings \
+      && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+      && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+      && sudo apt update \
+      && sudo apt install gh -y

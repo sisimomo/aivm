@@ -1,0 +1,7 @@
+.idea
+
+# user config (contains secrets)
+aivm.yaml
+
+# compiled binary
+bin/*

@@ -1,0 +1,47 @@
+claude:
+  description: "Claude Code (Anthropic)"
+  dependencies:
+    - nodejs
+  persist:
+    - .claude/projects
+  launch_command: 'claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"'
+  skip_if: |
+    claude --version >/dev/null 2>&1
+  setup: |
+    curl -fsSL https://claude.ai/install.sh | bash
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "Claude Code CLI not found after install"; exit 1
+    fi
+
+    export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
+
+    echo '{"hasCompletedOnboarding": true}' > "$HOME/.claude.json"
+
+    {{ if .state_dir }}
+    mkdir -p "$HOME/.claude"
+    PROJECTS_DIR="{{ .state_dir }}/.claude/projects"
+    mkdir -p "$PROJECTS_DIR"
+    ln -sfn "$PROJECTS_DIR" "$HOME/.claude/projects"
+    {{ end }}
+
+copilot:
+  description: "GitHub Copilot CLI (copilot cli)"
+  dependencies:
+    - system
+    - gh
+  persist:
+    - .copilot/session-state
+  launch_command: "gh copilot --yolo"
+  skip_if: |
+    gh copilot --help >/dev/null 2>&1
+  setup: |
+    # In gh 2.x, 'gh copilot' is a built-in command; no separate extension needed.
+    gh copilot --help >/dev/null 2>&1
+
+    {{ if .state_dir }}
+    mkdir -p "$HOME/.copilot"
+    SESSION_DIR="{{ .state_dir }}/.copilot/session-state"
+    mkdir -p "$SESSION_DIR"
+    ln -sfn "$SESSION_DIR" "$HOME/.copilot/session-state"
+    {{ end }}

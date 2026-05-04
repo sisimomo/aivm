@@ -1,0 +1,36 @@
+vm:
+  cpus: 4
+  memory: "8GB"
+  disk: "60GB"
+  mounts:
+    - "~/dev:rw"
+  colima_profile: aivm
+  recreate_prompt_after: "7d"
+  base_image_rebuild_prompt_after: "7d"
+
+mcp_jungle:
+  enable: true
+  port: 7593
+  data_dir: "~/.aivm/mcpjungle-data"
+  image_tag: latest-stdio
+  server_mode: development
+
+t3code:
+  enable: false
+  port: 3773
+
+idle:
+  stop_timeout: 5m
+  delete_timeout: 5m
+
+agents:
+  enabled: claude
+
+plugins:
+  enabled:
+    - system
+    - nodejs
+    - python
+    - uv
+
+debug: false

@@ -1,0 +1,91 @@
+# aivm configuration
+# Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
+
+# Active agent — claude or copilot.
+# Authentication is handled externally (run `claude auth` or `gh auth login` inside the VM).
+agents:
+  enabled: claude
+
+# VM resources — tune to your machine.
+vm:
+  cpus: 4
+  memory: "8GB"
+  disk: "60GB"    # supports MB, GB, TB
+
+  # Directories to mount into the VM. Format: <host_path>:<mode>
+  # mode: rw (read-write, default) or ro (read-only)
+  # ~ is expanded to your home directory.
+  mounts:
+    - "~/dev:rw"
+    - "~/.ssh:ro"
+
+  # Arbitrary environment variables injected into every VM session.
+  # Values support ${HOST_VAR} expansion from the host shell environment.
+  # Changes are applied in-place the next time you run aivm — no VM recreation needed.
+  # env:
+  #   MY_API_TOKEN: "${MY_API_TOKEN}"
+  #   CUSTOM_SETTING: "some-value"
+
+# Idle VM management.
+idle:
+  stop_timeout: 5m      # stop VM after this much idle time
+  delete_timeout: 5m    # delete stopped VM after this long
+
+# T3 Code web GUI (optional).
+# When enabled, `aivm launch` starts t3 serve inside the VM and port-forwards
+# it to http://localhost:<port> on the host, letting you interact with your
+# configured agent in a browser instead of a terminal.
+#
+# Notes:
+#   - idle monitoring is automatically disabled in this mode (the VM runs until
+#     you explicitly run `aivm stop`)
+#   - agents.enabled is still required — T3 Code is a frontend, not an agent
+#   - `aivm stop` / `aivm destroy` kill the port-forward tunnel automatically
+# t3code:
+#   enable: false
+#   port: 3773
+
+# Per-plugin configuration — override built-in defaults.
+# plugins:
+#   config:
+#     java:
+#       version: "21"
+#       distribution: temurin
+#     maven:
+#       version: "3.9.6"
+#     nodejs:
+#       version: "20"
+#     python:
+#       version: "3.11.9"
+#     golang:
+#       version: "go1.22.4"
+
+# Add custom plugins or override built-in ones.
+# plugins:
+#   enabled:
+#     - system
+#     - nodejs
+#     - rust        # your custom plugin
+#   define:
+#     rust:
+#       description: "Rust toolchain via rustup"
+#       dependencies: [system]
+#       skip_if: |
+#         rustc --version >/dev/null 2>&1
+#       setup: |
+#         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# Override an agent's launch command or install steps.
+# agents:
+#   define:
+#     copilot:
+#       launch_command: "gh copilot suggest"
+
+# Custom integrations — run a script when a plugin is installed and an agent is active.
+# integrations:
+#   - from: my-tool
+#     to: claude
+#     skip_if: |
+#       my-tool status --agent claude >/dev/null 2>&1
+#     configure: |
+#       my-tool configure --agent claude

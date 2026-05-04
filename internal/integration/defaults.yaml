@@ -1,0 +1,35 @@
+- name: mcpjungle:claude
+  to: claude
+  skip_if: |
+    MCP_FILE="$HOME/.claude/mcp-config.json"
+    [ -f "$MCP_FILE" ] && jq -e '.mcpServers.mcpjungle.url == "http://host.lima.internal:{{ .mcp_port }}/mcp"' "$MCP_FILE" >/dev/null 2>&1
+  configure: |
+    MCP_FILE="$HOME/.claude/mcp-config.json"
+    mkdir -p "$(dirname "$MCP_FILE")"
+
+    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
+
+    jq '
+      .mcpServers.mcpjungle = {
+        type: "http",
+        url: "http://host.lima.internal:{{ .mcp_port }}/mcp"
+      }
+    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"
+
+- name: mcpjungle:copilot
+  to: copilot
+  skip_if: |
+    MCP_FILE="$HOME/.config/gh-copilot/mcp-config.json"
+    [ -f "$MCP_FILE" ] && jq -e '.mcpServers.mcpjungle.url == "http://host.lima.internal:{{ .mcp_port }}/mcp"' "$MCP_FILE" >/dev/null 2>&1
+  configure: |
+    MCP_FILE="$HOME/.config/gh-copilot/mcp-config.json"
+    mkdir -p "$(dirname "$MCP_FILE")"
+
+    [ -f "$MCP_FILE" ] || echo '{}' > "$MCP_FILE"
+
+    jq '
+      .mcpServers.mcpjungle = {
+        type: "http",
+        url: "http://host.lima.internal:{{ .mcp_port }}/mcp"
+      }
+    ' "$MCP_FILE" > "$MCP_FILE.tmp" && mv "$MCP_FILE.tmp" "$MCP_FILE"
