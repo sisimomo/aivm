@@ -8,7 +8,7 @@ system:
     sudo apt-get install -y --no-install-recommends \
       git curl wget unzip zip ca-certificates gnupg lsb-release \
       bash-completion jq
-    printf 'export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.claude/local/bin:$PATH"\n' | sudo tee /etc/profile.d/aivm.sh > /dev/null
+    printf 'export PATH="/opt/maven/bin:$HOME/.local/bin:$HOME/.claude/local/bin:$HOME/.opencode/bin:$PATH"\n' | sudo tee /etc/profile.d/aivm.sh > /dev/null
     sudo chmod 0644 /etc/profile.d/aivm.sh
 
 java:

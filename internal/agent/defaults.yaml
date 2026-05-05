@@ -2,6 +2,8 @@ claude:
   description: "Claude Code (Anthropic)"
   dependencies:
     - nodejs
+  path_entries:
+    - "$HOME/.claude/local/bin"
   persist:
     - .claude/projects
   launch_command: 'claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"'
@@ -45,3 +47,17 @@ copilot:
     mkdir -p "$SESSION_DIR"
     ln -sfn "$SESSION_DIR" "$HOME/.copilot/session-state"
     {{ end }}
+
+opencode:
+  description: "OpenCode CLI"
+  dependencies:
+    - system
+  path_entries:
+    - "$HOME/.opencode/bin"
+  launch_command: "opencode"
+  persist:
+    - .local/state/opencode
+  skip_if: |
+    opencode --version >/dev/null 2>&1
+  setup: |
+    curl -fsSL https://opencode.ai/install | bash
