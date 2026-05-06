@@ -183,6 +183,20 @@ plugins:
 
 The default version is `latest` unless overridden.
 
+**Install multiple versions of the same tool:**
+
+Use `extra_versions` to install additional versions alongside the global one. The `version` entry sets the global; extra versions are installed with `mise install` and are available for project-level `mise.toml` files to select.
+
+```yaml
+plugins:
+  config:
+    mise-node:
+      version: "22"               # global — used when no mise.toml overrides
+      extra_versions: ["20", "18"] # also installed; pick via mise.toml in projects
+```
+
+`SkipIf` is strict: setup is skipped only when **all** configured versions are already present. Adding a new entry to `extra_versions` will trigger re-installation on the next bootstrap.
+
 **Add custom plugins or restrict the enabled set:**
 
 ```yaml
@@ -297,6 +311,13 @@ Any tool in the [mise registry](https://mise-versions.jdx.dev/) is available as 
 | `mise-helm` | Helm |
 
 See the full [mise tool catalog](https://mise.jdx.dev/registry.html#tools) for all available tool names.
+
+**Config keys for `mise-<tool>` plugins:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `version` | string | `"latest"` | Version set as global via `mise use --global` |
+| `extra_versions` | list | `[]` | Additional versions installed via `mise install` (not set as global) |
 
 Agent are registered automatically based on `agents.enabled`:
 
