@@ -10,9 +10,6 @@ func TestAgent_OpenCode(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
 	h.Install("opencode", nil) // installs system first (dependency)
-	h.AssertCommand(`
-		export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-		opencode --version
-	`, "")
+	h.AssertCommand("opencode --version", "")
 	h.AssertSkipIf("opencode", nil)
 }
