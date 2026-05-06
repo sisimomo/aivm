@@ -44,29 +44,29 @@ func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 // recreate the VM. When confirmed, the VM is destroyed and recreated with the
 // new config applied.
 //
-//  1. First start: bootstrap installs the provider plugin and "java".
-//  2. Add "nodejs" to the plugin list.
+//  1. First start: bootstrap installs the provider plugin and "awscli".
+//  2. Add "mise" to the plugin list.
 //  3. Second start (answer "y"): hash changed → recreate prompt → VM recreated.
 //  4. Marker files for all three plugins now exist in the recreated VM.
 func TestConfigChangedPluginRecreatesVM(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
-		framework.WithPlugins("java"),
+		framework.WithPlugins("awscli"),
 		framework.WithInteractive("y"), // answer "y" = recreate VM
 	)
 
 	h.Scenario("plugin added — user confirms VM recreation").
-		Step("Start VM (first boot — installs claude + java)", actions.CLI("start")).
+		Step("Start VM (first boot — installs claude + awscli)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Assert("Claude marker file exists", assertions.VMFileExists("/tmp/.aivm_test_claude_installed")).
-		Assert("Java marker file exists", assertions.VMFileExists("/tmp/.aivm_test_java_installed")).
+		Assert("AWS CLI marker file exists", assertions.VMFileExists("/tmp/.aivm_test_awscli_installed")).
 		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Add nodejs to plugin list", actions.ChangePlugins("java", "nodejs")).
+		Step("Add mise to plugin list", actions.ChangePlugins("awscli", "mise")).
 		Step("Start VM again — config change detected, user confirms recreate", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state updated", assertions.BootstrapComplete()).
-		Assert("NodeJS marker file exists", assertions.VMFileExists("/tmp/.aivm_test_nodejs_installed")).
+		Assert("Mise marker file exists", assertions.VMFileExists("/tmp/.aivm_test_mise_installed")).
 		Assert("User was warned about config change", assertions.StderrContains("config has changed")).
 		Assert("User saw VM recreated message", assertions.OutputContains("VM recreated")).
 		Run()

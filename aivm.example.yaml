@@ -45,35 +45,34 @@ idle:
 #   enable: false
 #   port: 3773
 
-# Per-plugin configuration — override built-in defaults.
+# Per-plugin configuration — override the version for any mise-* plugin.
 # plugins:
 #   config:
-#     java:
-#       version: "21"
-#       distribution: temurin
-#     maven:
-#       version: "3.9.6"
-#     nodejs:
+#     mise-node:
 #       version: "20"
-#     python:
+#     mise-java:
+#       version: "21"
+#     mise-go:
+#       version: "1.22.4"
+#     mise-python:
 #       version: "3.11.9"
-#     golang:
-#       version: "go1.22.4"
 
-# Add custom plugins or override built-in ones.
+# Add mise-based tools or custom plugins.
+# Any tool in the mise registry (https://mise.jdx.dev/registry.html)
+# is available as mise-<tool>.
 # plugins:
 #   enabled:
-#     - system
-#     - nodejs
-#     - rust        # your custom plugin
+#     - mise-node
+#     - mise-go
+#     - mise-rust
 #   define:
-#     rust:
-#       description: "Rust toolchain via rustup"
+#     my-tool:
+#       description: "My custom tool"
 #       dependencies: [system]
 #       skip_if: |
-#         rustc --version >/dev/null 2>&1
+#         my-tool --version >/dev/null 2>&1
 #       setup: |
-#         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+#         curl -fsSL https://example.com/install.sh | sh
 
 # Override an agent's launch command or install steps.
 # agents:

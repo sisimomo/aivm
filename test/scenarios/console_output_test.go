@@ -67,20 +67,20 @@ func TestBootstrapSyncUpToDate(t *testing.T) {
 func TestBootstrapSyncNewPlugin(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
-		framework.WithPlugins("java"),
+		framework.WithPlugins("awscli"),
 		framework.WithInteractive("y"), // answer "y" = recreate VM
 	)
 
 	h.Scenario("start with new plugin sets up the new plugin").
-		Step("Start VM (first boot — installs java)", actions.CLI("start")).
+		Step("Start VM (first boot — installs awscli)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
 		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Add nodejs plugin", actions.AddPlugin("nodejs")).
+		Step("Add mise plugin", actions.AddPlugin("mise")).
 		Step("Start again — config change detected, user confirms recreate", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Output shows nodejs was set up",
-			assertions.OutputContains("nodejs set up")).
+		Assert("Output shows mise was set up",
+			assertions.OutputContains("mise set up")).
 		Assert("Output shows ready", assertions.OutputContains("aivm is ready")).
 		Run()
 }

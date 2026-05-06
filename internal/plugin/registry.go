@@ -37,11 +37,20 @@ func (r *Registry) All() map[string]Plugin {
 	return out
 }
 
+// lookup returns the plugin for name. Explicit registrations take precedence;
+// names matching "mise-<tool>" are synthesised on the fly. Must be called with
+// r.mu held (at least for reading).
+func (r *Registry) lookup(name string) (Plugin, bool) {
+	if p, ok := r.plugins[name]; ok {
+		return p, ok
+	}
+	return newMisePlugin(name)
+}
+
 func (r *Registry) Get(name string) (Plugin, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	p, ok := r.plugins[name]
-	return p, ok
+	return r.lookup(name)
 }
 
 // Set registers or replaces a plugin by name (upsert).
@@ -62,7 +71,7 @@ func (r *Registry) Resolve(enabled []string) ([]Plugin, error) {
 			return nil
 		}
 		needed[name] = true
-		p, ok := r.plugins[name]
+		p, ok := r.lookup(name)
 		if !ok {
 			return fmt.Errorf("plugin %q not found (check spelling or register it)", name)
 		}
@@ -81,7 +90,7 @@ func (r *Registry) Resolve(enabled []string) ([]Plugin, error) {
 
 	subgraph := make(map[string][]string, len(needed))
 	for name := range needed {
-		p := r.plugins[name]
+		p, _ := r.lookup(name)
 		var deps []string
 		for _, dep := range p.Dependencies() {
 			if needed[dep] {
@@ -98,7 +107,8 @@ func (r *Registry) Resolve(enabled []string) ([]Plugin, error) {
 
 	result := make([]Plugin, 0, len(order))
 	for _, name := range order {
-		result = append(result, r.plugins[name])
+		p, _ := r.lookup(name)
+		result = append(result, p)
 	}
 	return result, nil
 }

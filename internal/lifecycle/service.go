@@ -321,10 +321,9 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 	}
 
 	// Daemonize t3 serve inside the VM. nohup + & ensures it survives the SSH
-	// session closing. NVM must be sourced because nodejs is installed via nvm.
+	// session closing. mise shims are on PATH via /etc/profile.d/aivm-path.sh
+	// which is sourced by every login shell (all VM.Run calls use bash -lc).
 	startScript := fmt.Sprintf(`
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 nohup t3 serve --host 127.0.0.1 --port %d > /tmp/t3code.log 2>&1 &
 echo "t3 serve started with PID $!"
 `, cfg.T3Code.Port)
