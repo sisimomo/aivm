@@ -8,7 +8,7 @@
 
 **aivm** manages the full lifecycle of a Colima Linux VM dedicated to running AI coding agents. It bootstraps the VM with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
 
-Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`)
+Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)
 
 ---
 
@@ -37,7 +37,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`)
 
 - **macOS** (Intel or Apple Silicon) — Linux/Windows is not supported
 - [Colima](https://github.com/abiosoft/colima) + [Docker](https://docs.docker.com/desktop/install/mac-install/) (or Docker Desktop)
-- Authentication for your chosen agent — run `claude auth` or `gh auth login` **inside** the VM after first launch
+- Authentication for your chosen agent is handled **inside** the VM after first launch
 
 ## Installation
 
@@ -73,7 +73,7 @@ aivm version
    nano ~/.aivm/aivm.yaml
    ```
 
-   Set `agents.enabled` to `claude` or `copilot`.
+   Set `agents.enabled` to `claude`, `copilot`, or `opencode`.
 
 2. **Launch an agent from any directory under your dev root:**
 
@@ -99,7 +99,7 @@ Config file: `~/.aivm/aivm.yaml`
 Use [`aivm.example.yaml`](aivm.example.yaml) as a reference.
 
 ```yaml
-# Which agent to launch (claude | copilot)
+# Which agent to launch (claude | copilot | opencode)
 agents:
   enabled: claude
 
@@ -278,6 +278,7 @@ Agent plugins are registered automatically based on `agents.enabled`:
 |--------------|-------------|
 | `claude` | Claude Code CLI (depends on `nodejs`) |
 | `copilot` | GitHub Copilot CLI (depends on `system`, `gh`) |
+| `opencode` | OpenCode CLI (depends on `system`) |
 
 ---
 
@@ -314,6 +315,17 @@ Authenticate inside the VM once:
 aivm ssh
 gh auth login
 ```
+
+### OpenCode
+
+```yaml
+agents:
+  enabled: opencode
+```
+
+Runs `"$HOME/.opencode/bin/opencode"`. The binary is installed with the upstream `curl -fsSL https://opencode.ai/install | bash` flow, with PATH modification disabled so aivm controls the runtime environment.
+
+Authenticate inside the VM on first launch if prompted.
 
 ### Custom Agents
 

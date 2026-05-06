@@ -1,8 +1,8 @@
 # aivm configuration
 # Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
 
-# Active agent — claude or copilot.
-# Authentication is handled externally (run `claude auth` or `gh auth login` inside the VM).
+# Active agent — claude, copilot, or opencode.
+# Authentication is handled inside the VM on first launch.
 agents:
   enabled: claude
 

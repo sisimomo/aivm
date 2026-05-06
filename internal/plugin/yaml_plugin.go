@@ -18,14 +18,18 @@ var defaultsYAML []byte
 // It is used both for the embedded defaults.yaml and for user-defined plugins
 // in aivm.yaml (plugins.define).
 type PluginDef struct {
-	Description  string   `yaml:"description"  mapstructure:"description"`
-	Dependencies []string `yaml:"dependencies" mapstructure:"dependencies"`
+	Description  string   `yaml:"description"   mapstructure:"description"`
+	Dependencies []string `yaml:"dependencies"  mapstructure:"dependencies"`
 	// Agents restricts the plugin to the listed provider names.
 	// An empty slice means the plugin applies to all providers.
-	Agents   []string       `yaml:"agents"       mapstructure:"agents"`
-	Defaults map[string]any `yaml:"defaults"     mapstructure:"defaults"`
-	SkipIf   string         `yaml:"skip_if"      mapstructure:"skip_if"`
-	Setup    string         `yaml:"setup"        mapstructure:"setup"`
+	Agents      []string       `yaml:"agents"        mapstructure:"agents"`
+	Defaults    map[string]any `yaml:"defaults"      mapstructure:"defaults"`
+	// PathEntries lists directories to add to PATH (e.g. "$HOME/.local/bin").
+	// Entries from all enabled plugins are collected by the Executor and written
+	// to /etc/profile.d/aivm-path.sh before any plugin setup runs.
+	PathEntries []string       `yaml:"path_entries"  mapstructure:"path_entries"`
+	SkipIf      string         `yaml:"skip_if"       mapstructure:"skip_if"`
+	Setup       string         `yaml:"setup"         mapstructure:"setup"`
 }
 
 // LoadDefaults parses the embedded defaults.yaml and returns plugin definitions keyed by name.
@@ -49,6 +53,9 @@ func MergePluginDef(base, override PluginDef) PluginDef {
 	}
 	if len(override.Agents) > 0 {
 		result.Agents = override.Agents
+	}
+	if len(override.PathEntries) > 0 {
+		result.PathEntries = override.PathEntries
 	}
 	if override.SkipIf != "" {
 		result.SkipIf = override.SkipIf
@@ -84,6 +91,7 @@ func (p *YAMLPlugin) Name() string           { return p.name }
 func (p *YAMLPlugin) Description() string    { return p.def.Description }
 func (p *YAMLPlugin) Dependencies() []string { return p.def.Dependencies }
 func (p *YAMLPlugin) Agents() []string       { return p.def.Agents }
+func (p *YAMLPlugin) PathEntries() []string  { return p.def.PathEntries }
 
 // effectiveConfig merges the plugin's bundled default config values with
 // per-plugin config from the user's aivm.yaml (user values win).

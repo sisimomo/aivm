@@ -23,6 +23,10 @@ import (
 	"github.com/sisimomo/aivm/test/framework"
 )
 
+const maxConcurrentBootstrapHarnesses = 5
+
+var bootstrapHarnessSem = make(chan struct{}, maxConcurrentBootstrapHarnesses)
+
 // BootstrapHarness is a test helper that runs real plugin install scripts,
 // agent setups, and integrations inside a fresh Docker container. It uses the
 // real plugin.Executor and integration.Executor (no stubs) so template
@@ -42,6 +46,7 @@ type BootstrapHarness struct {
 // are removed automatically when the test ends.
 func newBootstrapHarness(t *testing.T) *BootstrapHarness {
 	t.Helper()
+	acquireBootstrapHarness(t)
 
 	if err := framework.EnsureTestImage(testDockerDir()); err != nil {
 		t.Fatalf("harness: ensure test image: %v", err)
@@ -112,6 +117,14 @@ func newBootstrapHarness(t *testing.T) *BootstrapHarness {
 	})
 
 	return h
+}
+
+func acquireBootstrapHarness(t *testing.T) {
+	t.Helper()
+	bootstrapHarnessSem <- struct{}{}
+	t.Cleanup(func() {
+		<-bootstrapHarnessSem
+	})
 }
 
 // Install runs the named plugin (and all its transitive dependencies) inside

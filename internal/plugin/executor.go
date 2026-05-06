@@ -2,10 +2,13 @@ package plugin
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/run"
 )
 
 // Executor runs plugins in DAG order.
@@ -42,6 +45,10 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 	ordered, err := e.Ordered()
 	if err != nil {
 		return fmt.Errorf("resolving plugin order: %w", err)
+	}
+
+	if err := e.writePathFile(ctx, ordered); err != nil {
+		return fmt.Errorf("writing path file: %w", err)
 	}
 
 	for _, p := range ordered {
@@ -81,4 +88,38 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		e.log().Success("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second))
 	}
 	return nil
+}
+
+// writePathFile collects path_entries from all enabled plugins (in DAG order,
+// deduped) and writes /etc/profile.d/aivm-path.sh so every login shell
+// picks them up. It is called once at the start of Run, before any plugin
+// setup executes, so the PATH is ready for any subsequent setup scripts that
+// rely on it.
+func (e *Executor) writePathFile(ctx context.Context, ordered []Plugin) error {
+	seen := make(map[string]bool)
+	var entries []string
+	for _, p := range ordered {
+		for _, entry := range p.PathEntries() {
+			if !seen[entry] {
+				seen[entry] = true
+				entries = append(entries, entry)
+			}
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	content := "# Managed by aivm — do not edit manually\n" +
+		"export PATH=\"" + strings.Join(entries, ":") + ":$PATH\"\n"
+	encoded := base64.StdEncoding.EncodeToString([]byte(content))
+	script := fmt.Sprintf(
+		"echo '%s' | base64 -d | sudo tee /etc/profile.d/aivm-path.sh > /dev/null\nsudo chmod 0644 /etc/profile.d/aivm-path.sh",
+		encoded,
+	)
+
+	if e.VMInst != nil {
+		return e.VMInst.Run(ctx, script, nil)
+	}
+	return run.Run(ctx, e.log().Writer("path"), "bash", "-c", script)
 }

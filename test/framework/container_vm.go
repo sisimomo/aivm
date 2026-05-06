@@ -22,6 +22,11 @@ const (
 	testContainerUser = "user"
 )
 
+var (
+	ensureTestImageOnce sync.Once
+	ensureTestImageErr  error
+)
+
 // DockerVM is a vm.VM implementation backed by a Docker container.
 // Each test gets a dedicated container whose lifecycle maps directly onto the
 // vm.VM interface. Scripts execute inside the container via docker exec, which
@@ -347,16 +352,20 @@ func dockerOutput(args ...string) (string, error) {
 
 // EnsureTestImage checks whether the test base image exists and builds it if not.
 func EnsureTestImage(testDockerDir string) error {
-	out, _ := dockerOutput("images", "-q", testImageName)
-	if strings.TrimSpace(out) != "" {
-		return nil // image already present
-	}
-	cmd := exec.Command("docker", "build", "-t", testImageName, testDockerDir)
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("build test image %s: %w\n%s", testImageName, err, buf.String())
-	}
-	return nil
+	ensureTestImageOnce.Do(func() {
+		out, _ := dockerOutput("images", "-q", testImageName)
+		if strings.TrimSpace(out) != "" {
+			return
+		}
+
+		cmd := exec.Command("docker", "build", "-t", testImageName, testDockerDir)
+		var buf bytes.Buffer
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+		if err := cmd.Run(); err != nil {
+			ensureTestImageErr = fmt.Errorf("build test image %s: %w\n%s", testImageName, err, buf.String())
+		}
+	})
+
+	return ensureTestImageErr
 }

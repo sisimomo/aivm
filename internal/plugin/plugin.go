@@ -36,6 +36,10 @@ type Plugin interface {
 	// Agents returns the provider names this plugin applies to.
 	// An empty slice means the plugin applies to all providers.
 	Agents() []string
+	// PathEntries returns the PATH directories this plugin requires.
+	// These are collected by the Executor and written to /etc/profile.d/aivm-path.sh
+	// before any plugin setup runs.
+	PathEntries() []string
 	// SkipIf runs the skip_if script. Returns true when the plugin is already
 	// set up and setup should be skipped (exit code 0 = skip).
 	SkipIf(ctx context.Context, env InstallEnv) (bool, error)

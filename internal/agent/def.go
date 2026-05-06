@@ -8,6 +8,10 @@ import "github.com/sisimomo/aivm/internal/plugin"
 type Def struct {
 	Description   string   `yaml:"description"    mapstructure:"description"`
 	Dependencies  []string `yaml:"dependencies"   mapstructure:"dependencies"`
+	// PathEntries lists directories to add to PATH (e.g. "$HOME/.claude/local/bin").
+	// These are collected by the Executor and written to /etc/profile.d/aivm-path.sh
+	// before any plugin setup runs.
+	PathEntries   []string `yaml:"path_entries"   mapstructure:"path_entries"`
 	SkipIf        string   `yaml:"skip_if"        mapstructure:"skip_if"`
 	Setup         string   `yaml:"setup"          mapstructure:"setup"`
 	LaunchCommand string   `yaml:"launch_command" mapstructure:"launch_command"`
@@ -22,6 +26,7 @@ func (d Def) ToPluginDef() plugin.PluginDef {
 	return plugin.PluginDef{
 		Description:  d.Description,
 		Dependencies: d.Dependencies,
+		PathEntries:  d.PathEntries,
 		SkipIf:       d.SkipIf,
 		Setup:        d.Setup,
 	}
@@ -35,6 +40,9 @@ func MergeDef(base, override Def) Def {
 	}
 	if len(override.Dependencies) > 0 {
 		result.Dependencies = override.Dependencies
+	}
+	if len(override.PathEntries) > 0 {
+		result.PathEntries = override.PathEntries
 	}
 	if override.SkipIf != "" {
 		result.SkipIf = override.SkipIf
