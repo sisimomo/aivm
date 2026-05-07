@@ -28,6 +28,24 @@ func (e InstallEnv) ConfigString(key, fallback string) string {
 	return fallback
 }
 
+// ConfigStringSlice returns a string slice config value, or nil if absent.
+// Handles both []string (direct) and []interface{} (from YAML unmarshalling).
+func (e InstallEnv) ConfigStringSlice(key string) []string {
+	switch v := e.Config[key].(type) {
+	case []string:
+		return v
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
 // Plugin is the contract every bootstrap component must satisfy.
 type Plugin interface {
 	Name() string

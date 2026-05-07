@@ -152,23 +152,50 @@ Set either value to `0` to disable that stage. Idle monitoring is automatically 
 
 Plugins install toolchains inside the VM during bootstrap. They are resolved in dependency order and are idempotent (skipped if already installed).
 
-**Override built-in plugin defaults:**
+**mise-based tools (`mise-<tool>`):**
+
+Any tool available in the [mise registry](https://mise-versions.jdx.dev/) can be installed by prefixing its name with `mise-`. For example:
+
+```yaml
+plugins:
+  enabled:
+    - mise-node
+    - mise-go
+    - mise-rust
+    - mise-java
+    - mise-python
+```
+
+The tool name after the `mise-` prefix is passed directly to `mise use --global <tool>@<version>`. See the [mise tool catalog](https://mise.jdx.dev/registry.html) for valid tool names.
+
+**Override the version:**
 
 ```yaml
 plugins:
   config:
-    java:
-      version: "21"
-      distribution: temurin
-    nodejs:
+    mise-node:
       version: "20"
-    python:
-      version: "3.11.9"
-    golang:
-      version: "go1.22.4"
-    maven:
-      version: "3.9.6"
+    mise-java:
+      version: "21"
+    mise-go:
+      version: "1.22.4"
 ```
+
+The default version is `latest` unless overridden.
+
+**Install multiple versions of the same tool:**
+
+Use `extra_versions` to install additional versions alongside the global one. The `version` entry sets the global; extra versions are installed with `mise install` and are available for project-level `mise.toml` files to select.
+
+```yaml
+plugins:
+  config:
+    mise-node:
+      version: "22"               # global — used when no mise.toml overrides
+      extra_versions: ["20", "18"] # also installed; pick via mise.toml in projects
+```
+
+`SkipIf` is strict: setup is skipped only when **all** configured versions are already present. Adding a new entry to `extra_versions` will trigger re-installation on the next bootstrap.
 
 **Add custom plugins or restrict the enabled set:**
 
@@ -176,8 +203,8 @@ plugins:
 plugins:
   enabled:
     - system
-    - nodejs
-    - rust       # your custom plugin
+    - mise-node
+    - azure-cli       # your custom plugin
 
   define:
     rust:
@@ -260,19 +287,39 @@ aivm rebuild-image --force  # stop active sessions without prompting
 
 Built-in plugins (all idempotent, resolved in dependency order):
 
-| Plugin | Description | Default Version |
-|--------|-------------|-----------------|
-| `system` | Base packages via apt (`git`, `curl`, `jq`, etc.) | — |
-| `nodejs` | Node.js via nvm | `22` |
-| `java` | Temurin JDK via Adoptium | `25` |
-| `maven` | Apache Maven | `3.9.9` |
-| `python` | Python via pyenv | `3.12.7` |
-| `uv` | uv — fast Python package manager | latest |
-| `golang` | Go via gvm | `go1.24.0` |
-| `gh` | GitHub CLI | latest |
-| `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) | latest |
+| Plugin | Description |
+|--------|-------------|
+| `system` | Base packages via apt (`git`, `curl`, `jq`, etc.) |
+| `mise` | [mise-en-place](https://mise.jdx.dev/) — universal runtime version manager |
+| `awscli` | AWS CLI v2 |
+| `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) |
 
-Agent plugins are registered automatically based on `agents.enabled`:
+**`mise-<tool>` — dynamic tool plugins:**
+
+Any tool in the [mise registry](https://mise-versions.jdx.dev/) is available as `mise-<tool>`:
+
+| Example | Installs |
+|---------|----------|
+| `mise-node` | Node.js |
+| `mise-go` | Go |
+| `mise-java` | Java (Temurin by default) |
+| `mise-rust` | Rust |
+| `mise-python` | Python |
+| `mise-maven` | Apache Maven |
+| `mise-gradle` | Gradle |
+| `mise-terraform` | HashiCorp Terraform |
+| `mise-helm` | Helm |
+
+See the full [mise tool catalog](https://mise.jdx.dev/registry.html#tools) for all available tool names.
+
+**Config keys for `mise-<tool>` plugins:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `version` | string | `"latest"` | Version set as global via `mise use --global` |
+| `extra_versions` | list | `[]` | Additional versions installed via `mise install` (not set as global) |
+
+Agent are registered automatically based on `agents.enabled`:
 
 | Agent plugin | Description |
 |--------------|-------------|
