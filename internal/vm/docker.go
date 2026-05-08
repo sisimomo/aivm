@@ -42,7 +42,7 @@ func NewDocker(profile, stateDir, image string) *DockerVM {
 	}
 }
 
-func (d *DockerVM) Profile() string             { return d.profile }
+func (d *DockerVM) Profile() string              { return d.profile }
 func (d *DockerVM) NeedsPortBindingAtBoot() bool { return true }
 
 // Status reports whether the container exists and its current state.
@@ -83,6 +83,9 @@ func (d *DockerVM) Start(_ context.Context, opts StartOptions) error {
 		args := []string{"run", "-d", "--name", d.containerName}
 		for _, port := range opts.PortForwards {
 			args = append(args, "-p", fmt.Sprintf("%d:%d", port, port))
+		}
+		for _, pm := range opts.PortMappings {
+			args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 		}
 		for _, m := range opts.Mounts {
 			mode := "ro"
@@ -183,15 +186,24 @@ func (d *DockerVM) SSH(ctx context.Context) error {
 }
 
 // WaitReady polls until the container responds to a simple command.
-func (d *DockerVM) WaitReady(_ context.Context, timeout time.Duration) error {
+func (d *DockerVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if err := dockerCmd("exec", "-u", dockerContainerUser, d.containerName, "echo", "ready"); err == nil {
-			return nil
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return fmt.Errorf("container %s did not become ready within %s", d.containerName, timeout)
+			}
+			if err := dockerCmd("exec", "-u", dockerContainerUser, d.containerName, "echo", "ready"); err == nil {
+				return nil
+			}
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
-	return fmt.Errorf("container %s did not become ready within %s", d.containerName, timeout)
 }
 
 // CreateSnapshot commits the current container filesystem as a Docker image tag.
@@ -222,6 +234,9 @@ func (d *DockerVM) RestoreSnapshot(_ context.Context, name string) (bool, error)
 	args := []string{"run", "-d", "--name", d.containerName}
 	for _, port := range opts.PortForwards {
 		args = append(args, "-p", fmt.Sprintf("%d:%d", port, port))
+	}
+	for _, pm := range opts.PortMappings {
+		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 	}
 	for _, m := range opts.Mounts {
 		mode := "ro"
@@ -259,6 +274,21 @@ func (d *DockerVM) ListSnapshots(_ context.Context) ([]Snapshot, error) {
 func (d *DockerVM) snapshotTag(name string) string {
 	safe := strings.NewReplacer(" ", "-", "/", "-", ":", "-").Replace(name)
 	return fmt.Sprintf("aivm-snap-%s-%s:latest", d.profile, safe)
+}
+
+// GetPublishedPort retrieves the host port that Docker assigned for the given
+// container port. Returns 0 if the port is not published or the container is not running.
+// This is used by the test harness to discover auto-assigned ports after container creation.
+func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
+	// Query Docker for the port mapping: {{(index (index .NetworkSettings.Ports "3773/tcp") 0).HostPort}}
+	template := fmt.Sprintf("{{(index (index .NetworkSettings.Ports \"%d/tcp\") 0).HostPort}}", containerPort)
+	out, err := dockerOutput("inspect", "--format", template, d.containerName)
+	if err != nil {
+		return 0, err
+	}
+	hostPort := 0
+	fmt.Sscanf(strings.TrimSpace(out), "%d", &hostPort)
+	return hostPort, nil
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────

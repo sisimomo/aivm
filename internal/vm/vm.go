@@ -29,6 +29,11 @@ type Mount struct {
 	Writable bool
 }
 
+type PortMapping struct {
+	HostPort      int // 0 means "let Docker auto-assign"
+	ContainerPort int
+}
+
 type StartOptions struct {
 	CPUs         int
 	MemoryBytes  int64
@@ -36,7 +41,8 @@ type StartOptions struct {
 	VMType       string
 	Mounts       []Mount
 	SSHAgent     bool
-	PortForwards []int // ports to bind at container/VM start (Docker backend uses -p)
+	PortForwards []int         // ports to bind at container/VM start (Docker backend uses -p); deprecated in favor of PortMappings
+	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
 }
 
 type Snapshot struct {

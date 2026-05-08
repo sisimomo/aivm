@@ -143,9 +143,17 @@ func (svc *LifecycleService) Logs(service string) error {
 		return tailFile(filepath.Join(stateDir, "logs", "idle-monitor.log"))
 	case "bootstrap":
 		return tailFile(filepath.Join(stateDir, "logs", "bootstrap.log"))
-	case "colima", "vm":
-		// "vm" is the backend-neutral alias; "colima" is kept for backward compat.
+	case "colima":
+		// "colima" is kept for backward compatibility
 		return tailFile(filepath.Join(stateDir, "logs", "colima.log"))
+	case "vm":
+		// "vm" is the backend-neutral alias; route to backend-specific log
+		backend := svc.Config.VM.Backend
+		if backend == "" {
+			backend = "colima" // default backend
+		}
+		logFile := fmt.Sprintf("%s.log", backend)
+		return tailFile(filepath.Join(stateDir, "logs", logFile))
 	default:
 		return fmt.Errorf("unknown service: %s\nAvailable: mcpjungle | monitor | bootstrap | vm | colima", service)
 	}

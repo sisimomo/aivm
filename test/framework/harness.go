@@ -23,7 +23,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -48,12 +47,12 @@ import (
 // Each Harness gets a unique Docker container profile and temp state directory.
 // Both are always cleaned up when the test finishes, even on failure.
 type Harness struct {
-	t           *testing.T
-	tc          testConfig
-	StateDir    string
-	Profile     string
-	App         *cli.App
-	t3codePort  int
+	t          *testing.T
+	tc         testConfig
+	StateDir   string
+	Profile    string
+	App        *cli.App
+	t3codePort int
 	// Output captures all stdout/stderr written by the LifecycleService logger.
 	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
 	// between RunCLI calls when per-command isolation matters.
@@ -125,15 +124,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 		}
 	}
 
-	// Auto-assign a free port for T3 Code tests to prevent parallel tests from
-	// competing for the same port when docker-binding it at container creation.
-	if tc.T3CodeEnabled && tc.T3CodePort == 0 {
-		port, err := findFreePort()
-		if err != nil {
-			t.Fatalf("harness: find free port for T3Code: %v", err)
-		}
-		tc.T3CodePort = port
-	}
+	// T3 Code port will be auto-assigned by Docker (host port 0) when tc.T3CodePort == 0.
+	// The actual assigned port is retrieved after container start and stored in h.t3codePort.
 
 	cfg := buildTestConfig(profile, stateDir, tc)
 
@@ -153,6 +145,11 @@ func New(t *testing.T, opts ...Option) *Harness {
 		App:        app,
 		t3codePort: tc.T3CodePort,
 		Output:     output,
+	}
+
+	// Enable port auto-assignment tracking if T3Code is enabled with port 0
+	if tc.T3CodeEnabled && tc.T3CodePort == 0 {
+		trackingVM.setHarness(h, 3773)
 	}
 
 	t.Cleanup(func() {
@@ -356,16 +353,6 @@ func mustRandomHex(n int) string {
 		panic(fmt.Sprintf("random hex: %v", err))
 	}
 	return hex.EncodeToString(b)
-}
-
-// findFreePort asks the OS for an available TCP port by binding to :0.
-func findFreePort() (int, error) {
-	l, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // buildTestIntegrations replaces production integration scripts with stub
