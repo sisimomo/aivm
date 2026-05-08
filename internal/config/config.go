@@ -48,7 +48,14 @@ type VMConfig struct {
 	Type          string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
 	Mounts        []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
 	Env           map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
+	Name          string            `mapstructure:"name"`   // backend-neutral VM identity; takes precedence over colima_profile
 	ColimaProfile string            `mapstructure:"colima_profile"`
+
+	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
+	Backend string `mapstructure:"backend"`
+
+	// DockerImage is the Docker image used when backend is "docker".
+	DockerImage string `mapstructure:"docker_image"`
 
 	// RecreatePromptAfter is the staleness threshold after which the user is
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
@@ -64,6 +71,19 @@ type VMConfig struct {
 	RecreatePromptAfterDuration         time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
 	BaseImageRebuildPromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
 	ParsedMounts                        []Mount       `mapstructure:"-"`
+}
+
+// Profile returns the backend-neutral VM identity used as the Colima profile
+// name or Docker container name. Resolution order: vm.name → vm.colima_profile
+// → "aivm".
+func (vm *VMConfig) Profile() string {
+	if vm.Name != "" {
+		return vm.Name
+	}
+	if vm.ColimaProfile != "" {
+		return vm.ColimaProfile
+	}
+	return "aivm"
 }
 
 type MCPConfig struct {
@@ -214,9 +234,24 @@ func validateAndParse(cfg *Config, home string) error {
 		return fmt.Errorf("vm.type: unsupported value %q — use \"vz\", \"qemu\", or omit for auto-detection", vm.Type)
 	}
 
-	// --- colima profile ---
-	if vm.ColimaProfile == "" {
-		return fmt.Errorf("vm.colima_profile: must not be empty")
+	// --- backend ---
+	switch vm.Backend {
+	case "", "colima", "docker":
+		// valid
+	default:
+		return fmt.Errorf("vm.backend: unsupported value %q — use \"colima\" or \"docker\"", vm.Backend)
+	}
+
+	// --- colima profile (required for colima backend) ---
+	if vm.Backend == "" || vm.Backend == "colima" {
+		if vm.Name == "" && vm.ColimaProfile == "" {
+			return fmt.Errorf("vm.colima_profile: must not be empty when using the colima backend (or set vm.name)")
+		}
+	}
+
+	// --- docker image (required for docker backend) ---
+	if vm.Backend == "docker" && vm.DockerImage == "" {
+		return fmt.Errorf("vm.docker_image: must not be empty when using the docker backend")
 	}
 
 	// --- recreate_prompt_after ---

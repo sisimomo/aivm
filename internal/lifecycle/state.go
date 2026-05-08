@@ -107,7 +107,7 @@ func (svc *LifecycleService) currentConfigHash() string {
 		svc.Config.VM.Disk,
 		svc.Config.VM.Type,
 		svc.Config.VM.Mounts,
-		svc.Config.VM.ColimaProfile,
+		svc.VM.Profile(),
 	)
 }
 
