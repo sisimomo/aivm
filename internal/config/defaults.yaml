@@ -4,7 +4,7 @@ vm:
   disk: "60GB"
   mounts:
     - "~/dev:rw"
-  colima_profile: aivm
+  name: aivm
   backend: colima
   recreate_prompt_after: "7d"
   base_image_rebuild_prompt_after: "7d"

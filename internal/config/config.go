@@ -48,8 +48,7 @@ type VMConfig struct {
 	Type          string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
 	Mounts        []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
 	Env           map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
-	Name          string            `mapstructure:"name"`   // backend-neutral VM identity; takes precedence over colima_profile
-	ColimaProfile string            `mapstructure:"colima_profile"`
+	Name string `mapstructure:"name"` // VM identity (Colima profile name / Docker container name)
 
 	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
 	Backend string `mapstructure:"backend"`
@@ -73,15 +72,11 @@ type VMConfig struct {
 	ParsedMounts                        []Mount       `mapstructure:"-"`
 }
 
-// Profile returns the backend-neutral VM identity used as the Colima profile
-// name or Docker container name. Resolution order: vm.name → vm.colima_profile
-// → "aivm".
+// Profile returns the VM identity used as the Colima profile name or Docker
+// container name. Falls back to "aivm" if vm.name is not set.
 func (vm *VMConfig) Profile() string {
 	if vm.Name != "" {
 		return vm.Name
-	}
-	if vm.ColimaProfile != "" {
-		return vm.ColimaProfile
 	}
 	return "aivm"
 }
@@ -242,11 +237,9 @@ func validateAndParse(cfg *Config, home string) error {
 		return fmt.Errorf("vm.backend: unsupported value %q — use \"colima\" or \"docker\"", vm.Backend)
 	}
 
-	// --- colima profile (required for colima backend) ---
-	if vm.Backend == "" || vm.Backend == "colima" {
-		if vm.Name == "" && vm.ColimaProfile == "" {
-			return fmt.Errorf("vm.colima_profile: must not be empty when using the colima backend (or set vm.name)")
-		}
+	// --- vm name (required for colima backend) ---
+	if (vm.Backend == "" || vm.Backend == "colima") && vm.Name == "" {
+		return fmt.Errorf("vm.name: must not be empty when using the colima backend")
 	}
 
 	// --- docker image (required for docker backend) ---

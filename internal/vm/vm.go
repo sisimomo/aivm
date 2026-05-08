@@ -41,7 +41,6 @@ type StartOptions struct {
 	VMType       string
 	Mounts       []Mount
 	SSHAgent     bool
-	PortForwards []int         // ports to bind at container/VM start (Docker backend uses -p); deprecated in favor of PortMappings
 	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
 }
 

@@ -81,9 +81,6 @@ func (d *DockerVM) Start(_ context.Context, opts StartOptions) error {
 		d.mu.Unlock()
 
 		args := []string{"run", "-d", "--name", d.containerName}
-		for _, port := range opts.PortForwards {
-			args = append(args, "-p", fmt.Sprintf("%d:%d", port, port))
-		}
 		for _, pm := range opts.PortMappings {
 			args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 		}
@@ -232,9 +229,6 @@ func (d *DockerVM) RestoreSnapshot(_ context.Context, name string) (bool, error)
 	d.mu.Unlock()
 
 	args := []string{"run", "-d", "--name", d.containerName}
-	for _, port := range opts.PortForwards {
-		args = append(args, "-p", fmt.Sprintf("%d:%d", port, port))
-	}
 	for _, pm := range opts.PortMappings {
 		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 	}

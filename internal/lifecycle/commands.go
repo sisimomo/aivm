@@ -133,7 +133,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 }
 
 // Logs streams logs for the given service. Service may be one of:
-// "mcpjungle", "monitor", "idle-monitor", "bootstrap", "colima", "vm".
+// "mcpjungle", "monitor", "idle-monitor", "bootstrap", "vm".
 func (svc *LifecycleService) Logs(service string) error {
 	stateDir := svc.Config.StateDir
 	switch service {
@@ -143,11 +143,7 @@ func (svc *LifecycleService) Logs(service string) error {
 		return tailFile(filepath.Join(stateDir, "logs", "idle-monitor.log"))
 	case "bootstrap":
 		return tailFile(filepath.Join(stateDir, "logs", "bootstrap.log"))
-	case "colima":
-		// "colima" is kept for backward compatibility
-		return tailFile(filepath.Join(stateDir, "logs", "colima.log"))
 	case "vm":
-		// "vm" is the backend-neutral alias; route to backend-specific log
 		backend := svc.Config.VM.Backend
 		if backend == "" {
 			backend = "colima" // default backend
@@ -155,7 +151,7 @@ func (svc *LifecycleService) Logs(service string) error {
 		logFile := fmt.Sprintf("%s.log", backend)
 		return tailFile(filepath.Join(stateDir, "logs", logFile))
 	default:
-		return fmt.Errorf("unknown service: %s\nAvailable: mcpjungle | monitor | bootstrap | vm | colima", service)
+		return fmt.Errorf("unknown service: %s\nAvailable: mcpjungle | monitor | bootstrap | vm", service)
 	}
 }
 

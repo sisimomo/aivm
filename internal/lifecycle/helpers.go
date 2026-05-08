@@ -86,14 +86,13 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDef agent.Def) vm.Start
 
 	// Backends that need port bindings at boot (e.g. Docker) declare ports via
 	// StartOptions; others (e.g. Colima) use an SSH tunnel after the VM is up.
-	var portForwards []int
 	var portMappings []vm.PortMapping
 	if v.NeedsPortBindingAtBoot() && cfg.T3Code.Enable {
 		if cfg.T3Code.Port == 0 {
 			// Port 0 in config means "auto-assign host port"; map to default T3 Code container port 3773
 			portMappings = []vm.PortMapping{{HostPort: 0, ContainerPort: 3773}}
 		} else {
-			portForwards = []int{cfg.T3Code.Port}
+			portMappings = []vm.PortMapping{{HostPort: cfg.T3Code.Port, ContainerPort: cfg.T3Code.Port}}
 		}
 	}
 
@@ -103,7 +102,6 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDef agent.Def) vm.Start
 		DiskBytes:    cfg.VM.DiskBytes,
 		VMType:       cfg.VM.Type,
 		Mounts:       mounts,
-		PortForwards: portForwards,
 		PortMappings: portMappings,
 	}
 }

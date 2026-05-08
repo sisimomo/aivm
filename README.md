@@ -110,7 +110,7 @@ vm:
   memory: "8GB"
   disk: "60GB"
   backend: colima
-  colima_profile: aivm
+  name: aivm
   mounts:
     - "~/dev:rw"
     - "~/.ssh:ro"
@@ -133,8 +133,7 @@ idle:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `vm.backend` | `colima` | VM runtime: `colima` or `docker` |
-| `vm.name` | `""` | Backend-neutral VM identity; overrides `vm.colima_profile` |
-| `vm.colima_profile` | `aivm` | Colima profile name when using the Colima backend |
+| `vm.name` | `aivm` | VM identity (Colima profile name / Docker container name) |
 | `vm.docker_image` | required for `docker` | Base image used when `vm.backend: docker` |
 
 ### Mounts
