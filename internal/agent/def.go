@@ -6,8 +6,8 @@ import "github.com/sisimomo/aivm/internal/plugin"
 // and its runtime launch settings.
 // This is semantically distinct from plugin.PluginDef — agents are not plugins.
 type Def struct {
-	Description   string   `yaml:"description"    mapstructure:"description"`
-	Dependencies  []string `yaml:"dependencies"   mapstructure:"dependencies"`
+	Description  string   `yaml:"description"    mapstructure:"description"`
+	Dependencies []string `yaml:"dependencies"   mapstructure:"dependencies"`
 	// PathEntries lists directories to add to PATH (e.g. "$HOME/.claude/local/bin").
 	// These are collected by the Executor and written to /etc/profile.d/aivm-path.sh
 	// before any plugin setup runs.

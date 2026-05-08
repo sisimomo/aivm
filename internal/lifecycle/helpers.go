@@ -72,7 +72,7 @@ func ensureAgentPersistDirs(cfg *config.Config, agentDef agent.Def) {
 
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
-func buildStartOptions(cfg *config.Config, agentDef agent.Def) vm.StartOptions {
+func buildStartOptions(v vm.VM, cfg *config.Config, agentDef agent.Def) vm.StartOptions {
 	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts)+len(agentDef.Persist)+1)
 	for _, m := range cfg.VM.ParsedMounts {
 		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
@@ -83,12 +83,26 @@ func buildStartOptions(cfg *config.Config, agentDef agent.Def) vm.StartOptions {
 	if cfg.T3Code.Enable {
 		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".t3"), Writable: true})
 	}
+
+	// Backends that need port bindings at boot (e.g. Docker) declare ports via
+	// StartOptions; others (e.g. Colima) use an SSH tunnel after the VM is up.
+	var portMappings []vm.PortMapping
+	if v.NeedsPortBindingAtBoot() && cfg.T3Code.Enable {
+		if cfg.T3Code.Port == 0 {
+			// Port 0 in config means "auto-assign host port"; map to default T3 Code container port 3773
+			portMappings = []vm.PortMapping{{HostPort: 0, ContainerPort: 3773}}
+		} else {
+			portMappings = []vm.PortMapping{{HostPort: cfg.T3Code.Port, ContainerPort: cfg.T3Code.Port}}
+		}
+	}
+
 	return vm.StartOptions{
-		CPUs:        cfg.VM.CPUs,
-		MemoryBytes: cfg.VM.MemoryBytes,
-		DiskBytes:   cfg.VM.DiskBytes,
-		VMType:      cfg.VM.Type,
-		Mounts:      mounts,
+		CPUs:         cfg.VM.CPUs,
+		MemoryBytes:  cfg.VM.MemoryBytes,
+		DiskBytes:    cfg.VM.DiskBytes,
+		VMType:       cfg.VM.Type,
+		Mounts:       mounts,
+		PortMappings: portMappings,
 	}
 }
 
@@ -125,7 +139,7 @@ sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
 // Use for all VM creation and rebuild operations.
 func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config, agentDef agent.Def) error {
 	ensureAgentPersistDirs(cfg, agentDef)
-	opts := buildStartOptions(cfg, agentDef)
+	opts := buildStartOptions(v, cfg, agentDef)
 	if err := v.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
 	}

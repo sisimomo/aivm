@@ -69,8 +69,11 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		aivmlog.SetDebug(true)
 	}
 
-	vmInst := vm.NewColima(cfg.VM.ColimaProfile, cfg.StateDir)
-	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.ColimaProfile)
+	vmInst, err := vm.NewFromConfig(&cfg.VM, cfg.StateDir)
+	if err != nil {
+		return nil, fmt.Errorf("vm backend: %w", err)
+	}
+	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
 	if err != nil {
 		aivmlog.Warn("Docker socket: %v", err)
 		dockerHost = ""
@@ -91,7 +94,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		DevRoot:       devRoot,
 		ImageTag:      cfg.MCP.ImageTag,
 		ServerMode:    cfg.MCP.ServerMode,
-		ContainerName: "mcpjungle-" + cfg.VM.ColimaProfile,
+		ContainerName: "mcpjungle-" + vmInst.Profile(),
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
@@ -99,9 +102,16 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	var t3codeMgr t3code.Manager
 	if cfg.T3Code.Enable {
-		t3codeMgr = &t3code.Tunnel{
-			Profile:  cfg.VM.ColimaProfile,
-			StateDir: cfg.StateDir,
+		// Backends that need port binding at boot (e.g. Docker) expose the port
+		// via PortMappings in StartOptions — no tunnel required. Colima uses an
+		// SSH tunnel to forward the port from the VM to the host.
+		if !vmInst.NeedsPortBindingAtBoot() {
+			t3codeMgr = &t3code.Tunnel{
+				Profile:  cfg.VM.Profile(),
+				StateDir: cfg.StateDir,
+			}
+		} else {
+			t3codeMgr = &t3code.NoopManager{}
 		}
 	} else {
 		t3codeMgr = &t3code.NoopManager{}

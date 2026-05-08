@@ -1,12 +1,12 @@
 # aivm
 
-> Launch AI agents in a secure, disposable [Colima](https://github.com/abiosoft/colima) VM — with one command.
+> Launch AI agents in a secure, disposable Linux runtime (Colima or Docker) — with one command.
 
 [![CI](https://github.com/sisimomo/aivm/actions/workflows/ci.yml/badge.svg)](https://github.com/sisimomo/aivm/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](go.mod)
 [![macOS only](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
 
-**aivm** manages the full lifecycle of a Colima Linux VM dedicated to running AI coding agents. It bootstraps the VM with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
+**aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
 
 Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)
 
@@ -19,6 +19,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
   - [VM Resources](#vm-resources)
+  - [VM Backend](#vm-backend)
   - [Mounts](#mounts)
   - [Idle Management](#idle-management)
   - [Plugins](#plugins)
@@ -36,7 +37,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
 ## Requirements
 
 - **macOS** (Intel or Apple Silicon) — Linux/Windows is not supported
-- [Colima](https://github.com/abiosoft/colima) + [Docker](https://docs.docker.com/desktop/install/mac-install/) (or Docker Desktop)
+- [Colima](https://github.com/abiosoft/colima) + [Docker](https://docs.docker.com/desktop/install/mac-install/) for the default backend, or Docker Engine/Desktop for the Docker backend
 - Authentication for your chosen agent is handled **inside** the VM after first launch
 
 ## Installation
@@ -74,6 +75,7 @@ aivm version
    ```
 
    Set `agents.enabled` to `claude`, `copilot`, or `opencode`.
+   Keep `vm.backend: colima` for the default setup, or set `vm.backend: docker` and `vm.docker_image` to run on Docker directly.
 
 2. **Launch an agent from any directory under your dev root:**
 
@@ -107,6 +109,8 @@ vm:
   cpus: 4
   memory: "8GB"
   disk: "60GB"
+  backend: colima
+  name: aivm
   mounts:
     - "~/dev:rw"
     - "~/.ssh:ro"
@@ -123,6 +127,14 @@ idle:
 | `vm.cpus` | `4` | Number of vCPUs |
 | `vm.memory` | `"8GB"` | RAM (supports `MB`, `GB`) |
 | `vm.disk` | `"60GB"` | Disk size (supports `MB`, `GB`, `TB`) |
+
+### VM Backend
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `vm.backend` | `colima` | VM runtime: `colima` or `docker` |
+| `vm.name` | `aivm` | VM identity (Colima profile name / Docker container name) |
+| `vm.docker_image` | required for `docker` | Base image used when `vm.backend: docker` |
 
 ### Mounts
 
@@ -261,7 +273,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm destroy` | Delete the VM entirely (host state in `~/.aivm` is preserved) |
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
-| `aivm logs [service]` | Show logs for a service (`mcpjungle` · `monitor` · `bootstrap` · `colima`) |
+| `aivm logs [service]` | Show logs for a service (`mcpjungle` · `monitor` · `bootstrap` · `vm` · `colima`) |
 | `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
 | `aivm version` | Print version |
 

@@ -42,13 +42,19 @@ type Mount struct {
 // (e.g. "8GB", "7d") and are validated and parsed into the Parsed* fields
 // during config loading via validateAndParse.
 type VMConfig struct {
-	CPUs          int               `mapstructure:"cpus"`
-	Memory        string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
-	Disk          string            `mapstructure:"disk"`   // "60GB"
-	Type          string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
-	Mounts        []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
-	Env           map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
-	ColimaProfile string            `mapstructure:"colima_profile"`
+	CPUs   int               `mapstructure:"cpus"`
+	Memory string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
+	Disk   string            `mapstructure:"disk"`   // "60GB"
+	Type   string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
+	Mounts []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
+	Env    map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
+	Name   string            `mapstructure:"name"`   // VM identity (Colima profile name / Docker container name)
+
+	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
+	Backend string `mapstructure:"backend"`
+
+	// DockerImage is the Docker image used when backend is "docker".
+	DockerImage string `mapstructure:"docker_image"`
 
 	// RecreatePromptAfter is the staleness threshold after which the user is
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
@@ -64,6 +70,15 @@ type VMConfig struct {
 	RecreatePromptAfterDuration         time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
 	BaseImageRebuildPromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
 	ParsedMounts                        []Mount       `mapstructure:"-"`
+}
+
+// Profile returns the VM identity used as the Colima profile name or Docker
+// container name. Falls back to "aivm" if vm.name is not set.
+func (vm *VMConfig) Profile() string {
+	if vm.Name != "" {
+		return vm.Name
+	}
+	return "aivm"
 }
 
 type MCPConfig struct {
@@ -214,9 +229,22 @@ func validateAndParse(cfg *Config, home string) error {
 		return fmt.Errorf("vm.type: unsupported value %q — use \"vz\", \"qemu\", or omit for auto-detection", vm.Type)
 	}
 
-	// --- colima profile ---
-	if vm.ColimaProfile == "" {
-		return fmt.Errorf("vm.colima_profile: must not be empty")
+	// --- backend ---
+	switch vm.Backend {
+	case "", "colima", "docker":
+		// valid
+	default:
+		return fmt.Errorf("vm.backend: unsupported value %q — use \"colima\" or \"docker\"", vm.Backend)
+	}
+
+	// --- vm name (required for colima backend) ---
+	if (vm.Backend == "" || vm.Backend == "colima") && vm.Name == "" {
+		return fmt.Errorf("vm.name: must not be empty when using the colima backend")
+	}
+
+	// --- docker image (required for docker backend) ---
+	if vm.Backend == "docker" && vm.DockerImage == "" {
+		return fmt.Errorf("vm.docker_image: must not be empty when using the docker backend")
 	}
 
 	// --- recreate_prompt_after ---

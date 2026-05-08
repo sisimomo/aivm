@@ -56,7 +56,7 @@ func defaultTestConfig() testConfig {
 		PollInterval:  1 * time.Second,
 		Plugins:       []string{},
 		Provider:      "claude",
-		T3CodePort:    3773,
+		T3CodePort:    0, // 0 = auto-assign a free port in New()
 	}
 }
 
@@ -198,7 +198,7 @@ func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
 			RecreatePromptAfterDuration:         recreatePromptAfter,
 			BaseImageRebuildPromptAfterDuration: baseImageRebuildPromptAfter,
 			ParsedMounts:                        parsedMounts,
-			ColimaProfile:                       profile,
+			Name:                                profile,
 			Env:                                 tc.VMEnv,
 		},
 		MCP: config.MCPConfig{

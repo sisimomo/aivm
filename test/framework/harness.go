@@ -47,11 +47,12 @@ import (
 // Each Harness gets a unique Docker container profile and temp state directory.
 // Both are always cleaned up when the test finishes, even on failure.
 type Harness struct {
-	t        *testing.T
-	tc       testConfig
-	StateDir string
-	Profile  string
-	App      *cli.App
+	t          *testing.T
+	tc         testConfig
+	StateDir   string
+	Profile    string
+	App        *cli.App
+	t3codePort int
 	// Output captures all stdout/stderr written by the LifecycleService logger.
 	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
 	// between RunCLI calls when per-command isolation matters.
@@ -123,22 +124,32 @@ func New(t *testing.T, opts ...Option) *Harness {
 		}
 	}
 
+	// T3 Code port will be auto-assigned by Docker (host port 0) when tc.T3CodePort == 0.
+	// The actual assigned port is retrieved after container start and stored in h.t3codePort.
+
 	cfg := buildTestConfig(profile, stateDir, tc)
 
 	containerVMs := NewContainerVMRegistry()
-	primaryVM := newDockerVM(cfg.VM.ColimaProfile, cfg.StateDir)
+	primaryVM := vm.NewDocker(cfg.VM.Profile(), cfg.StateDir, testImageName)
 	containerVMs.Register(primaryVM)
+	trackingVM := NewRunTrackingVM(primaryVM)
 
 	output := &OutputBuffer{}
-	app := buildTestApp(t, cfg, tc, primaryVM, output)
+	app := buildTestApp(t, cfg, tc, trackingVM, output)
 
 	h := &Harness{
-		t:        t,
-		tc:       tc,
-		StateDir: stateDir,
-		Profile:  profile,
-		App:      app,
-		Output:   output,
+		t:          t,
+		tc:         tc,
+		StateDir:   stateDir,
+		Profile:    profile,
+		App:        app,
+		t3codePort: tc.T3CodePort,
+		Output:     output,
+	}
+
+	// Enable port auto-assignment tracking if T3Code is enabled with port 0
+	if tc.T3CodeEnabled && tc.T3CodePort == 0 {
+		trackingVM.setHarness(h, 3773)
 	}
 
 	t.Cleanup(func() {
@@ -266,10 +277,15 @@ func buildTestApp(t *testing.T, cfg *config.Config, tc testConfig, vmInst vm.VM,
 sudo tee /usr/local/bin/t3 > /dev/null << 'EOFT3'
 #!/bin/bash
 if [ "$1" = "serve" ]; then
+    PORT=3773
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--port" ]; then PORT="$2"; fi
+        shift
+    done
     echo "T3 Code server is ready."
-    echo "Connection string: http://127.0.0.1:3773"
+    echo "Connection string: http://127.0.0.1:$PORT"
     echo "Token: test-pairing-token-stub"
-    echo "Pairing URL: http://127.0.0.1:3773/pair#token=test-pairing-token-stub"
+    echo "Pairing URL: http://127.0.0.1:$PORT/pair#token=test-pairing-token-stub"
     # Stay alive so the background nohup process keeps running.
     while true; do sleep 60; done
 fi
@@ -323,6 +339,12 @@ sudo chmod +x /usr/local/bin/t3`
 func testDockerDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(file), "..", "docker")
+}
+
+// T3CodePort returns the port assigned to T3 Code for this harness.
+// Valid only when the harness was created with WithT3Code.
+func (h *Harness) T3CodePort() int {
+	return h.t3codePort
 }
 
 func mustRandomHex(n int) string {

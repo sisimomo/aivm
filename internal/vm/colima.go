@@ -31,7 +31,8 @@ func NewColima(profile, stateDir string) *ColimaVM {
 	}
 }
 
-func (c *ColimaVM) Profile() string { return c.profile }
+func (c *ColimaVM) Profile() string              { return c.profile }
+func (c *ColimaVM) NeedsPortBindingAtBoot() bool { return false }
 
 func (c *ColimaVM) Status(ctx context.Context) (Status, error) {
 	lines, err := run.OutputLines(ctx, "colima", "list")
@@ -226,6 +227,10 @@ func (c *ColimaVM) RunOutput(ctx context.Context, script string, env map[string]
 
 func (c *ColimaVM) SSH(ctx context.Context) error {
 	return run.Interactive(ctx, "colima", "ssh", "--profile", c.profile)
+}
+
+func (c *ColimaVM) RunInteractive(ctx context.Context, script string, env map[string]string) error {
+	return InteractiveSSH(ctx, c.profile, env, script)
 }
 
 func (c *ColimaVM) WaitReady(ctx context.Context, timeout time.Duration) error {

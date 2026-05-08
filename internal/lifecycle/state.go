@@ -107,7 +107,7 @@ func (svc *LifecycleService) currentConfigHash() string {
 		svc.Config.VM.Disk,
 		svc.Config.VM.Type,
 		svc.Config.VM.Mounts,
-		svc.Config.VM.ColimaProfile,
+		svc.VM.Profile(),
 	)
 }
 
@@ -129,38 +129,38 @@ func computeConfigHash(
 	vmDisk string,
 	vmType string,
 	vmMounts []string,
-	vmColimaProfile string,
+	vmProfile string,
 ) string {
 	sorted := append([]string(nil), enabledPlugins...)
 	sort.Strings(sorted)
 
 	type hashInput struct {
-		Provider        string
-		AgentDefs       map[string]agent.Def
-		VMCPUs          int
-		VMMemory        string
-		VMDisk          string
-		VMType          string
-		VMMounts        []string
-		VMColimaProfile string
-		EnabledPlugins  []string
-		PluginDefs      map[string]plugin.PluginDef
-		PluginConfig    map[string]map[string]any
-		Integrations    []integration.IntegrationDef
+		Provider       string
+		AgentDefs      map[string]agent.Def
+		VMCPUs         int
+		VMMemory       string
+		VMDisk         string
+		VMType         string
+		VMMounts       []string
+		VMProfile      string
+		EnabledPlugins []string
+		PluginDefs     map[string]plugin.PluginDef
+		PluginConfig   map[string]map[string]any
+		Integrations   []integration.IntegrationDef
 	}
 	data, _ := json.Marshal(hashInput{
-		Provider:        provider,
-		AgentDefs:       agentDefs,
-		VMCPUs:          vmCPUs,
-		VMMemory:        vmMemory,
-		VMDisk:          vmDisk,
-		VMType:          vmType,
-		VMMounts:        vmMounts,
-		VMColimaProfile: vmColimaProfile,
-		EnabledPlugins:  sorted,
-		PluginDefs:      pluginDefs,
-		PluginConfig:    pluginConfig,
-		Integrations:    integrations,
+		Provider:       provider,
+		AgentDefs:      agentDefs,
+		VMCPUs:         vmCPUs,
+		VMMemory:       vmMemory,
+		VMDisk:         vmDisk,
+		VMType:         vmType,
+		VMMounts:       vmMounts,
+		VMProfile:      vmProfile,
+		EnabledPlugins: sorted,
+		PluginDefs:     pluginDefs,
+		PluginConfig:   pluginConfig,
+		Integrations:   integrations,
 	})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])

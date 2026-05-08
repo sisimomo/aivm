@@ -36,7 +36,7 @@ func (p *Provider) Launch(ctx context.Context, env agent.LaunchEnv) (*agent.Resp
 		return nil, fmt.Errorf("%s: launch_command is not configured", p.name)
 	}
 
-	// The SSH session runs as `bash -l` (login shell), so the PATH configured
+	// The session runs as `bash -l` (login shell), so the PATH configured
 	// by the agent's setup script is already available here.
 	script := fmt.Sprintf(`
 set -e
@@ -48,7 +48,7 @@ cd %s
 exec %s
 `, vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), launchCmd)
 
-	err := vm.InteractiveSSH(ctx, env.VMProfile, nil, script)
+	err := env.VM.RunInteractive(ctx, script, nil)
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return &agent.Response{ExitCode: exitErr.ExitCode()}, nil

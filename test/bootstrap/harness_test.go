@@ -33,7 +33,7 @@ var bootstrapHarnessSem = make(chan struct{}, maxConcurrentBootstrapHarnesses)
 // rendering, dependency ordering, and the full bootstrap logic are exercised.
 type BootstrapHarness struct {
 	t                *testing.T
-	vm               *framework.DockerVM
+	vm               *vm.DockerVM
 	reg              *plugin.Registry
 	defs             map[string]plugin.PluginDef
 	integDefs        []integration.IntegrationDef
@@ -65,7 +65,7 @@ func newBootstrapHarness(t *testing.T) *BootstrapHarness {
 		t.Fatalf("harness: create state dir: %v", err)
 	}
 
-	dockerVM := framework.NewDockerVM(profile, stateDir)
+	dockerVM := vm.NewDocker(profile, stateDir, framework.TestImageName)
 
 	ctx := context.Background()
 	if err := dockerVM.Start(ctx, vm.StartOptions{}); err != nil {

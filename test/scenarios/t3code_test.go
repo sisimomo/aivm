@@ -26,7 +26,7 @@ import (
 // idle monitoring disabled" instead of calling Monitor.EnsureRunning().
 func TestT3CodeIdleMonitorDisabled(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code mode: idle monitor not started on aivm start").
 		Step("Start VM with T3 Code enabled", actions.CLI("start")).
@@ -42,7 +42,7 @@ func TestT3CodeIdleMonitorDisabled(t *testing.T) {
 // terminal session normally alongside the running tunnel.
 func TestT3CodeStartsWithVM(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code: tunnel starts with VM, agent terminal still launches").
 		Step("Start VM (T3 Code starts here)", actions.CLI("start")).
@@ -61,7 +61,7 @@ func TestT3CodeStartsWithVM(t *testing.T) {
 // access URL so users can easily find it without digging through config.
 func TestT3CodeStatusShowsURL(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code: status shows access URL").
 		Step("Start VM (T3 Code starts here)", actions.CLI("start")).
@@ -69,7 +69,7 @@ func TestT3CodeStatusShowsURL(t *testing.T) {
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run status command", actions.CLI("status")).
 		Assert("Output contains T3 Code label", assertions.OutputContains("T3 Code")).
-		Assert("Output contains T3 Code access URL with token", assertions.OutputContains("http://localhost:3773/pair#token=")).
+		Assert("Output contains T3 Code access URL with token", assertions.OutputContains(fmt.Sprintf("http://localhost:%d/pair#token=", h.T3CodePort()))).
 		Run()
 }
 
@@ -80,7 +80,7 @@ func TestT3CodePluginAutoInjected(t *testing.T) {
 	t.Parallel()
 	// WithT3Code is the only option — user did NOT explicitly add "t3code" to
 	// plugins.enabled. The framework mirrors CompositionEngine's injection.
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code mode: t3code plugin auto-injected and installed during bootstrap").
 		Step("Start VM (bootstrap runs t3code plugin)", actions.CLI("start")).
@@ -94,7 +94,7 @@ func TestT3CodePluginAutoInjected(t *testing.T) {
 // which marks the tunnel as not running in the NoopManager.
 func TestT3CodeStopKillsTunnel(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code mode: stop kills the SSH tunnel").
 		Step("Start VM (T3 Code tunnel starts here)", actions.CLI("start")).
@@ -113,7 +113,7 @@ func TestT3CodeStopKillsTunnel(t *testing.T) {
 // to run any additional command.
 func TestT3CodeRestartAfterStop(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t, framework.WithT3Code(3773))
+	h := framework.New(t, framework.WithT3Code(0))
 
 	h.Scenario("T3 Code mode: stop then start restarts tunnel automatically").
 		Step("Start VM", actions.CLI("start")).

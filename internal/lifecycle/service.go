@@ -84,7 +84,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return fmt.Errorf("starting MCPJungle: %w", err)
 	}
 
-	opts := buildStartOptions(cfg, svc.activeAgentDef())
+	opts := buildStartOptions(svc.VM, cfg, svc.activeAgentDef())
 
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
@@ -92,7 +92,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		svc.log().Step("Deleting aged VM profile '%s'", cfg.VM.ColimaProfile)
+		svc.log().Step("Deleting aged VM profile '%s'", svc.VM.Profile())
 		if err := svc.VM.Destroy(ctx); err != nil {
 			return err
 		}
@@ -183,7 +183,7 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 	if age < threshold {
 		return false
 	}
-	return promptVMAge(svc.log(), svc.Confirmer, cfg.VM.ColimaProfile, age, threshold) == vmAgeRecreate
+	return promptVMAge(svc.log(), svc.Confirmer, svc.VM.Profile(), age, threshold) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
@@ -289,9 +289,9 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 		providerCfg["launch_command"] = providerDef.LaunchCommand
 	}
 	env := agent.LaunchEnv{
-		VMProfile: svc.VM.Profile(),
-		WorkDir:   vmDir,
-		Config:    providerCfg,
+		VM:      svc.VM,
+		WorkDir: vmDir,
+		Config:  providerCfg,
 	}
 
 	resp, err := svc.Provider.Launch(ctx, env)
