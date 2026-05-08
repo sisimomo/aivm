@@ -92,7 +92,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-	svc.log().Step("Deleting aged VM profile '%s'", svc.VM.Profile())
+		svc.log().Step("Deleting aged VM profile '%s'", svc.VM.Profile())
 		if err := svc.VM.Destroy(ctx); err != nil {
 			return err
 		}

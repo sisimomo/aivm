@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -65,8 +66,8 @@ func (d *DockerVM) Status(_ context.Context) (Status, error) {
 // stopped, it is restarted (mounts and port bindings were baked in at creation
 // and are preserved by Docker on restart). A new container is created with the
 // configured image, mounts, and port forwards.
-func (d *DockerVM) Start(_ context.Context, opts StartOptions) error {
-	status, _ := d.Status(context.Background())
+func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
+	status, _ := d.Status(ctx)
 
 	switch status {
 	case StatusRunning:
@@ -276,12 +277,17 @@ func (d *DockerVM) snapshotTag(name string) string {
 func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
 	// Query Docker for the port mapping: {{(index (index .NetworkSettings.Ports "3773/tcp") 0).HostPort}}
 	template := fmt.Sprintf("{{(index (index .NetworkSettings.Ports \"%d/tcp\") 0).HostPort}}", containerPort)
+
 	out, err := dockerOutput("inspect", "--format", template, d.containerName)
 	if err != nil {
 		return 0, err
 	}
-	hostPort := 0
-	fmt.Sscanf(strings.TrimSpace(out), "%d", &hostPort)
+
+	hostPort, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse published port %q: %w", strings.TrimSpace(out), err)
+	}
+
 	return hostPort, nil
 }
 

@@ -22,14 +22,14 @@ type PluginDef struct {
 	Dependencies []string `yaml:"dependencies"  mapstructure:"dependencies"`
 	// Agents restricts the plugin to the listed provider names.
 	// An empty slice means the plugin applies to all providers.
-	Agents      []string       `yaml:"agents"        mapstructure:"agents"`
-	Defaults    map[string]any `yaml:"defaults"      mapstructure:"defaults"`
+	Agents   []string       `yaml:"agents"        mapstructure:"agents"`
+	Defaults map[string]any `yaml:"defaults"      mapstructure:"defaults"`
 	// PathEntries lists directories to add to PATH (e.g. "$HOME/.local/bin").
 	// Entries from all enabled plugins are collected by the Executor and written
 	// to /etc/profile.d/aivm-path.sh before any plugin setup runs.
-	PathEntries []string       `yaml:"path_entries"  mapstructure:"path_entries"`
-	SkipIf      string         `yaml:"skip_if"       mapstructure:"skip_if"`
-	Setup       string         `yaml:"setup"         mapstructure:"setup"`
+	PathEntries []string `yaml:"path_entries"  mapstructure:"path_entries"`
+	SkipIf      string   `yaml:"skip_if"       mapstructure:"skip_if"`
+	Setup       string   `yaml:"setup"         mapstructure:"setup"`
 }
 
 // LoadDefaults parses the embedded defaults.yaml and returns plugin definitions keyed by name.

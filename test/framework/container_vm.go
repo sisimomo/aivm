@@ -116,4 +116,3 @@ func testDockerOutput(args ...string) (string, error) {
 	}
 	return stdout.String(), nil
 }
-

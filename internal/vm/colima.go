@@ -31,7 +31,7 @@ func NewColima(profile, stateDir string) *ColimaVM {
 	}
 }
 
-func (c *ColimaVM) Profile() string             { return c.profile }
+func (c *ColimaVM) Profile() string              { return c.profile }
 func (c *ColimaVM) NeedsPortBindingAtBoot() bool { return false }
 
 func (c *ColimaVM) Status(ctx context.Context) (Status, error) {

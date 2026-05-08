@@ -42,13 +42,13 @@ type Mount struct {
 // (e.g. "8GB", "7d") and are validated and parsed into the Parsed* fields
 // during config loading via validateAndParse.
 type VMConfig struct {
-	CPUs          int               `mapstructure:"cpus"`
-	Memory        string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
-	Disk          string            `mapstructure:"disk"`   // "60GB"
-	Type          string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
-	Mounts        []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
-	Env           map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
-	Name string `mapstructure:"name"` // VM identity (Colima profile name / Docker container name)
+	CPUs   int               `mapstructure:"cpus"`
+	Memory string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
+	Disk   string            `mapstructure:"disk"`   // "60GB"
+	Type   string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
+	Mounts []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
+	Env    map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
+	Name   string            `mapstructure:"name"`   // VM identity (Colima profile name / Docker container name)
 
 	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
 	Backend string `mapstructure:"backend"`
