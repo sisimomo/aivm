@@ -286,8 +286,9 @@ if [ "$1" = "serve" ]; then
     echo "Connection string: http://127.0.0.1:$PORT"
     echo "Token: test-pairing-token-stub"
     echo "Pairing URL: http://127.0.0.1:$PORT/pair#token=test-pairing-token-stub"
-    # Stay alive so the background nohup process keeps running.
-    while true; do sleep 60; done
+    # Start a real HTTP server so Docker port-forwarding integration tests can
+    # verify that the port is actually reachable from the host machine.
+    exec python3 -m http.server --bind 0.0.0.0 "$PORT" >/dev/null 2>&1
 fi
 EOFT3
 sudo chmod +x /usr/local/bin/t3`

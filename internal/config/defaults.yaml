@@ -30,8 +30,8 @@ agents:
 plugins:
   enabled:
     - system
-    - nodejs
-    - python
-    - uv
+    - mise-node
+    - mise-python
+    - mise-uv
 
 debug: false

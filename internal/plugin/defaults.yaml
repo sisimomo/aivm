@@ -1,13 +1,16 @@
 system:
   description: "System packages (apt: git, curl, jq, unzip, zip, etc.)"
   skip_if: |
-    which jq >/dev/null 2>&1
+    which jq >/dev/null 2>&1 && \
+    which gcc >/dev/null 2>&1 && \
+    which make >/dev/null 2>&1 && \
+    ldconfig -p | grep -q libatomic.so
   setup: |
     export DEBIAN_FRONTEND=noninteractive
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends \
       git curl wget unzip zip ca-certificates gnupg lsb-release \
-      bash-completion jq libatomic1
+      bash-completion jq libatomic1 build-essential
 
 mise:
   description: "mise-en-place — universal runtime version manager"
@@ -45,14 +48,15 @@ t3code:
   description: "T3 Code web GUI for AI coding agents"
   dependencies:
     - mise-node
+    - mise-npm
   skip_if: |
     command -v t3 >/dev/null 2>&1
   setup: |
     npm install -g t3
+    mise reshim
 
     {{ if .state_dir }}
     T3_DIR="{{ .state_dir }}/.t3"
     mkdir -p "$T3_DIR"
     ln -sfn "$T3_DIR" "$HOME/.t3"
     {{ end }}
-

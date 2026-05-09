@@ -11,7 +11,8 @@ RUN apt-get update -qq && \
       bash \
       curl \
       ca-certificates \
-      lsb-release && \
+      lsb-release \
+      python3 && \
     rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash user && \

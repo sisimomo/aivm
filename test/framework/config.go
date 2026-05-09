@@ -1,12 +1,27 @@
 package framework
 
 import (
+	"fmt"
+	"net"
 	"path/filepath"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/integration"
 )
+
+// FreePort asks the OS for a free TCP port and returns it. It panics if no
+// port can be allocated. Use this in tests that need a specific port to pass
+// to WithT3Code so that Docker can bind it on the host without collisions.
+func FreePort() int {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(fmt.Sprintf("framework.FreePort: %v", err))
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return port
+}
 
 // testConfig holds configuration for a test Harness. It uses small defaults
 // suitable for tests (minimal VM resources, short idle timeouts).
