@@ -333,11 +333,11 @@ See the full [mise tool catalog](https://mise.jdx.dev/registry.html#tools) for a
 
 Agent are registered automatically based on `agents.enabled`:
 
-| Agent plugin | Description |
-|--------------|-------------|
-| `claude` | Claude Code CLI (depends on `nodejs`) |
+| Agent plugin | Description                                  |
+|--------------|----------------------------------------------|
+| `claude` | Claude Code CLI (depends on `mise-node`)     |
 | `copilot` | GitHub Copilot CLI (depends on `system`, `gh`) |
-| `opencode` | OpenCode CLI (depends on `system`) |
+| `opencode` | OpenCode CLI (depends on `system`)           |
 
 ---
 
