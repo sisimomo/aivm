@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sisimomo/aivm/internal/vm"
 	fw "github.com/sisimomo/aivm/test/framework"
@@ -348,4 +350,49 @@ func loadBootstrapState(stateDir string) (*bootstrapState, error) {
 		return nil, fmt.Errorf("parse bootstrap-state.json: %w", err)
 	}
 	return &s, nil
+}
+
+// T3CodePortAccessible asserts that the T3 Code HTTP server is actually
+// reachable on localhost at the port assigned to this harness. Unlike
+// T3CodeLaunched (which only checks that Launch was called), this assertion
+// makes a real TCP/HTTP connection to verify end-to-end port accessibility —
+// no mocks.
+//
+// The assertion retries for up to 15 s to allow the in-VM process time to
+// bind the port after the Docker container finishes starting.
+func T3CodePortAccessible() fw.AssertFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		const totalTimeout = 15 * time.Second
+		const retryInterval = 500 * time.Millisecond
+
+		port := h.T3CodePort()
+		if port == 0 {
+			return fmt.Errorf("T3 Code port is not set — harness not configured with WithT3Code")
+		}
+
+		url := fmt.Sprintf("http://localhost:%d/", port)
+		client := &http.Client{Timeout: 5 * time.Second}
+		deadlineCtx, cancel := context.WithTimeout(ctx, totalTimeout)
+		defer cancel()
+
+		var lastErr error
+		for {
+			req, err := http.NewRequestWithContext(deadlineCtx, http.MethodGet, url, nil)
+			if err != nil {
+				return fmt.Errorf("build HTTP request: %w", err)
+			}
+			resp, err := client.Do(req)
+			if err == nil {
+				resp.Body.Close()
+				return nil // any HTTP response means the port is reachable
+			}
+			lastErr = err
+
+			select {
+			case <-deadlineCtx.Done():
+				return fmt.Errorf("T3 Code server not reachable at %s after %s: %w", url, totalTimeout, lastErr)
+			case <-time.After(retryInterval):
+			}
+		}
+	}
 }

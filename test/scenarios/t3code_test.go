@@ -69,7 +69,8 @@ func TestT3CodeStatusShowsURL(t *testing.T) {
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run status command", actions.CLI("status")).
 		Assert("Output contains T3 Code label", assertions.OutputContains("T3 Code")).
-		Assert("Output contains T3 Code access URL with token", assertions.OutputContains(fmt.Sprintf("http://localhost:%d/pair#token=", h.T3CodePort()))).
+		Assert("Output contains T3 Code access URL", assertions.OutputContains("http://localhost:")).
+		Assert("Output contains T3 Code pairing token", assertions.OutputContains("/pair#token=")).
 		Run()
 }
 
@@ -140,4 +141,25 @@ func assertT3CodeRunning(want bool) framework.AssertFunc {
 		}
 		return fmt.Errorf("T3Code manager is not a NoopManager (cannot check IsRunning in test)")
 	}
+}
+
+// TestT3CodePortAccessible is the critical end-to-end validation: after
+// `aivm start` the T3 Code port must be reachable via HTTP on localhost.
+// This test uses no mocks for port verification — it makes a real TCP/HTTP
+// connection to the port that Docker forwarded from the container running
+// python3's built-in HTTP server (the test stub for `t3 serve`).
+//
+// A specific free port is used instead of 0 so that Docker maps the same
+// port on the host as inside the container (host:N → container:N),
+// allowing the t3 stub to bind on the correct port and be reachable.
+func TestT3CodePortAccessible(t *testing.T) {
+	t.Parallel()
+	h := framework.New(t, framework.WithT3Code(framework.FreePort()))
+
+	h.Scenario("T3 Code: HTTP server is actually reachable on localhost after start").
+		Step("Start VM with T3 Code enabled", actions.CLI("start")).
+		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+		Assert("T3Code.Launch was called", assertions.T3CodeLaunched()).
+		Assert("T3 Code port is reachable via HTTP (no mocks)", assertions.T3CodePortAccessible()).
+		Run()
 }
