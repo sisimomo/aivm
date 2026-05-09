@@ -47,8 +47,8 @@ func (d *DockerVM) Profile() string              { return d.profile }
 func (d *DockerVM) NeedsPortBindingAtBoot() bool { return true }
 
 // Status reports whether the container exists and its current state.
-func (d *DockerVM) Status(_ context.Context) (Status, error) {
-	out, err := dockerOutput("inspect", "--format", "{{.State.Status}}", d.containerName)
+func (d *DockerVM) Status(ctx context.Context) (Status, error) {
+	out, err := dockerOutput(ctx, "inspect", "--format", "{{.State.Status}}", d.containerName)
 	if err != nil {
 		return StatusNotFound, nil
 	}
@@ -74,7 +74,7 @@ func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
 		return nil
 
 	case StatusStopped:
-		return dockerCmd("start", d.containerName)
+		return dockerCmd(ctx, "start", d.containerName)
 
 	default:
 		d.mu.Lock()
@@ -93,46 +93,48 @@ func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
 			args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
 		}
 		args = append(args, d.image)
-		return dockerCmd(args...)
+		return dockerCmd(ctx, args...)
 	}
 }
 
 // Stop stops the running container without removing it.
-func (d *DockerVM) Stop(_ context.Context) error {
-	status, _ := d.Status(context.Background())
+func (d *DockerVM) Stop(ctx context.Context) error {
+	status, _ := d.Status(ctx)
 	if status != StatusRunning {
 		return nil
 	}
-	return dockerCmd("stop", d.containerName)
+	return dockerCmd(ctx, "stop", d.containerName)
 }
 
 // Destroy stops and removes the container. Snapshot images are preserved so
 // that TryRestoreBaseImage can find them after recreation. Images are removed
 // only by DestroyWithImages, which is called during test teardown.
-func (d *DockerVM) Destroy(_ context.Context) error {
-	_ = dockerCmd("stop", d.containerName)
-	_ = dockerCmd("rm", "-f", d.containerName)
+func (d *DockerVM) Destroy(ctx context.Context) error {
+	_ = dockerCmd(ctx, "stop", d.containerName)
+	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
 	return nil
 }
 
 // DestroyWithImages removes the container and all snapshot images created for
 // this profile. Use this for full cleanup (e.g. test teardown).
 func (d *DockerVM) DestroyWithImages() {
-	_ = dockerCmd("stop", d.containerName)
-	_ = dockerCmd("rm", "-f", d.containerName)
+	ctx := context.Background()
+	_ = dockerCmd(ctx, "stop", d.containerName)
+	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
 
 	prefix := fmt.Sprintf("aivm-snap-%s-", d.profile)
-	out, _ := dockerOutput("images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
+	out, _ := dockerOutput(ctx, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
 	for _, ref := range splitLines(out) {
 		if ref != "" {
-			_ = dockerCmd("rmi", "-f", ref)
+			_ = dockerCmd(ctx, "rmi", "-f", ref)
 		}
 	}
 }
 
 // Run executes script inside the container as the container user.
-func (d *DockerVM) Run(_ context.Context, script string, env map[string]string) error {
+func (d *DockerVM) Run(ctx context.Context, script string, env map[string]string) error {
 	return dockerCmd(
+		ctx,
 		"exec",
 		"-u", dockerContainerUser,
 		d.containerName,
@@ -141,8 +143,9 @@ func (d *DockerVM) Run(_ context.Context, script string, env map[string]string) 
 }
 
 // RunOutput executes script inside the container and returns combined stdout.
-func (d *DockerVM) RunOutput(_ context.Context, script string, env map[string]string) (string, error) {
+func (d *DockerVM) RunOutput(ctx context.Context, script string, env map[string]string) (string, error) {
 	return dockerOutput(
+		ctx,
 		"exec",
 		"-u", dockerContainerUser,
 		d.containerName,
@@ -197,7 +200,7 @@ func (d *DockerVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 			if time.Now().After(deadline) {
 				return fmt.Errorf("container %s did not become ready within %s", d.containerName, timeout)
 			}
-			if err := dockerCmd("exec", "-u", dockerContainerUser, d.containerName, "echo", "ready"); err == nil {
+			if err := dockerCmd(ctx, "exec", "-u", dockerContainerUser, d.containerName, "echo", "ready"); err == nil {
 				return nil
 			}
 		}
@@ -205,9 +208,9 @@ func (d *DockerVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 }
 
 // CreateSnapshot commits the current container filesystem as a Docker image tag.
-func (d *DockerVM) CreateSnapshot(_ context.Context, name string) error {
+func (d *DockerVM) CreateSnapshot(ctx context.Context, name string) error {
 	tag := d.snapshotTag(name)
-	if err := dockerCmd("commit", d.containerName, tag); err != nil {
+	if err := dockerCmd(ctx, "commit", d.containerName, tag); err != nil {
 		return fmt.Errorf("create snapshot %q: %w", name, err)
 	}
 	return nil
@@ -216,14 +219,14 @@ func (d *DockerVM) CreateSnapshot(_ context.Context, name string) error {
 // RestoreSnapshot recreates the container from a previously committed snapshot
 // image, re-applying the original start options (mounts and port bindings).
 // Returns (false, nil) when the snapshot does not exist.
-func (d *DockerVM) RestoreSnapshot(_ context.Context, name string) (bool, error) {
+func (d *DockerVM) RestoreSnapshot(ctx context.Context, name string) (bool, error) {
 	tag := d.snapshotTag(name)
-	if _, err := dockerOutput("inspect", "--type", "image", tag); err != nil {
+	if _, err := dockerOutput(ctx, "inspect", "--type", "image", tag); err != nil {
 		return false, nil
 	}
 
-	_ = dockerCmd("stop", d.containerName)
-	_ = dockerCmd("rm", "-f", d.containerName)
+	_ = dockerCmd(ctx, "stop", d.containerName)
+	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
 
 	d.mu.Lock()
 	opts := d.lastStartOpts
@@ -242,16 +245,16 @@ func (d *DockerVM) RestoreSnapshot(_ context.Context, name string) (bool, error)
 	}
 	args = append(args, tag)
 
-	if err := dockerCmd(args...); err != nil {
+	if err := dockerCmd(ctx, args...); err != nil {
 		return false, fmt.Errorf("restore snapshot %q: %w", name, err)
 	}
 	return true, nil
 }
 
 // ListSnapshots queries Docker for snapshot images created for this profile.
-func (d *DockerVM) ListSnapshots(_ context.Context) ([]Snapshot, error) {
+func (d *DockerVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
 	prefix := fmt.Sprintf("aivm-snap-%s-", d.profile)
-	out, err := dockerOutput("images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
+	out, err := dockerOutput(ctx, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
 	if err != nil {
 		return nil, nil
 	}
@@ -278,7 +281,7 @@ func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
 	// Query Docker for the port mapping: {{(index (index .NetworkSettings.Ports "3773/tcp") 0).HostPort}}
 	template := fmt.Sprintf("{{(index (index .NetworkSettings.Ports \"%d/tcp\") 0).HostPort}}", containerPort)
 
-	out, err := dockerOutput("inspect", "--format", template, d.containerName)
+	out, err := dockerOutput(context.Background(), "inspect", "--format", template, d.containerName)
 	if err != nil {
 		return 0, err
 	}
@@ -296,7 +299,7 @@ func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
 // buildBashCmd returns a bash -lc command string that executes script inside
 // the container. The script is base64-encoded and written to a temp file before
 // execution to avoid stdin consumption by package managers (dpkg, apt) during
-// bootstrap runs.
+// bootstrap runs. Stderr is redirected to stdout so both streams are captured.
 func buildBashCmd(script string, env map[string]string) string {
 	full := script
 	if len(env) > 0 {
@@ -307,19 +310,19 @@ func buildBashCmd(script string, env map[string]string) string {
 		full = sb.String() + script
 	}
 	encoded := base64.StdEncoding.EncodeToString([]byte(full))
-	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\"; ec=$?; rm -f \"$t\"; exit $ec"
+	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\" 2>&1; ec=$?; rm -f \"$t\"; exit $ec"
 }
 
 // dockerCmd runs a docker command, discarding stdout.
-func dockerCmd(args ...string) error {
-	_, err := dockerOutput(args...)
+func dockerCmd(ctx context.Context, args ...string) error {
+	_, err := dockerOutput(ctx, args...)
 	return err
 }
 
 // dockerOutput runs a docker command and returns combined stdout, or an error
 // that includes stderr for debugging.
-func dockerOutput(args ...string) (string, error) {
-	cmd := exec.Command("docker", args...)
+func dockerOutput(ctx context.Context, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -2,6 +2,7 @@ package framework
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/sisimomo/aivm/internal/vm"
@@ -42,9 +43,14 @@ func (r *RunTrackingVM) Start(ctx context.Context, opts vm.StartOptions) error {
 	// host port from Docker and update the harness so tests can access it.
 	if r.harness != nil && r.harness.tc.T3CodeEnabled && r.harness.tc.T3CodePort == 0 && r.t3CodeContainer > 0 {
 		if dockerVM, ok := r.VM.(*vm.DockerVM); ok {
-			if assignedPort, err := dockerVM.GetPublishedPort(r.t3CodeContainer); err == nil && assignedPort > 0 {
-				r.harness.t3codePort = assignedPort
+			assignedPort, err := dockerVM.GetPublishedPort(r.t3CodeContainer)
+			if err != nil {
+				return fmt.Errorf("failed to resolve auto-assigned T3Code port for container port %d: %w", r.t3CodeContainer, err)
 			}
+			if assignedPort <= 0 {
+				return fmt.Errorf("auto-assigned T3Code port for container port %d resolved to invalid port %d", r.t3CodeContainer, assignedPort)
+			}
+			r.harness.t3codePort = assignedPort
 		}
 	}
 	return nil
@@ -64,7 +70,14 @@ func (r *RunTrackingVM) RunOutput(ctx context.Context, script string, env map[st
 	return r.VM.RunOutput(ctx, script, env)
 }
 
-// RunCount returns the number of Run/RunOutput calls since the last ResetRunCount.
+func (r *RunTrackingVM) RunInteractive(ctx context.Context, script string, env map[string]string) error {
+	r.mu.Lock()
+	r.count++
+	r.mu.Unlock()
+	return r.VM.RunInteractive(ctx, script, env)
+}
+
+// RunCount returns the number of Run/RunOutput/RunInteractive calls since the last ResetRunCount.
 func (r *RunTrackingVM) RunCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
