@@ -58,7 +58,7 @@ func (m *IdleMonitor) EnsureRunning() error {
 	proc, err := os.StartProcess(exe, []string{exe, "__monitor"},
 		&os.ProcAttr{
 			Files: []*os.File{nil, nil, nil},
-			Sys:   daemonSysProcAttr(),
+			Sys:   &syscall.SysProcAttr{Setsid: true},
 		})
 	if err != nil {
 		return err
