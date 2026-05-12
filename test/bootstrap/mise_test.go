@@ -21,6 +21,21 @@ func TestPlugin_Mise(t *testing.T) {
 		}
 	}{
 		{
+			// Installs mise itself (the runtime manager) in isolation.
+			// Validates that the binary works and that the bashrc activation
+			// line is written — both conditions tested by the skip_if script.
+			name:       "mise-standalone",
+			plugin:     "mise",
+			checkCmd:   "mise --version",
+			wantSubstr: "",
+			extraChecks: []struct {
+				cmd        string
+				wantSubstr string
+			}{
+				{"grep 'mise activate' ~/.bashrc", "mise activate"},
+			},
+		},
+		{
 			name:       "mise-go",
 			plugin:     "mise-go",
 			checkCmd:   "go version",

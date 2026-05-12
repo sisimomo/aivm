@@ -1,10 +1,6 @@
 package framework
 
 import (
-	"bytes"
-	"fmt"
-	"os/exec"
-	"strings"
 	"sync"
 
 	"github.com/sisimomo/aivm/internal/vm"
@@ -12,16 +8,8 @@ import (
 
 const (
 	// TestImageName is the Docker image used for all integration test containers.
-	// Build it with: docker build -t aivm-test-base:latest ./test/docker/
+	// It is built automatically by BuildTestImage() at the start of each test run.
 	TestImageName = "aivm-test-base:latest"
-
-	// testImageName is a package-level alias for TestImageName for internal use.
-	testImageName = TestImageName
-)
-
-var (
-	ensureTestImageOnce sync.Once
-	ensureTestImageErr  error
 )
 
 // ── ContainerVMRegistry ────────────────────────────────────────────────────
@@ -81,38 +69,3 @@ func (r *ContainerVMRegistry) DestroyAll() {
 	}
 }
 
-// ── helpers ────────────────────────────────────────────────────────────────
-
-// EnsureTestImage checks whether the test base image exists and builds it if not.
-func EnsureTestImage(testDockerDir string) error {
-	ensureTestImageOnce.Do(func() {
-		out, _ := testDockerOutput("images", "-q", testImageName)
-		if strings.TrimSpace(out) != "" {
-			return
-		}
-
-		cmd := exec.Command("docker", "build", "-t", testImageName, testDockerDir)
-		var buf bytes.Buffer
-		cmd.Stdout = &buf
-		cmd.Stderr = &buf
-		if err := cmd.Run(); err != nil {
-			ensureTestImageErr = fmt.Errorf("build test image %s: %w\n%s", testImageName, err, buf.String())
-		}
-	})
-
-	return ensureTestImageErr
-}
-
-// testDockerOutput runs a docker command and returns combined stdout, or an
-// error that includes stderr for debugging. Only used by EnsureTestImage;
-// the production DockerVM uses its own unexported dockerOutput helper.
-func testDockerOutput(args ...string) (string, error) {
-	cmd := exec.Command("docker", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("docker %s: %w\n%s", strings.Join(args, " "), err, stderr.String())
-	}
-	return stdout.String(), nil
-}

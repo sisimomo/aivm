@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"text/template"
@@ -48,7 +47,7 @@ func newBootstrapHarness(t *testing.T) *BootstrapHarness {
 	t.Helper()
 	acquireBootstrapHarness(t)
 
-	if err := framework.EnsureTestImage(testDockerDir()); err != nil {
+	if err := framework.BuildTestImage(); err != nil {
 		t.Fatalf("harness: ensure test image: %v", err)
 	}
 
@@ -168,7 +167,12 @@ func (h *BootstrapHarness) Install(pluginName string, cfg map[string]any) {
 // From/To conditions match the plugins installed so far and the given active
 // agent. templateVars are substituted into configure and skip_if scripts
 // (e.g. map[string]any{"mcp_port": "8472"}).
-func (h *BootstrapHarness) RunIntegrations(agentName string, templateVars map[string]any) {
+//
+// It returns the keys of integrations that were actually executed (i.e. whose
+// skip_if guard did not prevent them from running). Callers can assert on this
+// to verify idempotency: a second call with the same args should return an
+// empty slice because every integration's skip_if now exits 0.
+func (h *BootstrapHarness) RunIntegrations(agentName string, templateVars map[string]any) []string {
 	h.t.Helper()
 
 	exec := &integration.Executor{
@@ -180,9 +184,11 @@ func (h *BootstrapHarness) RunIntegrations(agentName string, templateVars map[st
 		TemplateVars:     templateVars,
 	}
 
-	if _, err := exec.Run(context.Background()); err != nil {
+	ran, err := exec.Run(context.Background())
+	if err != nil {
 		h.t.Fatalf("RunIntegrations %q: %v", agentName, err)
 	}
+	return ran
 }
 
 // AssertIntegrationConfigured runs the skip_if script of the named integration
@@ -286,11 +292,6 @@ func renderIntegrationScript(src string, data map[string]any) (string, error) {
 	return buf.String(), nil
 }
 
-// testDockerDir returns the absolute path to test/docker/ containing the Dockerfile.
-func testDockerDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "docker")
-}
 
 func mustRandomHex(n int) string {
 	b := make([]byte, n)

@@ -26,7 +26,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -76,7 +75,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 	t.Helper()
 
 	// Ensure the base Docker image exists, building it if needed.
-	if err := EnsureTestImage(testDockerDir()); err != nil {
+	if err := BuildTestImage(); err != nil {
 		t.Fatalf("harness: ensure test image: %v", err)
 	}
 
@@ -320,13 +319,6 @@ func setEnv(env []string, key, val string) []string {
 		}
 	}
 	return append(env, prefix+val)
-}
-
-// testDockerDir returns the absolute path to the test/docker/ directory
-// containing the Dockerfile for the container base image.
-func testDockerDir() string {
-	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "docker")
 }
 
 func mustRandomHex(n int) string {
