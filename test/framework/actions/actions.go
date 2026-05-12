@@ -1,5 +1,5 @@
 // Package actions provides built-in StepFunc implementations for AIVM
-// integration test scenarios.
+// e2e test scenarios.
 package actions
 
 import (

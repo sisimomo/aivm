@@ -6,7 +6,7 @@ import (
 )
 
 // OutputBuffer captures stdout and stderr from the LifecycleService logger
-// for assertion in integration tests.
+// for assertion in e2e tests.
 // All methods are safe for concurrent use.
 type OutputBuffer struct {
 	mu     sync.Mutex

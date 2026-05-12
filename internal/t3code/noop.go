@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// NoopManager is a no-op implementation of Manager used in integration tests.
+// NoopManager is a no-op implementation of Manager used in e2e tests.
 // It records call counts instead of running real SSH processes.
 type NoopManager struct {
 	launchCount atomic.Int32

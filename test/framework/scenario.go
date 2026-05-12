@@ -1,4 +1,4 @@
-// Package framework provides the integration testing harness for AIVM.
+// Package framework provides the e2e testing harness for AIVM.
 package framework
 
 import (

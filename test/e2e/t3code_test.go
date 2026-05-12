@@ -1,6 +1,6 @@
 package e2e
 
-// T3 Code integration tests.
+// T3 Code e2e tests.
 //
 // T3 Code is a background service: when enabled, `aivm start` launches t3 serve
 // inside the VM and port-forwards it to the host as a daemon. The normal `aivm`

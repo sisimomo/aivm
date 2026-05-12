@@ -1,4 +1,4 @@
-// Package framework provides the integration testing harness for AIVM.
+// Package framework provides the e2e testing harness for AIVM.
 // It creates isolated Docker-container VM environments per test, invokes the
 // real aivm-test binary as a subprocess (identical to real user invocations),
 // and tears everything down on completion.

@@ -1,5 +1,5 @@
 // Package conditions provides ConditionFunc implementations for AIVM
-// integration test Wait steps.
+// e2e test Wait steps.
 package conditions
 
 import (

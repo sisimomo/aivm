@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// TestImageName is the Docker image used for all integration test containers.
+	// TestImageName is the Docker image used for all e2e test containers.
 	// It is built automatically by BuildTestImage() at the start of each test run.
 	TestImageName = "aivm-test-base:latest"
 )

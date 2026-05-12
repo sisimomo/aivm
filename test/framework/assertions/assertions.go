@@ -1,5 +1,5 @@
 // Package assertions provides AssertFunc implementations for AIVM
-// integration test Assert steps.
+// e2e test Assert steps.
 package assertions
 
 import (

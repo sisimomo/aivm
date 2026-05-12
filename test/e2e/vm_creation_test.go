@@ -1,8 +1,8 @@
-// Package scenarios contains AIVM integration test scenarios.
+// Package e2e contains AIVM e2e test scenarios.
 //
 // Run with:
 //
-//	go test -v -timeout 5m ./test/scenarios/...
+//	go test -v -timeout 5m ./test/e2e/...
 package e2e
 
 import (
