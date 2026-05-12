@@ -91,7 +91,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	aivmlog.Info("Waiting for MCPJungle to become healthy...")
-	deadline := time.Now().Add(40 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		if m.IsHealthy(ctx) {
 			aivmlog.Success("MCPJungle is healthy on port %d", m.Port)
@@ -99,7 +99,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("MCPJungle failed to become healthy after 40s")
+	return fmt.Errorf("MCPJungle failed to become healthy after 90s")
 }
 
 func (m *Manager) Stop(ctx context.Context) error {

@@ -22,6 +22,9 @@ type TTYConfirmer struct{}
 func NewTTYConfirmer() *TTYConfirmer { return &TTYConfirmer{} }
 
 func (c *TTYConfirmer) IsInteractive() bool {
+	if os.Getenv("AIVM_FORCE_INTERACTIVE") == "1" {
+		return true
+	}
 	fi, err := os.Stdin.Stat()
 	if err != nil {
 		return false

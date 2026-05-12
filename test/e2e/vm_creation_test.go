@@ -3,7 +3,7 @@
 // Run with:
 //
 //	go test -v -timeout 5m ./test/scenarios/...
-package scenarios
+package e2e
 
 import (
 	"context"

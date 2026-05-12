@@ -99,6 +99,9 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	sessions := session.NewStore(cfg.StateDir)
 	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
+	if cfg.Idle.PollInterval > 0 {
+		mon.PollInterval = cfg.Idle.PollInterval
+	}
 
 	var t3codeMgr t3code.Manager
 	if cfg.T3Code.Enable {

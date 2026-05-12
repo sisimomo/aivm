@@ -15,7 +15,7 @@ import (
 // the given status.
 func VMStatus(want vm.Status) fw.ConditionFunc {
 	return func(ctx context.Context, h *fw.Harness) (bool, error) {
-		got, err := h.App.Lifecycle.VM.Status(ctx)
+		got, err := h.DockerVM.Status(ctx)
 		if err != nil {
 			return false, err
 		}
@@ -78,7 +78,7 @@ func BootstrapComplete() fw.ConditionFunc {
 // active sessions exist.
 func SessionCount(want int) fw.ConditionFunc {
 	return func(_ context.Context, h *fw.Harness) (bool, error) {
-		got, err := h.App.Lifecycle.Sessions.CountActive()
+		got, err := h.Sessions.CountActive()
 		if err != nil {
 			return false, err
 		}

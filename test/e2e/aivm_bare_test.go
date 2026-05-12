@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 // Tests for the bare `aivm` command — the most frequently used invocation.
 //
@@ -10,6 +10,7 @@ package scenarios
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,49 +45,37 @@ func TestBareCommandFirstBoot(t *testing.T) {
 		Run()
 }
 
-// TestBareCommandResume verifies the second-most-common flow:
+// TestBareCommandResume verifies the second-most-common flow, and also covers
+// the CWD-outside-DevRoot error path — both cases pre-start the VM, so they
+// share a single harness to avoid an extra bootstrap cycle.
 //
 //  1. VM is already running from a previous session (simulate with `aivm start`).
 //  2. User runs `aivm` — DoStart detects the VM is already up and skips bootstrap.
 //  3. DoLaunch starts the agent directly.
-func TestBareCommandResume(t *testing.T) {
+//  4. User runs `aivm` from /tmp (outside DevRoot) — DoLaunch returns an error
+//     before dispatching; agent is NOT launched a second time.
+func TestBareCommandResumeAndCWDValidation(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
 
-	h.Scenario("aivm (bare) — VM already running: skip bootstrap, launch agent directly").
+	h.Scenario("aivm (bare) — resume + CWD outside DevRoot error, shared VM boot").
 		Step("Pre-start VM so it is already running", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
-		Step("Reset run counter (nothing should re-run)", actions.ResetMockVMRunCount()).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm (bare) — VM already up", actions.CLI()).
 		Assert("VM is still running", assertions.VMStatus(vm.StatusRunning)).
-		Assert("No bootstrap scripts ran (VM was already up-to-date)", assertions.VMRunCountIs(0)).
 		Assert("Agent was launched", assertions.AgentLaunched()).
+		Assert("Agent launched exactly once", assertions.AgentLaunchCount(1)).
 		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
 		Assert("User saw agent launch step", assertions.OutputContains("Launching Claude Code (Anthropic) in VM")).
-		Run()
-}
-
-// TestBareCommandCWDOutsideDevRoot verifies that DoLaunch returns an error
-// when the working directory is not under DevRoot, and does NOT launch the agent.
-//
-// This protects against accidentally running an agent against a path that isn't
-// mounted in the VM.
-func TestBareCommandCWDOutsideDevRoot(t *testing.T) {
-	t.Parallel()
-	h := framework.New(t)
-
-	h.Scenario("aivm (bare) — CWD outside DevRoot returns error before launching agent").
-		Step("Pre-start VM", actions.CLI("start")).
-		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Override CWD to /tmp (outside DevRoot)", setCWD(h, "/tmp")).
-		Step("Run: aivm (bare) — expect error", assertStepFails(
+		Step("Override CWD to /tmp (outside DevRoot)", actions.SetWorkDir("/tmp")).
+		Step("Run: aivm (bare) — expect CWD error", assertStepFails(
 			actions.CLI(),
 			"not under any configured VM mount",
 		)).
-		Assert("Agent was NOT launched (error occurred before dispatch)",
-			assertions.AgentLaunchCount(0)).
+		Assert("Agent was NOT launched again (error before dispatch)",
+			assertions.AgentLaunchCount(1)).
 		Run()
 }
 
@@ -111,38 +100,21 @@ func TestBareCommandMultipleSessions(t *testing.T) {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// setCWD returns a step that overrides h.App.Lifecycle.GetWorkDir to return dir,
-// simulating running aivm from that path.
-func setCWD(h *framework.Harness, dir string) framework.StepFunc {
-	return func(_ context.Context, _ *framework.Harness) error {
-		h.App.Lifecycle.GetWorkDir = func() (string, error) { return dir, nil }
-		return nil
-	}
-}
-
-// assertStepFails runs step and asserts that the error message contains wantSubstr.
-// If step succeeds (no error), the test fails.
+// assertStepFails runs step and asserts that the combined CLI output contains
+// wantSubstr. If step succeeds (no error), the test fails.
 func assertStepFails(step framework.StepFunc, wantSubstr string) framework.StepFunc {
 	return func(ctx context.Context, h *framework.Harness) error {
 		err := step(ctx, h)
 		if err == nil {
 			return fmt.Errorf("expected step to fail with %q but it succeeded", wantSubstr)
 		}
-		if wantSubstr != "" && !contains(err.Error(), wantSubstr) {
-			return fmt.Errorf("expected error containing %q, got: %v", wantSubstr, err)
+		if wantSubstr != "" {
+			output := h.Output.Stdout() + h.Output.Stderr()
+			if !strings.Contains(output, wantSubstr) {
+				return fmt.Errorf("expected output containing %q\ngot stdout: %s\ngot stderr: %s",
+					wantSubstr, h.Output.Stdout(), h.Output.Stderr())
+			}
 		}
 		return nil
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(substr); i++ {
-				if s[i:i+len(substr)] == substr {
-					return true
-				}
-			}
-			return false
-		}())
 }

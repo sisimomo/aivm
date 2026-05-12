@@ -104,7 +104,7 @@ func (s *upToDateStep) applicable(ss *syncState, _ *LifecycleService) bool {
 }
 
 func (s *upToDateStep) run(_ context.Context, _ *syncState, svc *LifecycleService) error {
-	svc.log().Info("VM is up to date — skipping bootstrap")
+	svc.log().Success("VM is up to date — skipping bootstrap")
 	return nil
 }
 
@@ -118,7 +118,7 @@ func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
 	}
 
 	if !promptConfigChanged(svc.log().Out, svc.Confirmer) {
-		svc.log().Info("Continuing without applying config changes")
+		svc.log().Success("Continuing without applying config changes")
 		return nil
 	}
 
@@ -128,6 +128,10 @@ func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
 // recreateVM terminates all active sessions, destroys the VM, and recreates
 // it with a fresh bootstrap.
 func (svc *LifecycleService) recreateVM(ctx context.Context) error {
+	// Stop the idle monitor (if running from a previous 'aivm start') so it
+	// cannot stop or delete the freshly bootstrapped container.
+	svc.Monitor.Stop()
+
 	sessions, _ := svc.Sessions.List()
 	if len(sessions) > 0 {
 		svc.log().Step("Terminating %d active session(s)", len(sessions))

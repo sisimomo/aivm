@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 import (
 	"context"

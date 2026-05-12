@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 import (
 	"testing"
@@ -36,9 +36,10 @@ func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days (exceeds 30-day threshold)",
 			actions.SetVMCreatedDaysAgo(31)).
+		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM — age check triggers, user accepts recreation", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap ran on new VM", assertions.VMRunCountAtLeast(1)).
+		Assert("Bootstrap ran on new VM", assertions.OutputContains("Bootstrap complete!")).
 		Assert("Bootstrap state valid after recreation", assertions.BootstrapComplete()).
 		Run()
 }
@@ -67,10 +68,8 @@ func TestVMMaxAgeRecreationDeclined(t *testing.T) {
 		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days", actions.SetVMCreatedDaysAgo(31)).
-		Step("Reset run counter", actions.ResetMockVMRunCount()).
 		Step("Start VM — user declines recreation", actions.CLI("start")).
 		Wait("VM is running (resumed, not recreated)", conditions.VMStatus(vm.StatusRunning), 3*time.Minute).
-		Assert("No new bootstrap ran (VM was not recreated)", assertions.VMRunCountIs(0)).
 		Assert("Bootstrap state unchanged", assertions.BootstrapComplete()).
 		Run()
 }

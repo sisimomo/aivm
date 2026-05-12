@@ -3,11 +3,9 @@ package framework
 import (
 	"fmt"
 	"net"
-	"path/filepath"
+	"sort"
+	"strings"
 	"time"
-
-	"github.com/sisimomo/aivm/internal/config"
-	"github.com/sisimomo/aivm/internal/integration"
 )
 
 // FreePort asks the OS for a free TCP port and returns it. It panics if no
@@ -26,52 +24,61 @@ func FreePort() int {
 // testConfig holds configuration for a test Harness. It uses small defaults
 // suitable for tests (minimal VM resources, short idle timeouts).
 type testConfig struct {
-	CPUs        int
-	MemoryBytes int64
-	DiskBytes   int64
-	VMType      string
-	// DevRoot is a convenience field: if set, a single rw ParsedMount is created.
-	DevRoot       string
+	CPUs    int
+	Memory  string // "2GB"
+	Disk    string // "10GB"
+	DevRoot string // convenience: creates a single rw mount
+
 	IdleTimeout   time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
-	Plugins       []string
-	// VMEnv sets vm.env for the test Harness.
-	VMEnv map[string]string
-	// RecreatePromptAfter sets VM.RecreatePromptAfterDuration.
-	// Use config.DisabledDuration to disable. Zero means use default (disabled).
-	RecreatePromptAfter time.Duration
-	// BaseImageRebuildPromptAfter sets VM.BaseImageRebuildPromptAfterDuration.
-	// Use config.DisabledDuration to disable. Zero means use default (disabled).
-	BaseImageRebuildPromptAfter time.Duration
+
+	// RecreatePromptAfter in ParsePromptDuration format: "-1" or "Nd".
+	RecreatePromptAfter string
+	// BaseImageRebuildPromptAfter in ParsePromptDuration format: "-1" or "Nd".
+	BaseImageRebuildPromptAfter string
+
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
-	// Integrations is an optional list of additional integrations to include alongside
-	// the built-in test stubs.
-	Integrations []integration.IntegrationDef
-	// Interactive, when true, sets App.IsTerminal=true so interactive code paths run.
+
+	// LaunchCommand, when non-empty, overrides the launch_command for the
+	// active provider. Tests that need a long-lived agent process (e.g. session
+	// idle tests) set this to "sleep 30" to hold a session lock open without
+	// requiring interactive TUI auth.
+	LaunchCommand string
+
+	// Interactive, when true, sets AIVM_FORCE_INTERACTIVE=1 in subprocess env.
 	Interactive bool
-	// StdinAnswers is fed to App.Stdin, one answer per prompt (newline-separated).
+	// StdinAnswers is fed to the subprocess stdin, one answer per prompt.
 	StdinAnswers []string
-	// T3CodeEnabled, when true, sets cfg.T3Code.Enable and injects a NoopManager.
+
+	// MCPJunglePort is the host port for the mcpjungle container. Allocated
+	// once per harness via FreePort() so parallel tests don't share port 7593.
+	MCPJunglePort int
+
+	// T3CodeEnabled, when true, sets t3code.enable: true in the YAML config.
 	T3CodeEnabled bool
-	// T3CodePort sets the T3 Code port (default 3773).
+	// T3CodePort sets t3code.port in the YAML. 0 = auto-assign by Docker.
 	T3CodePort int
+
+	// Plugins is the list of plugins.enabled entries.
+	Plugins []string
+	// VMEnv sets vm.env in the YAML.
+	VMEnv map[string]string
 }
 
 func defaultTestConfig() testConfig {
 	return testConfig{
-		CPUs:          1,
-		MemoryBytes:   2 << 30,  // 2 GiB
-		DiskBytes:     10 << 30, // 10 GiB
-		VMType:        "vz",
-		DevRoot:       "", // computed in New() as <testRunDir>/dev unless overridden
-		IdleTimeout:   10 * time.Second,
-		DeleteTimeout: 10 * time.Second,
-		PollInterval:  1 * time.Second,
-		Plugins:       []string{},
-		Provider:      "claude",
-		T3CodePort:    0, // 0 = auto-assign a free port in New()
+		CPUs:                        1,
+		Memory:                      "2GB",
+		Disk:                        "10GB",
+		IdleTimeout:                 10 * time.Second,
+		DeleteTimeout:               10 * time.Second,
+		PollInterval:                1 * time.Second,
+		RecreatePromptAfter:         "-1",
+		BaseImageRebuildPromptAfter: "-1",
+		Provider:                    "claude",
+		Plugins:                     []string{},
 	}
 }
 
@@ -82,15 +89,12 @@ type Option func(*testConfig)
 func WithCPUs(n int) Option { return func(c *testConfig) { c.CPUs = n } }
 
 // WithMemoryGiB sets the RAM (GiB) for the test VM.
-func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.MemoryBytes = int64(n) << 30 } }
+func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.Memory = fmt.Sprintf("%dGB", n) } }
 
 // WithDiskGiB sets the disk size (GiB) for the test VM.
-func WithDiskGiB(n int) Option { return func(c *testConfig) { c.DiskBytes = int64(n) << 30 } }
+func WithDiskGiB(n int) Option { return func(c *testConfig) { c.Disk = fmt.Sprintf("%dGB", n) } }
 
-// WithVMType overrides the VM hypervisor type (e.g. "vz", "qemu").
-func WithVMType(t string) Option { return func(c *testConfig) { c.VMType = t } }
-
-// WithDevRoot sets the dev root directory mounted into the VM (convenience — creates one rw mount).
+// WithDevRoot sets the dev root directory mounted into the VM.
 func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
 
 // WithIdleTimeout sets the idle-stop timeout for the monitor.
@@ -109,26 +113,16 @@ func WithPlugins(names ...string) Option {
 	return func(c *testConfig) { c.Plugins = names }
 }
 
-// WithRecreatePromptAfter configures the VM age threshold after which the user is prompted.
-// Use config.DisabledDuration to disable the prompt entirely.
-func WithRecreatePromptAfter(d time.Duration) Option {
-	return func(c *testConfig) { c.RecreatePromptAfter = d }
-}
-
-// WithBaseImageRebuildPromptAfter configures the base image age threshold after which the user is prompted.
-// Use config.DisabledDuration to disable the prompt entirely.
-func WithBaseImageRebuildPromptAfter(d time.Duration) Option {
-	return func(c *testConfig) { c.BaseImageRebuildPromptAfter = d }
-}
-
-// WithMaxAgeDays is a convenience wrapper for WithRecreatePromptAfter using days.
+// WithMaxAgeDays configures the VM age threshold (in days) after which the user
+// is prompted to recreate the VM.
 func WithMaxAgeDays(days int) Option {
-	return WithRecreatePromptAfter(time.Duration(days) * 24 * time.Hour)
+	return func(c *testConfig) { c.RecreatePromptAfter = fmt.Sprintf("%dd", days) }
 }
 
-// WithBaseImageMaxAgeDays is a convenience wrapper for WithBaseImageRebuildPromptAfter using days.
+// WithBaseImageMaxAgeDays configures the base image age threshold (in days)
+// after which the user is prompted to rebuild the base image.
 func WithBaseImageMaxAgeDays(days int) Option {
-	return WithBaseImageRebuildPromptAfter(time.Duration(days) * 24 * time.Hour)
+	return func(c *testConfig) { c.BaseImageRebuildPromptAfter = fmt.Sprintf("%dd", days) }
 }
 
 // WithProvider selects the AI agent provider by name (e.g. "claude", "copilot").
@@ -148,9 +142,8 @@ func WithInteractive(answers ...string) Option {
 	}
 }
 
-// WithT3Code enables T3 Code mode for the test harness. Idle monitoring is
-// automatically disabled (as in production). The NoopManager is injected so
-// no real SSH tunnel is started.
+// WithT3Code enables T3 Code mode for the test harness. Pass a specific port
+// from FreePort() for T3CodePortAccessible assertions, or 0 for auto-assign.
 func WithT3Code(port int) Option {
 	return func(c *testConfig) {
 		c.T3CodeEnabled = true
@@ -166,77 +159,136 @@ func WithVMEnv(env map[string]string) Option {
 	return func(c *testConfig) { c.VMEnv = env }
 }
 
-// WithIntegrations appends extra integrations to the test harness alongside the
-// default stub integrations. Use this to test custom user-defined integrations.
-func WithIntegrations(defs ...integration.IntegrationDef) Option {
-	return func(c *testConfig) {
-		c.Integrations = append(c.Integrations, defs...)
-	}
+// WithLaunchCommand overrides the launch_command for the active provider in
+// the generated aivm.yaml. Use this when a test needs a long-lived agent
+// process (e.g. "sleep 30" for session idle tests) rather than the default
+// version-check override. The real agent binary is still installed during
+// bootstrap — only the launch command is overridden.
+func WithLaunchCommand(cmd string) Option {
+	return func(c *testConfig) { c.LaunchCommand = cmd }
 }
 
-func buildTestConfig(profile, stateDir string, tc testConfig) *config.Config {
-	var parsedMounts []config.Mount
-	if tc.DevRoot != "" {
-		parsedMounts = []config.Mount{{HostPath: tc.DevRoot, Writable: true}}
-	}
-
-	recreatePromptAfter := tc.RecreatePromptAfter
-	if recreatePromptAfter == 0 {
-		recreatePromptAfter = config.DisabledDuration
-	}
-	baseImageRebuildPromptAfter := tc.BaseImageRebuildPromptAfter
-	if baseImageRebuildPromptAfter == 0 {
-		baseImageRebuildPromptAfter = config.DisabledDuration
-	}
-
-	plugins := tc.Plugins
-	// Mirror CompositionEngine plugin injection: auto-inject "t3code" when T3 Code is enabled.
+// effectivePlugins returns the plugins.enabled list, adding "t3code" when
+// T3Code is enabled (mirroring CompositionEngine's auto-injection).
+func effectivePlugins(tc testConfig) []string {
+	plugins := append([]string{}, tc.Plugins...)
 	if tc.T3CodeEnabled {
-		alreadyListed := false
-		for _, name := range plugins {
-			if name == "t3code" {
-				alreadyListed = true
-				break
+		for _, p := range plugins {
+			if p == "t3code" {
+				return plugins
 			}
 		}
-		if !alreadyListed {
-			plugins = append(append([]string{}, plugins...), "t3code")
+		plugins = append(plugins, "t3code")
+	}
+	return plugins
+}
+
+// agentLaunchCommand returns the launch_command to use in the test config for
+// the given agent name. By default it runs the real binary version check and
+// appends a line to the agent-launched marker file so tests can count launches
+// without requiring interactive TUI auth. WithLaunchCommand overrides this.
+//
+// The wrapper uses `bash -lc` because the generic provider runs `exec %s`,
+// which replaces the shell process. Any compound command after `exec` (e.g.
+// `exec claude --version && echo 1 >> marker`) would never reach the `echo`
+// because exec discards the remaining shell commands. Wrapping in a login
+// subshell ensures the marker write happens first, then the binary is exec'd
+// inside the subshell where it CAN run to completion.
+func agentLaunchCommand(name string, override string) string {
+	if override != "" {
+		return override
+	}
+	// Write to the marker file first (inside a login subshell so PATH is set),
+	// then exec the real binary. The login shell sources /etc/profile.d/ so
+	// mise shims and agent path entries are available.
+	return "bash -lc 'echo 1 >> /tmp/.aivm_agent_launched; exec " + name + " --version'"
+}
+
+// buildTestYAML generates the aivm.yaml content for the test harness subprocess.
+// Real agent and plugin install scripts are used — no stubs. Agent launch
+// commands are overridden to version-check invocations so tests do not require
+// interactive TUI sessions or auth tokens, while still proving the binaries are
+// installed and callable.
+func buildTestYAML(profile, stateDir string, tc testConfig) string {
+	var sb strings.Builder
+
+	// ── vm ────────────────────────────────────────────────────────────────
+	fmt.Fprintf(&sb, "vm:\n")
+	fmt.Fprintf(&sb, "  cpus: %d\n", tc.CPUs)
+	fmt.Fprintf(&sb, "  memory: %q\n", tc.Memory)
+	fmt.Fprintf(&sb, "  disk: %q\n", tc.Disk)
+	fmt.Fprintf(&sb, "  backend: docker\n")
+	fmt.Fprintf(&sb, "  docker_image: %q\n", TestImageName)
+	fmt.Fprintf(&sb, "  name: %q\n", profile)
+	fmt.Fprintf(&sb, "  recreate_prompt_after: %q\n", tc.RecreatePromptAfter)
+	fmt.Fprintf(&sb, "  base_image_rebuild_prompt_after: %q\n", tc.BaseImageRebuildPromptAfter)
+	if tc.DevRoot != "" {
+		fmt.Fprintf(&sb, "  mounts:\n")
+		fmt.Fprintf(&sb, "    - %q\n", tc.DevRoot+":rw")
+	}
+	if len(tc.VMEnv) > 0 {
+		keys := make([]string, 0, len(tc.VMEnv))
+		for k := range tc.VMEnv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fmt.Fprintf(&sb, "  env:\n")
+		for _, k := range keys {
+			fmt.Fprintf(&sb, "    %s: %q\n", k, tc.VMEnv[k])
 		}
 	}
 
-	return &config.Config{
-		VM: config.VMConfig{
-			CPUs:                                tc.CPUs,
-			MemoryBytes:                         tc.MemoryBytes,
-			DiskBytes:                           tc.DiskBytes,
-			Type:                                tc.VMType,
-			RecreatePromptAfterDuration:         recreatePromptAfter,
-			BaseImageRebuildPromptAfterDuration: baseImageRebuildPromptAfter,
-			ParsedMounts:                        parsedMounts,
-			Name:                                profile,
-			Env:                                 tc.VMEnv,
-		},
-		MCP: config.MCPConfig{
-			Enable:     true,
-			Port:       19999, // unused — MCP is stubbed
-			DataDir:    filepath.Join(stateDir, "mcpjungle-data"),
-			ImageTag:   "latest",
-			ServerMode: "development",
-		},
-		T3Code: config.T3CodeConfig{
-			Enable: tc.T3CodeEnabled,
-			Port:   tc.T3CodePort,
-		},
-		Idle: config.IdleConfig{
-			StopTimeout:   tc.IdleTimeout,
-			DeleteTimeout: tc.DeleteTimeout,
-		},
-		Agents: config.AgentsConfig{
-			Enabled: tc.Provider,
-		},
-		Plugins: config.PluginsConfig{
-			Enabled: plugins,
-		},
-		StateDir: stateDir,
+	// ── mcp_jungle ────────────────────────────────────────────────────────
+	// Enabled for real — mcpjungle starts as a host Docker container named
+	// "mcpjungle-<profile>" (unique per harness, safe for parallel tests).
+	// Port is allocated per-harness via FreePort() to avoid parallel conflicts.
+	// data_dir is scoped to stateDir so concurrent tests do not share
+	// MCPJungle state (shared state causes startup conflicts / health check
+	// timeouts when multiple containers bind-mount the same host path).
+	fmt.Fprintf(&sb, "mcp_jungle:\n")
+	fmt.Fprintf(&sb, "  enable: true\n")
+	fmt.Fprintf(&sb, "  port: %d\n", tc.MCPJunglePort)
+	fmt.Fprintf(&sb, "  data_dir: %q\n", stateDir+"/mcpjungle-data")
+
+	// ── t3code ────────────────────────────────────────────────────────────
+	fmt.Fprintf(&sb, "t3code:\n")
+	fmt.Fprintf(&sb, "  enable: %v\n", tc.T3CodeEnabled)
+	fmt.Fprintf(&sb, "  port: %d\n", tc.T3CodePort)
+
+	// ── idle ──────────────────────────────────────────────────────────────
+	fmt.Fprintf(&sb, "idle:\n")
+	fmt.Fprintf(&sb, "  stop_timeout: %q\n", tc.IdleTimeout.String())
+	fmt.Fprintf(&sb, "  delete_timeout: %q\n", tc.DeleteTimeout.String())
+	fmt.Fprintf(&sb, "  poll_interval: %q\n", tc.PollInterval.String())
+
+	// ── agents ────────────────────────────────────────────────────────────
+	// Only launch_command is overridden — setup and skip_if come from
+	// defaults.yaml (real curl-based install scripts). This proves the real
+	// binary is installed and callable without requiring interactive TUI auth.
+	fmt.Fprintf(&sb, "agents:\n")
+	fmt.Fprintf(&sb, "  enabled: %q\n", tc.Provider)
+	fmt.Fprintf(&sb, "  define:\n")
+	for _, name := range []string{"claude", "copilot", "opencode"} {
+		launchCmd := agentLaunchCommand(name, "")
+		if name == tc.Provider && tc.LaunchCommand != "" {
+			launchCmd = tc.LaunchCommand
+		}
+		fmt.Fprintf(&sb, "    %s:\n", name)
+		fmt.Fprintf(&sb, "      launch_command: %q\n", launchCmd)
 	}
+
+	// ── plugins ───────────────────────────────────────────────────────────
+	// No stub definitions — real plugin install scripts run during bootstrap.
+	plugins := effectivePlugins(tc)
+	fmt.Fprintf(&sb, "plugins:\n")
+	if len(plugins) == 0 {
+		fmt.Fprintf(&sb, "  enabled: []\n")
+	} else {
+		fmt.Fprintf(&sb, "  enabled:\n")
+		for _, p := range plugins {
+			fmt.Fprintf(&sb, "    - %q\n", p)
+		}
+	}
+
+	return sb.String()
 }

@@ -9,23 +9,27 @@ import (
 	fw "github.com/sisimomo/aivm/test/framework"
 )
 
-// OutputContains asserts that the captured stdout contains substr.
+// OutputContains asserts that the combined stdout+stderr captured from the most
+// recent CLI invocation(s) contains the expected substring.
 func OutputContains(substr string) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		got := h.Output.Stdout()
-		if !strings.Contains(got, substr) {
-			return fmt.Errorf("expected stdout to contain %q\ngot:\n%s", substr, got)
+		combined := h.Output.Stdout() + h.Output.Stderr()
+		if !strings.Contains(combined, substr) {
+			return fmt.Errorf("expected output to contain %q\ngot stdout:\n%s\ngot stderr:\n%s",
+				substr, h.Output.Stdout(), h.Output.Stderr())
 		}
 		return nil
 	}
 }
 
-// OutputNotContains asserts that the captured stdout does NOT contain substr.
+// OutputNotContains asserts that the combined stdout+stderr does NOT contain
+// the given substring.
 func OutputNotContains(substr string) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		got := h.Output.Stdout()
-		if strings.Contains(got, substr) {
-			return fmt.Errorf("expected stdout NOT to contain %q\ngot:\n%s", substr, got)
+		combined := h.Output.Stdout() + h.Output.Stderr()
+		if strings.Contains(combined, substr) {
+			return fmt.Errorf("expected output NOT to contain %q\ngot stdout:\n%s\ngot stderr:\n%s",
+				substr, h.Output.Stdout(), h.Output.Stderr())
 		}
 		return nil
 	}

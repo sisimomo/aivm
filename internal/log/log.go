@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const (
+var (
 	colorReset  = "\033[0m"
 	colorBlue   = "\033[34m"
 	colorGreen  = "\033[32m"
@@ -167,5 +167,14 @@ func (w *prefixWriter) Write(p []byte) (n int, err error) {
 }
 
 func init() {
+	if os.Getenv("NO_COLOR") != "" {
+		colorReset = ""
+		colorBlue = ""
+		colorGreen = ""
+		colorYellow = ""
+		colorRed = ""
+		colorCyan = ""
+		colorBold = ""
+	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
 }

@@ -57,7 +57,7 @@ func (s *Scenario) Step(name string, fn StepFunc) *Scenario {
 	return s
 }
 
-// Wait adds a polling step that calls cond every 2 seconds until it returns
+// Wait adds a polling step that calls cond every 500ms until it returns
 // true or timeout elapses.  The step fails the test on timeout.
 func (s *Scenario) Wait(name string, cond ConditionFunc, timeout time.Duration) *Scenario {
 	s.steps = append(s.steps, step{name: name, kind: kindWait, cond: cond, timeout: timeout})
@@ -96,6 +96,7 @@ func (s *Scenario) Run() {
 		}
 
 		if err != nil {
+			t.Logf("--- output at failure ---\n%s%s", s.h.Output.Stdout(), s.h.Output.Stderr())
 			t.Fatalf("scenario %q — step %q failed: %v", s.name, st.name, err)
 		}
 	}
@@ -103,11 +104,11 @@ func (s *Scenario) Run() {
 	progress("  [ok] %s\n", s.name)
 }
 
-// runWait polls cond every 2 seconds until it returns true or timeout elapses.
+// runWait polls cond every 500ms until it returns true or timeout elapses.
 func runWait(ctx context.Context, t *testing.T, st step, h *Harness) error {
 	t.Helper()
 	deadline := time.Now().Add(st.timeout)
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {

@@ -101,6 +101,7 @@ type T3CodeConfig struct {
 type IdleConfig struct {
 	StopTimeout   time.Duration `mapstructure:"stop_timeout"`
 	DeleteTimeout time.Duration `mapstructure:"delete_timeout"`
+	PollInterval  time.Duration `mapstructure:"poll_interval"`
 }
 
 // AgentsConfig is the top-level agents registry. It is independent of plugins.
@@ -168,6 +169,9 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 
 	home, _ := os.UserHomeDir()
 	stateDir := expandPath(d.StateDir, home)
+	if override := os.Getenv("AIVM_STATE_DIR"); override != "" {
+		stateDir = override
+	}
 
 	if cfgPath != "" {
 		v.SetConfigFile(expandHome(cfgPath))
@@ -190,6 +194,13 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	// Viper normalises all map keys to lowercase, which corrupts vm.env keys
+	// (e.g. AIVM_BOOT_VAR → aivm_boot_var). Re-read the raw YAML to recover
+	// the original case.
+	if err := preserveVMEnvCase(v, &cfg); err != nil {
+		return nil, err
 	}
 
 	cfg.MCP.DataDir = expandPath(cfg.MCP.DataDir, home)
@@ -317,4 +328,32 @@ func setDefaultsFromMap(v *viper.Viper, m map[string]any, prefix string) {
 			v.SetDefault(key, val)
 		}
 	}
+}
+
+// preserveVMEnvCase re-reads the raw config file (if any) and overlays
+// cfg.VM.Env with the original-case keys from vm.env. This works around
+// Viper's internal key-normalisation, which lowercases all map keys before
+// unmarshaling (e.g. AIVM_BOOT_VAR → aivm_boot_var).
+func preserveVMEnvCase(v *viper.Viper, cfg *Config) error {
+	cfgFile := v.ConfigFileUsed()
+	if cfgFile == "" {
+		return nil
+	}
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		// Non-fatal: Viper already read the file; this is just a case-fix pass.
+		return nil
+	}
+	var raw struct {
+		VM struct {
+			Env map[string]string `yaml:"env"`
+		} `yaml:"vm"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("re-reading vm.env from config: %w", err)
+	}
+	if len(raw.VM.Env) > 0 {
+		cfg.VM.Env = raw.VM.Env
+	}
+	return nil
 }

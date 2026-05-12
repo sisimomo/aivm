@@ -19,7 +19,7 @@ import (
 // VMStatus asserts that the VM is currently in the given status.
 func VMStatus(want vm.Status) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		got, err := h.App.Lifecycle.VM.Status(ctx)
+		got, err := h.DockerVM.Status(ctx)
 		if err != nil {
 			return fmt.Errorf("get VM status: %w", err)
 		}
@@ -127,25 +127,17 @@ func StateFileAbsent(relPath string) fw.AssertFunc {
 }
 
 // VMRunOutput asserts that running script in the VM produces output containing
-// the expected substring. Uses DockerVM.RunOutput if available; otherwise
-// falls back to a plain Run with no output check.
+// the expected substring.
 func VMRunOutput(script, contains string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		type outputRunner interface {
-			RunOutput(ctx context.Context, script string, env map[string]string) (string, error)
+		out, err := h.DockerVM.RunOutput(ctx, script, nil)
+		if err != nil {
+			return fmt.Errorf("script %q failed: %w", script, err)
 		}
-		if or, ok := h.App.Lifecycle.VM.(outputRunner); ok {
-			out, err := or.RunOutput(ctx, script, nil)
-			if err != nil {
-				return fmt.Errorf("script %q failed: %w", script, err)
-			}
-			if !strings.Contains(out, contains) {
-				return fmt.Errorf("script %q output does not contain %q\ngot: %s", script, contains, out)
-			}
-			return nil
+		if !strings.Contains(out, contains) {
+			return fmt.Errorf("script %q output does not contain %q\ngot: %s", script, contains, out)
 		}
-		// Fallback for VMs that don't support output capture.
-		return h.App.Lifecycle.VM.Run(ctx, script, nil)
+		return nil
 	}
 }
 
@@ -179,44 +171,10 @@ func BaseImageIsNot(prev *string) fw.AssertFunc {
 	}
 }
 
-// VMRunCountIs asserts that the primary VM's Run() was called exactly n times
-// since the last ResetMockVMRunCount. Silently passes if the VM does not
-// implement RunCounter (e.g. a real Colima VM).
-func VMRunCountIs(n int) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		rc, ok := h.App.Lifecycle.VM.(fw.RunCounter)
-		if !ok {
-			return nil
-		}
-		got := rc.RunCount()
-		if got != n {
-			return fmt.Errorf("VM run count: got %d, want %d", got, n)
-		}
-		return nil
-	}
-}
-
-// VMRunCountAtLeast asserts that the primary VM's Run() was called at least n
-// times since the last ResetMockVMRunCount. Silently passes if the VM does not
-// implement RunCounter.
-func VMRunCountAtLeast(n int) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		rc, ok := h.App.Lifecycle.VM.(fw.RunCounter)
-		if !ok {
-			return nil
-		}
-		got := rc.RunCount()
-		if got < n {
-			return fmt.Errorf("VM run count: got %d, want at least %d", got, n)
-		}
-		return nil
-	}
-}
-
 // SessionCount asserts that exactly n active sessions exist.
 func SessionCount(want int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		got, err := h.App.Lifecycle.Sessions.CountActive()
+		got, err := h.Sessions.CountActive()
 		if err != nil {
 			return fmt.Errorf("count sessions: %w", err)
 		}
@@ -245,9 +203,8 @@ func BootstrapStateProviderIs(provider string) fw.AssertFunc {
 	}
 }
 
-// AgentLaunched asserts that the active agent provider's Launch method was
-// called at least once. Use after running `aivm` bare (or any scenario that
-// should culminate in an agent session being started).
+// AgentLaunched asserts that the active agent provider's launch command was
+// called at least once inside the VM.
 func AgentLaunched() fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		if n := h.ProviderLaunchCount(); n == 0 {
@@ -257,30 +214,8 @@ func AgentLaunched() fw.AssertFunc {
 	}
 }
 
-// T3CodeLaunched asserts that T3Code.Launch was called at least once.
-// Use after running `aivm launch` with T3 Code enabled.
-func T3CodeLaunched() fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		if n := h.T3CodeLaunchCount(); n == 0 {
-			return fmt.Errorf("expected T3Code.Launch to be called, but it was not")
-		}
-		return nil
-	}
-}
-
-// T3CodeLaunchCount asserts that T3Code.Launch was called exactly n times.
-func T3CodeLaunchCount(want int) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		got := h.T3CodeLaunchCount()
-		if got != want {
-			return fmt.Errorf("expected %d T3Code.Launch call(s), got %d", want, got)
-		}
-		return nil
-	}
-}
-
-// AgentLaunchCount asserts that the active agent provider's Launch method was
-// called exactly n times.
+// AgentLaunchCount asserts that the active agent provider's launch command was
+// called exactly n times inside the VM.
 func AgentLaunchCount(want int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		got := h.ProviderLaunchCount()
@@ -291,11 +226,17 @@ func AgentLaunchCount(want int) fw.AssertFunc {
 	}
 }
 
-// VMFileExists asserts that a file exists inside the VM at the given path.
-// The path must be absolute
+// T3CodeLaunched asserts that the T3 Code service was launched by checking that
+// the t3code-url state file exists. This file is written by launchT3Code() and
+// removed by Stop().
+func T3CodeLaunched() fw.AssertFunc {
+	return StateFileExists("t3code-url")
+}
+
+// VMFileExists asserts that a file exists inside the VM at the given absolute path.
 func VMFileExists(path string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		if err := h.App.Lifecycle.VM.Run(ctx, "test -f "+path, nil); err != nil {
+		if err := h.DockerVM.Run(ctx, "test -f "+path, nil); err != nil {
 			return fmt.Errorf("expected file %q to exist in VM: %w", path, err)
 		}
 		return nil
@@ -305,18 +246,11 @@ func VMFileExists(path string) fw.AssertFunc {
 // VMFileAbsent asserts that a file does NOT exist inside the VM at the given path.
 func VMFileAbsent(path string) fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
-		if err := h.App.Lifecycle.VM.Run(ctx, "test ! -f "+path, nil); err != nil {
+		if err := h.DockerVM.Run(ctx, "test ! -f "+path, nil); err != nil {
 			return fmt.Errorf("expected file %q to be absent in VM: %w", path, err)
 		}
 		return nil
 	}
-}
-
-type bootstrapState struct {
-	Version    string `json:"version"`
-	Provider   string `json:"provider"`
-	ConfigHash string `json:"config_hash"`
-	EnvHash    string `json:"env_hash"`
 }
 
 // BootstrapEnvHashSet asserts that the bootstrap state records a non-empty
@@ -337,6 +271,13 @@ func BootstrapEnvHashSet() fw.AssertFunc {
 	}
 }
 
+type bootstrapState struct {
+	Version    string `json:"version"`
+	Provider   string `json:"provider"`
+	ConfigHash string `json:"config_hash"`
+	EnvHash    string `json:"env_hash"`
+}
+
 func loadBootstrapState(stateDir string) (*bootstrapState, error) {
 	data, err := os.ReadFile(filepath.Join(stateDir, "bootstrap-state.json"))
 	if os.IsNotExist(err) {
@@ -354,12 +295,11 @@ func loadBootstrapState(stateDir string) (*bootstrapState, error) {
 
 // T3CodePortAccessible asserts that the T3 Code HTTP server is actually
 // reachable on localhost at the port assigned to this harness. Unlike
-// T3CodeLaunched (which only checks that Launch was called), this assertion
-// makes a real TCP/HTTP connection to verify end-to-end port accessibility —
-// no mocks.
+// T3CodeLaunched (which only checks the state file), this assertion makes a
+// real TCP/HTTP connection to verify end-to-end port accessibility.
 //
-// The assertion retries for up to 15 s to allow the in-VM process time to
-// bind the port after the Docker container finishes starting.
+// The assertion retries for up to 15s to allow the in-VM process time to bind
+// the port after the Docker container finishes starting.
 func T3CodePortAccessible() fw.AssertFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
 		const totalTimeout = 15 * time.Second

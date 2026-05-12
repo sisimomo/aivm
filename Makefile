@@ -5,7 +5,17 @@ INSTALL_DIR := /usr/local/bin
 VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -ldflags="-s -w -X main.defaultStateDir=$(STATE_DIR) -X main.version=$(VERSION)"
 
-.PHONY: build install uninstall clean test test-integration test-bootstrap fmt vet release-snapshot release-dry-run
+# Test parallelism — number of concurrent test goroutines.
+# Capped at 4 to avoid saturating the Colima VM during concurrent claude installs
+# (curl | bash from claude.ai) and to keep Docker daemon pressure manageable.
+# Override with: make test-e2e PARALLEL=8
+PARALLEL ?= 4
+
+# Test filter — run only tests matching this regex (default: all).
+# Override with: make test-e2e RUN=TestIdle
+RUN ?= .
+
+.PHONY: build install install-test uninstall clean test test-e2e test-bootstrap fmt vet release-snapshot release-dry-run
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -22,6 +32,12 @@ install: build
 	@echo "✓  $(BINARY) installed to $(INSTALL_DIR)/$(BINARY)"
 	@echo "   state dir : $(STATE_DIR)"
 
+install-test:
+	go build $(BUILD_FLAGS) -o bin/aivm-test ./cmd/aivm
+	@mkdir -p $(INSTALL_DIR)
+	sudo cp bin/aivm-test $(INSTALL_DIR)/aivm-test
+	@echo "✓  aivm-test installed to $(INSTALL_DIR)/aivm-test"
+
 uninstall:
 	sudo rm -f $(INSTALL_DIR)/$(BINARY)
 	rm -rf $(STATE_DIR)/
@@ -32,13 +48,12 @@ clean:
 test:
 	go test ./...
 
-test-integration:
-	@go build -tags integration ./test/... 2>&1
-	go test -tags integration -v -timeout 60m ./test/scenarios/
+test-e2e: install-test
+	go test -tags integration -v -timeout 60m -parallel $(PARALLEL) -run "$(RUN)" ./test/e2e/
 
 test-bootstrap:
 	@go build -tags bootstrap ./test/... 2>&1
-	go test -tags bootstrap -v -timeout 120m ./test/bootstrap/
+	go test -tags bootstrap -v -timeout 120m -parallel $(PARALLEL) -run "$(RUN)" ./test/bootstrap/
 
 fmt:
 	go fmt ./...

@@ -23,6 +23,7 @@ t3code:
 idle:
   stop_timeout: 5m
   delete_timeout: 5m
+  poll_interval: 30s
 
 agents:
   enabled: claude
