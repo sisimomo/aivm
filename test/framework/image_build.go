@@ -2,6 +2,7 @@ package framework
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sisimomo/aivm/internal/plugin"
 )
@@ -107,7 +109,10 @@ func doBuildTestImage() error {
 	hash := imageContentHash(bootstrapDockerfileTemplate, systemSetup, miseSetup)
 
 	// Skip rebuild if the existing image already matches.
-	if dockerImageLabel(TestImageName, "aivm-dockerfile-hash") == hash {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	existingHash, err := dockerImageLabel(ctx, TestImageName, "aivm-dockerfile-hash")
+	cancel()
+	if err == nil && existingHash == hash {
 		return nil
 	}
 
@@ -128,7 +133,10 @@ func doBuildTestImage() error {
 		}
 	}
 
-	cmd := exec.Command("docker", "build",
+	buildCtx, buildCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer buildCancel()
+
+	cmd := exec.CommandContext(buildCtx, "docker", "build",
 		"--label", "aivm-dockerfile-hash="+hash,
 		"-t", TestImageName,
 		dir,
@@ -137,6 +145,9 @@ func doBuildTestImage() error {
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
+		if buildCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("docker build: timeout after 2m\n%s", buf.String())
+		}
 		return fmt.Errorf("docker build: %w\n%s", err, buf.String())
 	}
 
@@ -167,16 +178,19 @@ func imageContentHash(parts ...string) string {
 }
 
 // dockerImageLabel inspects the named Docker image and returns the value of
-// the given label. Returns empty string if the image does not exist or the
-// label is absent.
-func dockerImageLabel(image, label string) string {
-	out, err := exec.Command(
+// the given label. Returns empty string and error if the image does not exist,
+// the label is absent, or the operation times out.
+func dockerImageLabel(ctx context.Context, image, label string) (string, error) {
+	out, err := exec.CommandContext(ctx,
 		"docker", "inspect",
 		"--format", fmt.Sprintf(`{{index .Config.Labels %q}}`, label),
 		image,
 	).Output()
 	if err != nil {
-		return ""
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("docker inspect: timeout")
+		}
+		return "", err
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
 }

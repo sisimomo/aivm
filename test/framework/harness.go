@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -140,9 +141,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 		// (different UID than the host test runner). Use sudo chmod -R 0777 so
 		// that subdirectories created after bootstrap (e.g. .t3/caches/) are
 		// also made world-writable and os.RemoveAll can delete them.
-		if err := exec.Command("sudo", "chmod", "-R", "0777", testRunDir).Run(); err != nil {
+		chmodCtx, chmodCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		chmodCmd := exec.CommandContext(chmodCtx, "sudo", "-n", "chmod", "-R", "0777", testRunDir)
+		if err := chmodCmd.Run(); err != nil {
+			chmodCancel()
 			// Fallback: best-effort Go walk (works when host user owns the files).
 			_ = chmodAllWritable(testRunDir)
+		} else {
+			chmodCancel()
 		}
 		if err := os.RemoveAll(testRunDir); err != nil {
 			t.Logf("harness cleanup: remove test run dir %q: %v", testRunDir, err)
@@ -276,12 +282,36 @@ func (h *Harness) killIdleMonitor() {
 	if err != nil {
 		return
 	}
+
+	// Verify the PID belongs to idle-monitor before signaling.
+	// On Unix, check /proc/<pid>/exe or cmdline for the expected binary/state dir.
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		if !h.verifyIdleMonitorPID(pid) {
+			return // PID does not match expected idle-monitor process
+		}
+	}
+
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return
 	}
 	_ = proc.Signal(syscall.SIGTERM)
 	time.Sleep(500 * time.Millisecond)
+}
+
+// verifyIdleMonitorPID checks if the given PID belongs to the idle-monitor
+// process for this harness. Returns true if the process is verified.
+func (h *Harness) verifyIdleMonitorPID(pid int) bool {
+	// On Linux, read /proc/<pid>/cmdline to verify the process identity.
+	cmdlinePath := fmt.Sprintf("/proc/%d/cmdline", pid)
+	data, err := os.ReadFile(cmdlinePath)
+	if err != nil {
+		return false // process doesn't exist or can't read
+	}
+	cmdline := string(data)
+	// idle-monitor is invoked with the state directory as an argument.
+	// Check if the cmdline contains "idle-monitor" and our StateDir.
+	return strings.Contains(cmdline, "idle-monitor") && strings.Contains(cmdline, h.StateDir)
 }
 
 // killMCPJungle removes the mcpjungle Docker container for this harness. This

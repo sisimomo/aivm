@@ -178,7 +178,13 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		}
 
 		if setupErr != nil {
-			return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
+			// Final check: if the plugin is now skippable (installed despite error),
+			// treat the setup as successful.
+			if installed, _ := p.SkipIf(ctx, env); installed {
+				setupErr = nil
+			} else {
+				return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
+			}
 		}
 
 		e.log().Success("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second))

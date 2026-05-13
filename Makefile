@@ -48,8 +48,9 @@ clean:
 test:
 	go test ./...
 
-test-e2e: install-test
-	go test -tags integration -v -timeout 60m -parallel $(PARALLEL) -run "$(RUN)" ./test/e2e/
+test-e2e:
+	@go build $(BUILD_FLAGS) -o bin/aivm-test ./cmd/aivm
+	@PATH="$(CURDIR)/bin:$$PATH" go test -tags integration -v -timeout 60m -parallel $(PARALLEL) -run "$(RUN)" ./test/e2e/
 
 test-bootstrap:
 	@go build -tags bootstrap ./test/... 2>&1

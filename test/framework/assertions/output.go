@@ -13,7 +13,7 @@ import (
 // recent CLI invocation(s) contains the expected substring.
 func OutputContains(substr string) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		combined := h.Output.Stdout() + h.Output.Stderr()
+		combined := h.Output.Stdout() + "\n" + h.Output.Stderr()
 		if !strings.Contains(combined, substr) {
 			return fmt.Errorf("expected output to contain %q\ngot stdout:\n%s\ngot stderr:\n%s",
 				substr, h.Output.Stdout(), h.Output.Stderr())
@@ -26,7 +26,7 @@ func OutputContains(substr string) fw.AssertFunc {
 // the given substring.
 func OutputNotContains(substr string) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {
-		combined := h.Output.Stdout() + h.Output.Stderr()
+		combined := h.Output.Stdout() + "\n" + h.Output.Stderr()
 		if strings.Contains(combined, substr) {
 			return fmt.Errorf("expected output NOT to contain %q\ngot stdout:\n%s\ngot stderr:\n%s",
 				substr, h.Output.Stdout(), h.Output.Stderr())

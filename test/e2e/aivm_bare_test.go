@@ -109,7 +109,7 @@ func assertStepFails(step framework.StepFunc, wantSubstr string) framework.StepF
 			return fmt.Errorf("expected step to fail with %q but it succeeded", wantSubstr)
 		}
 		if wantSubstr != "" {
-			output := h.Output.Stdout() + h.Output.Stderr()
+			output := h.Output.Stdout() + "\n--- STDERR ---\n" + h.Output.Stderr()
 			if !strings.Contains(output, wantSubstr) {
 				return fmt.Errorf("expected output containing %q\ngot stdout: %s\ngot stderr: %s",
 					wantSubstr, h.Output.Stdout(), h.Output.Stderr())

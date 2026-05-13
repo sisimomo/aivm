@@ -167,7 +167,7 @@ func (w *prefixWriter) Write(p []byte) (n int, err error) {
 }
 
 func init() {
-	if os.Getenv("NO_COLOR") != "" {
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
 		colorReset = ""
 		colorBlue = ""
 		colorGreen = ""

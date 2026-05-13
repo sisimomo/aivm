@@ -68,4 +68,3 @@ func (r *ContainerVMRegistry) DestroyAll() {
 		d.DestroyWithImages()
 	}
 }
-

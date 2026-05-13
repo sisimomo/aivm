@@ -56,23 +56,29 @@ func CLI(args ...string) fw.StepFunc {
 // multiple times. The goroutine is also cancelled automatically when the test
 // ends via context propagation.
 func AsyncCLI(args ...string) (cancel fw.StepFunc, bg fw.StepFunc) {
-	ctx, cancelCtx := context.WithCancel(context.Background())
+	var cancelCtx context.CancelFunc
+	result := make(chan error, 1)
 
-	done := make(chan struct{})
-
-	bg = func(_ context.Context, h *fw.Harness) error {
+	bg = func(ctx context.Context, h *fw.Harness) error {
+		var bgCtx context.Context
+		bgCtx, cancelCtx = context.WithCancel(ctx)
 		go func() {
-			defer close(done)
-			_ = h.RunCLI(ctx, args...)
+			result <- h.RunCLI(bgCtx, args...)
 		}()
 		return nil
 	}
 
 	cancel = func(_ context.Context, _ *fw.Harness) error {
-		cancelCtx()
+		if cancelCtx != nil {
+			cancelCtx()
+		}
 		select {
-		case <-done:
+		case err := <-result:
+			if err != nil && err != context.Canceled {
+				return fmt.Errorf("background CLI failed: %w", err)
+			}
 		case <-time.After(5 * time.Second):
+			return fmt.Errorf("background CLI did not exit within 5s")
 		}
 		return nil
 	}

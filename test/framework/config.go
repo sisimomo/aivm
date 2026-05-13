@@ -116,13 +116,25 @@ func WithPlugins(names ...string) Option {
 // WithMaxAgeDays configures the VM age threshold (in days) after which the user
 // is prompted to recreate the VM.
 func WithMaxAgeDays(days int) Option {
-	return func(c *testConfig) { c.RecreatePromptAfter = fmt.Sprintf("%dd", days) }
+	return func(c *testConfig) {
+		if days == -1 {
+			c.RecreatePromptAfter = "-1"
+		} else {
+			c.RecreatePromptAfter = fmt.Sprintf("%dd", days)
+		}
+	}
 }
 
 // WithBaseImageMaxAgeDays configures the base image age threshold (in days)
 // after which the user is prompted to rebuild the base image.
 func WithBaseImageMaxAgeDays(days int) Option {
-	return func(c *testConfig) { c.BaseImageRebuildPromptAfter = fmt.Sprintf("%dd", days) }
+	return func(c *testConfig) {
+		if days == -1 {
+			c.BaseImageRebuildPromptAfter = "-1"
+		} else {
+			c.BaseImageRebuildPromptAfter = fmt.Sprintf("%dd", days)
+		}
+	}
 }
 
 // WithProvider selects the AI agent provider by name (e.g. "claude", "copilot").

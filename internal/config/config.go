@@ -170,7 +170,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	home, _ := os.UserHomeDir()
 	stateDir := expandPath(d.StateDir, home)
 	if override := os.Getenv("AIVM_STATE_DIR"); override != "" {
-		stateDir = override
+		stateDir = expandPath(override, home)
 	}
 
 	if cfgPath != "" {

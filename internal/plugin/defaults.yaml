@@ -58,9 +58,9 @@ t3code:
     {{ if .state_dir }}
     T3_DIR="{{ .state_dir }}/.t3"
     mkdir -p "$T3_DIR"
-    # Make the directory world-writable so the container user (which may differ
-    # from the host user that created the bind-mount directory via chown) can
-    # write to it, while the host user retains ownership for cleanup.
-    sudo chmod 0777 "$T3_DIR"
+    # Make the directory world-writable with sticky bit so the container user
+    # (which may differ from the host user) can write to it, but only file
+    # owners can remove their own files (prevents accidental deletions).
+    sudo chmod 1777 "$T3_DIR"
     ln -sfn "$T3_DIR" "$HOME/.t3"
     {{ end }}

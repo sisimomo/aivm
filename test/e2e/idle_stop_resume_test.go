@@ -10,6 +10,7 @@ import (
 	"github.com/sisimomo/aivm/test/framework/assertions"
 	"github.com/sisimomo/aivm/test/framework/conditions"
 )
+
 // TestIdleStopResume verifies Phase 1 of the idle lifecycle:
 //
 //  1. Start the VM and launch the idle monitor in-process.
