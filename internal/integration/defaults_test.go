@@ -29,7 +29,11 @@ func TestLoadDefaults_AllIntegrationsPresent(t *testing.T) {
 	// Index by Key for easy lookup.
 	byKey := make(map[string]IntegrationDef, len(defs))
 	for _, d := range defs {
-		byKey[d.Key()] = d
+		k := d.Key()
+		if _, ok := byKey[k]; ok {
+			t.Fatalf("duplicate integration key: %s", k)
+		}
+		byKey[k] = d
 	}
 
 	cases := []struct {
@@ -92,7 +96,11 @@ func TestLoadDefaults_MCPJunglePorts(t *testing.T) {
 
 	byKey := make(map[string]IntegrationDef, len(defs))
 	for _, d := range defs {
-		byKey[d.Key()] = d
+		k := d.Key()
+		if _, ok := byKey[k]; ok {
+			t.Fatalf("duplicate integration key: %s", k)
+		}
+		byKey[k] = d
 	}
 
 	for _, key := range []string{"mcpjungle:claude", "mcpjungle:copilot"} {
