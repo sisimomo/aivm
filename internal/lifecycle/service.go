@@ -321,24 +321,43 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 		containerPort = 3773
 	}
 
-	if svc.T3Code.IsRunning() {
-		// When cfg.T3Code.Port == 0, Docker has auto-assigned a random host port.
-		// Query the actual forwarded port so the status message is correct.
-		hostPort := containerPort
-		if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
-			// Read the persisted pairing URL which contains the real host port.
-			if urlBytes, err := os.ReadFile(filepath.Join(cfg.StateDir, "t3code-url")); err == nil {
-				urlStr := string(urlBytes)
-				// Extract port from URL like "http://localhost:12345?token=..."
+	// Check the persistent state file first. Manager.IsRunning() is in-memory
+	// only and loses state between process invocations (e.g. `aivm start` exits
+	// and then `aivm` bare calls Start() again in a new process). The t3code-url
+	// file is written after a successful launch and removed by Stop()/Destroy(),
+	// so its presence means a previous process launched t3 serve successfully.
+	t3codeURLPath := filepath.Join(cfg.StateDir, "t3code-url")
+	if _, statErr := os.Stat(t3codeURLPath); statErr == nil {
+		// Verify t3 serve is still responsive inside the VM before trusting the file.
+		verifyScript := fmt.Sprintf(
+			`if curl -sf --max-time 3 http://localhost:%d/ >/dev/null 2>&1; then echo ok; else echo dead; fi`,
+			containerPort,
+		)
+		verifyOut, _ := svc.VM.RunOutput(ctx, verifyScript, nil)
+		if strings.TrimSpace(verifyOut) == "ok" {
+			// Determine the host-side port to display. When Docker auto-assigns
+			// a port (cfg.T3Code.Port == 0), the real host port is encoded in
+			// the persisted pairing URL.
+			hostPort := containerPort
+			if urlBytes, readErr := os.ReadFile(t3codeURLPath); readErr == nil {
 				re := regexp.MustCompile(`localhost:(\d+)`)
-				if matches := re.FindStringSubmatch(urlStr); len(matches) > 1 {
-					if p, err := strconv.Atoi(matches[1]); err == nil {
+				if m := re.FindStringSubmatch(string(urlBytes)); len(m) > 1 {
+					if p, atoiErr := strconv.Atoi(m[1]); atoiErr == nil {
 						hostPort = p
 					}
 				}
 			}
+			svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
+			return nil
 		}
-		svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
+		// t3 serve is no longer responsive — stale file. Remove it and re-launch.
+		_ = os.Remove(t3codeURLPath)
+	}
+
+	if svc.T3Code.IsRunning() {
+		// Same-process double-call: in-memory flag is set but state file may not
+		// exist yet (race). Display port from config.
+		svc.log().Success("T3 Code is already running at http://localhost:%d", containerPort)
 		return nil
 	}
 
