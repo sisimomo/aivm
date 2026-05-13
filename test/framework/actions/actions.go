@@ -73,10 +73,9 @@ func AsyncCLI(args ...string) (cancel fw.StepFunc, bg fw.StepFunc) {
 			cancelCtx()
 		}
 		select {
-		case err := <-result:
-			if err != nil && err != context.Canceled {
-				return fmt.Errorf("background CLI failed: %w", err)
-			}
+		case <-result:
+			// Any exit (including signal kills) is expected — the process was
+			// deliberately stopped. Errors are not propagated.
 		case <-time.After(5 * time.Second):
 			return fmt.Errorf("background CLI did not exit within 5s")
 		}

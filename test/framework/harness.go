@@ -188,6 +188,12 @@ func (h *Harness) RunCLI(ctx context.Context, args ...string) error {
 	cmd.Env = h.buildSubprocessEnv()
 	cmd.Stdout = h.Output
 	cmd.Stderr = &stderrWriter{h.Output}
+	// WaitDelay ensures that when the context is cancelled (e.g. by AsyncCLI's
+	// cancel step), the I/O copy goroutines are forcibly terminated after 3s
+	// even if child processes spawned by aivm-test (e.g. docker exec) still
+	// hold the pipe write-ends open. Without this, cmd.Run() blocks until the
+	// child processes exit, causing the 5s cancel timeout to fire.
+	cmd.WaitDelay = 3 * time.Second
 
 	if h.tc.Interactive {
 		stdin := strings.Join(h.tc.StdinAnswers, "\n")

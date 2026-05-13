@@ -80,11 +80,6 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 
 	svc.log().Step("Starting aivm")
 
-	svc.log().Info("Ensuring MCPJungle is running...")
-	if err := svc.MCP.Start(ctx); err != nil {
-		return fmt.Errorf("starting MCPJungle: %w", err)
-	}
-
 	opts := buildStartOptions(svc.VM, cfg, svc.activeAgentDef())
 
 	status, err := svc.VM.Status(ctx)
