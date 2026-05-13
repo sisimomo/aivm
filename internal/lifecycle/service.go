@@ -322,7 +322,23 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 	}
 
 	if svc.T3Code.IsRunning() {
-		svc.log().Success("T3 Code is already running at http://localhost:%d", containerPort)
+		// When cfg.T3Code.Port == 0, Docker has auto-assigned a random host port.
+		// Query the actual forwarded port so the status message is correct.
+		hostPort := containerPort
+		if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
+			// Read the persisted pairing URL which contains the real host port.
+			if urlBytes, err := os.ReadFile(filepath.Join(cfg.StateDir, "t3code-url")); err == nil {
+				urlStr := string(urlBytes)
+				// Extract port from URL like "http://localhost:12345?token=..."
+				re := regexp.MustCompile(`localhost:(\d+)`)
+				if matches := re.FindStringSubmatch(urlStr); len(matches) > 1 {
+					if p, err := strconv.Atoi(matches[1]); err == nil {
+						hostPort = p
+					}
+				}
+			}
+		}
+		svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
 		return nil
 	}
 
@@ -356,6 +372,10 @@ fi
 		return fmt.Errorf("starting t3 serve in VM: %w", startErr)
 	}
 	svc.log().Warn("t3 diag: %s", strings.TrimSpace(startOut))
+	// Fail fast if t3 binary is missing
+	if strings.Contains(startOut, "t3_diag: path=NOT_FOUND") {
+		return fmt.Errorf("t3 binary not found in VM — bootstrap may have failed")
+	}
 
 	svc.log().Info("Starting T3 Code tunnel...")
 	if err := svc.T3Code.Launch(ctx, containerPort); err != nil {
@@ -378,34 +398,44 @@ done
 sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 `, containerPort)
 
-	fallbackURL := fmt.Sprintf("http://localhost:%d", containerPort)
 	pairingInfo, err := svc.VM.RunOutput(ctx, pairingScript, nil)
 	if err != nil {
 		svc.log().Warn("Could not read T3 Code pairing info: %v", err)
 		if logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || true", nil); strings.TrimSpace(logContents) != "" {
 			svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
 		}
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(fallbackURL), 0644)
-		svc.log().Success("T3 Code is running at %s", fallbackURL)
-	} else if strings.TrimSpace(pairingInfo) != "" {
-		// Rewrite any VM-internal IP address to localhost so every URL the user
-		// sees is consistent and actually reachable from the host. t3 serve may
-		// advertise its container IP (e.g. 172.17.0.x) rather than 127.0.0.1,
-		// so we replace any IPv4 address rather than only 127.0.0.1.
-		displayInfo := rewriteIPsToLocalhost(strings.TrimSpace(pairingInfo))
-		// Persist the token-bearing URL so 'aivm status' can show it later.
-		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0644)
-		fmt.Fprintln(svc.log().Out, displayInfo)
-	} else {
+		return fmt.Errorf("failed to retrieve T3 Code pairing info: %w", err)
+	}
+
+	trimmedInfo := strings.TrimSpace(pairingInfo)
+	if trimmedInfo == "" {
 		// HTTP poll timed out or t3 serve hasn't printed pairing info yet.
-		// Log the raw t3code.log for diagnostics, then write the fallback URL
-		// so downstream state checks (e.g. 'aivm status') can still function.
+		// Fail fast instead of writing a fallback URL.
 		logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || echo '(t3code.log not found)'", nil)
 		svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(fallbackURL), 0644)
-		svc.log().Success("T3 Code is running at %s", fallbackURL)
+		return fmt.Errorf("T3 Code server did not respond or print pairing info within timeout")
 	}
+
+	// Rewrite any VM-internal IP address to localhost so every URL the user
+	// sees is consistent and actually reachable from the host. t3 serve may
+	// advertise its container IP (e.g. 172.17.0.x) rather than 127.0.0.1,
+	// so we replace any IPv4 address rather than only 127.0.0.1.
+	displayInfo := rewriteIPsToLocalhost(trimmedInfo)
+
+	// When cfg.T3Code.Port == 0 and Docker auto-assigned a host port, we need
+	// to extract the actual forwarded port from the pairing URL.
+	if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
+		// parsePairingURL will extract the real host port from the pairing info
+		pairingURL := parsePairingURL(pairingInfo, containerPort)
+		// Persist the token-bearing URL with the real host port (owner-only permissions)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+	} else {
+		// Persist the token-bearing URL so 'aivm status' can show it later (owner-only permissions)
+		pairingURL := parsePairingURL(pairingInfo, containerPort)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+	}
+
+	fmt.Fprintln(svc.log().Out, displayInfo)
 	return nil
 }
 
