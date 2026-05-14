@@ -49,7 +49,6 @@ func TestCLIStartStop(t *testing.T) {
 		Assert("Status output contains header", assertions.OutputContains("aivm status")).
 		Assert("Status output contains profile name", assertions.OutputContains(h.Profile)).
 		Assert("Status output shows running", assertions.OutputContains("Running")).
-		Assert("Status output contains MCPJungle line", assertions.OutputContains("MCPJungle")).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm stop", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).

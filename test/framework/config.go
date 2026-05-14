@@ -52,10 +52,6 @@ type testConfig struct {
 	// StdinAnswers is fed to the subprocess stdin, one answer per prompt.
 	StdinAnswers []string
 
-	// MCPJunglePort is the host port for the mcpjungle container. Allocated
-	// once per harness via FreePort() so parallel tests don't share port 7593.
-	MCPJunglePort int
-
 	// T3CodeEnabled, when true, sets t3code.enable: true in the YAML config.
 	T3CodeEnabled bool
 	// T3CodePort sets t3code.port in the YAML. 0 = auto-assign by Docker.
@@ -65,6 +61,15 @@ type testConfig struct {
 	Plugins []string
 	// VMEnv sets vm.env in the YAML.
 	VMEnv map[string]string
+	// Sidecars is the list of sidecar containers to configure alongside the VM.
+	Sidecars []SidecarEntry
+}
+
+// SidecarEntry describes a single Docker sidecar to include in the test config.
+type SidecarEntry struct {
+	Name    string
+	Args    string
+	Enabled *bool // nil → omitted (defaults to true); false → enabled: false
 }
 
 func defaultTestConfig() testConfig {
@@ -171,6 +176,12 @@ func WithVMEnv(env map[string]string) Option {
 	return func(c *testConfig) { c.VMEnv = env }
 }
 
+// WithSidecars adds sidecar container entries to the test config. Each sidecar
+// is started and stopped with the VM lifecycle, and cleaned up in t.Cleanup.
+func WithSidecars(entries ...SidecarEntry) Option {
+	return func(c *testConfig) { c.Sidecars = append(c.Sidecars, entries...) }
+}
+
 // WithLaunchCommand overrides the launch_command for the active provider in
 // the generated aivm.yaml. Use this when a test needs a long-lived agent
 // process (e.g. "sleep 30" for session idle tests) rather than the default
@@ -250,18 +261,6 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		}
 	}
 
-	// ── mcp_jungle ────────────────────────────────────────────────────────
-	// Enabled for real — mcpjungle starts as a host Docker container named
-	// "mcpjungle-<profile>" (unique per harness, safe for parallel tests).
-	// Port is allocated per-harness via FreePort() to avoid parallel conflicts.
-	// data_dir is scoped to stateDir so concurrent tests do not share
-	// MCPJungle state (shared state causes startup conflicts / health check
-	// timeouts when multiple containers bind-mount the same host path).
-	fmt.Fprintf(&sb, "mcp_jungle:\n")
-	fmt.Fprintf(&sb, "  enable: true\n")
-	fmt.Fprintf(&sb, "  port: %d\n", tc.MCPJunglePort)
-	fmt.Fprintf(&sb, "  data_dir: %q\n", stateDir+"/mcpjungle-data")
-
 	// ── t3code ────────────────────────────────────────────────────────────
 	fmt.Fprintf(&sb, "t3code:\n")
 	fmt.Fprintf(&sb, "  enable: %v\n", tc.T3CodeEnabled)
@@ -299,6 +298,18 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  enabled:\n")
 		for _, p := range plugins {
 			fmt.Fprintf(&sb, "    - %q\n", p)
+		}
+	}
+
+	// ── sidecars ──────────────────────────────────────────────────────────
+	if len(tc.Sidecars) > 0 {
+		fmt.Fprintf(&sb, "sidecars:\n")
+		for _, sc := range tc.Sidecars {
+			fmt.Fprintf(&sb, "  - name: %q\n", sc.Name)
+			fmt.Fprintf(&sb, "    args: %q\n", sc.Args)
+			if sc.Enabled != nil && !*sc.Enabled {
+				fmt.Fprintf(&sb, "    enabled: false\n")
+			}
 		}
 	}
 

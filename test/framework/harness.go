@@ -37,13 +37,6 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-// mcpJungleContainerName returns the mcpjungle Docker container name for this
-// harness. It mirrors the naming used by cmd/aivm/main.go: "mcpjungle-<profile>".
-// This lets cleanup remove the container even when aivm stop was never called.
-func mcpJungleContainerName(profile string) string {
-	return "mcpjungle-" + profile
-}
-
 // Harness holds the full isolated test environment for one test.
 // Each Harness gets a unique Docker container profile and temp state directory.
 // Both are always cleaned up when the test finishes, even on failure.
@@ -62,6 +55,10 @@ type Harness struct {
 	// between RunCLI calls when per-command isolation matters.
 	Output  *OutputBuffer
 	workDir string
+	// sidecarCleanupNames is the union of all sidecar names ever registered on
+	// this Harness (via WithSidecars or ChangeSidecars). Used by t.Cleanup so
+	// that containers created before a ChangeSidecars call are still removed.
+	sidecarCleanupNames map[string]struct{}
 }
 
 // New creates a new Harness for the calling test.
@@ -83,11 +80,6 @@ func New(t *testing.T, opts ...Option) *Harness {
 	tc := defaultTestConfig()
 	for _, opt := range opts {
 		opt(&tc)
-	}
-	// Allocate a unique mcpjungle host port per harness to prevent parallel
-	// tests from competing for the default port (7593).
-	if tc.MCPJunglePort == 0 {
-		tc.MCPJunglePort = FreePort()
 	}
 
 	suffix := mustRandomHex(6)
@@ -120,14 +112,18 @@ func New(t *testing.T, opts ...Option) *Harness {
 	sessions := session.NewStore(stateDir)
 
 	h := &Harness{
-		t:        t,
-		tc:       tc,
-		StateDir: stateDir,
-		Profile:  profile,
-		DockerVM: dockerVM,
-		Sessions: sessions,
-		Output:   &OutputBuffer{},
-		workDir:  tc.DevRoot,
+		t:                   t,
+		tc:                  tc,
+		StateDir:            stateDir,
+		Profile:             profile,
+		DockerVM:            dockerVM,
+		Sessions:            sessions,
+		Output:              &OutputBuffer{},
+		workDir:             tc.DevRoot,
+		sidecarCleanupNames: make(map[string]struct{}),
+	}
+	for _, sc := range tc.Sidecars {
+		h.sidecarCleanupNames[sc.Name] = struct{}{}
 	}
 
 	// Write initial config YAML so the subprocess can read it.
@@ -135,7 +131,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 
 	t.Cleanup(func() {
 		h.killIdleMonitor()
-		h.killMCPJungle()
+		// Remove any sidecar containers created for this profile. These are
+		// normally stopped by 'aivm stop/destroy', but may be left running if
+		// the test fails before reaching that step. We track ALL names ever
+		// registered (including those removed via ChangeSidecars) so nothing leaks.
+		for name := range h.sidecarCleanupNames {
+			containerName := "aivm-" + profile + "-" + name
+			exec.Command("docker", "rm", "-f", containerName).Run() //nolint:errcheck
+		}
 		dockerVM.DestroyWithImages()
 		// Files inside the .t3 bind-mount may be owned by the container user
 		// (different UID than the host test runner). Use sudo chmod -R 0777 so
@@ -245,6 +248,18 @@ func (h *Harness) ChangeVMEnv(env map[string]string) {
 	h.WriteConfig()
 }
 
+// ChangeSidecars replaces the sidecars list in the active config. Updates tc
+// and rewrites the YAML config so the next RunCLI picks up the change.
+// All sidecar names (old and new) are accumulated in the cleanup set so no
+// container is left running at test teardown.
+func (h *Harness) ChangeSidecars(entries []SidecarEntry) {
+	for _, sc := range entries {
+		h.sidecarCleanupNames[sc.Name] = struct{}{}
+	}
+	h.tc.Sidecars = entries
+	h.WriteConfig()
+}
+
 // ProviderLaunchCount returns the number of times the agent launch command was
 // executed inside the Docker container. It reads the line count of the
 // /tmp/.aivm_agent_launched marker file (each launch appends one line).
@@ -318,18 +333,6 @@ func (h *Harness) verifyIdleMonitorPID(pid int) bool {
 	// idle-monitor is invoked with the state directory as an argument.
 	// Check if the cmdline contains "idle-monitor" and our StateDir.
 	return strings.Contains(cmdline, "idle-monitor") && strings.Contains(cmdline, h.StateDir)
-}
-
-// killMCPJungle removes the mcpjungle Docker container for this harness. This
-// is a best-effort cleanup that runs even when aivm stop was never called (e.g.
-// test panicked or timed out). Errors are silently ignored.
-func (h *Harness) killMCPJungle() {
-	name := mcpJungleContainerName(h.Profile)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	// stop then remove; ignore errors (container may not exist)
-	_ = exec.CommandContext(ctx, "docker", "stop", name).Run()
-	_ = exec.CommandContext(ctx, "docker", "rm", "-f", name).Run()
 }
 
 // buildSubprocessEnv returns the environment for subprocess invocations.
