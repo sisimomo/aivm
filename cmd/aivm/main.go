@@ -73,32 +73,24 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vm backend: %w", err)
 	}
+
 	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
 	if err != nil {
 		aivmlog.Warn("Docker socket: %v", err)
 		dockerHost = ""
 	}
 
-	devRoot := ""
-	for _, m := range cfg.VM.ParsedMounts {
-		if m.Writable {
-			devRoot = m.HostPath
-			break
-		}
-	}
-
-	mcpMgr := &mcp.Manager{
-		Port:          cfg.MCP.Port,
-		DataDir:       cfg.MCP.DataDir,
-		DockerHost:    dockerHost,
-		DevRoot:       devRoot,
-		ImageTag:      cfg.MCP.ImageTag,
-		ServerMode:    cfg.MCP.ServerMode,
-		ContainerName: "mcpjungle-" + vmInst.Profile(),
+	home, _ := os.UserHomeDir()
+	sidecarMgr := &mcp.Manager{
+		Sidecars:   cfg.Sidecars,
+		DockerHost: dockerHost,
+		Profile:    vmInst.Profile(),
+		DataDir:    cfg.StateDir,
+		HomeDir:    home,
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
-	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
+	mon := monitor.NewIdleMonitor(sessions, vmInst, sidecarMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 	if cfg.Idle.PollInterval > 0 {
 		mon.PollInterval = cfg.Idle.PollInterval
 	}
@@ -124,7 +116,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,
-			MCP:          mcpMgr,
+			Sidecars:     sidecarMgr,
 			T3Code:       t3codeMgr,
 			Sessions:     sessions,
 			Monitor:      mon,

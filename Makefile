@@ -24,7 +24,7 @@ install: build
 	@mkdir -p $(INSTALL_DIR)
 	sudo cp bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
 	sudo codesign --force --sign - $(INSTALL_DIR)/$(BINARY)
-	@mkdir -p $(STATE_DIR)/logs $(STATE_DIR)/sessions $(STATE_DIR)/mcpjungle-data $(STATE_DIR)/plugins
+	@mkdir -p $(STATE_DIR)/logs $(STATE_DIR)/sessions $(STATE_DIR)/plugins
 	@if [ ! -f $(STATE_DIR)/aivm.yaml ]; then \
 	  cp aivm.example.yaml $(STATE_DIR)/aivm.yaml; \
 	  echo "→ Edit $(STATE_DIR)/aivm.yaml and set auth.claude_token before running $(BINARY)"; \

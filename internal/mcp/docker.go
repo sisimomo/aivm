@@ -59,7 +59,7 @@ func FindHostDockerSocket(ctx context.Context, colimaProfile string) (string, er
 	}
 
 	return "", fmt.Errorf(`no suitable host Docker runtime found.
-MCPJungle requires a Docker runtime separate from the aivm Colima VM.
+Sidecars require a Docker runtime separate from the aivm Colima VM.
 Options:
   • Docker Desktop:  https://www.docker.com/products/docker-desktop/
   • OrbStack:        https://orbstack.dev/

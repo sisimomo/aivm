@@ -21,7 +21,7 @@ var defaultsYAML []byte
 
 type Config struct {
 	VM           VMConfig                     `mapstructure:"vm"`
-	MCP          MCPConfig                    `mapstructure:"mcp_jungle"`
+	Sidecars     []SidecarConfig              `mapstructure:"sidecars"`
 	T3Code       T3CodeConfig                 `mapstructure:"t3code"`
 	Idle         IdleConfig                   `mapstructure:"idle"`
 	Agents       AgentsConfig                 `mapstructure:"agents"`
@@ -81,12 +81,28 @@ func (vm *VMConfig) Profile() string {
 	return "aivm"
 }
 
-type MCPConfig struct {
-	Enable     bool   `mapstructure:"enable"`
-	Port       int    `mapstructure:"port"`
-	DataDir    string `mapstructure:"data_dir"`
-	ImageTag   string `mapstructure:"image_tag"`
-	ServerMode string `mapstructure:"server_mode"`
+// SidecarConfig defines a single Docker container to run alongside the VM.
+// The container is started and stopped with the VM lifecycle.
+type SidecarConfig struct {
+	// Name is required and used for container naming (aivm-<profile>-<name>),
+	// log routing (`aivm logs <name>`), and status display.
+	Name string `mapstructure:"name"`
+	// Args is the raw docker run argument string appended after
+	// `docker run -d --name <container-name>`. It supports Go template
+	// interpolation with the following variables:
+	//   {{ .aivm_data_dir }} — the aivm state directory (e.g. ~/.aivm)
+	//   {{ .profile }}       — the VM profile name
+	//   {{ .home_dir }}      — the user's home directory
+	Args string `mapstructure:"args"`
+	// Enabled controls whether this sidecar is active. Defaults to true when
+	// not specified. Set to false to temporarily disable without removing config.
+	Enabled *bool `mapstructure:"enabled"`
+}
+
+// IsEnabled returns true if the sidecar should be started.
+// A nil Enabled pointer means the sidecar is enabled by default.
+func (s SidecarConfig) IsEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 // T3CodeConfig holds configuration for the optional T3 Code web GUI integration.
@@ -203,7 +219,6 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.MCP.DataDir = expandPath(cfg.MCP.DataDir, home)
 	cfg.StateDir = stateDir
 
 	if err := validateAndParse(&cfg, home); err != nil {

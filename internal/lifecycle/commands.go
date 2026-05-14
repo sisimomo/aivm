@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -43,11 +44,28 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 		fmt.Fprintf(out, "  │  Base image:        (none — run 'aivm start' to create)\n")
 	}
 
-	mcpIcon := "❌"
-	if svc.MCP.IsHealthy(ctx) {
-		mcpIcon = "✅"
+	// Sidecars section — only shown when at least one sidecar is configured.
+	if len(cfg.Sidecars) > 0 {
+		hm := svc.Sidecars.HealthMap(ctx)
+		sidecarNames := make([]string, 0, len(cfg.Sidecars))
+		enabledSet := make(map[string]bool, len(cfg.Sidecars))
+		for _, sc := range cfg.Sidecars {
+			sidecarNames = append(sidecarNames, sc.Name)
+			enabledSet[sc.Name] = sc.IsEnabled()
+		}
+		sort.Strings(sidecarNames)
+		for _, n := range sidecarNames {
+			if !enabledSet[n] {
+				fmt.Fprintf(out, "  │  Sidecar %-12s — (disabled)\n", n+":")
+				continue
+			}
+			icon := "❌"
+			if hm[n] {
+				icon = "✅"
+			}
+			fmt.Fprintf(out, "  │  Sidecar %-12s %s\n", n+":", icon)
+		}
 	}
-	fmt.Fprintf(out, "  │  MCPJungle:         %s port %d\n", mcpIcon, cfg.MCP.Port)
 
 	if cfg.T3Code.Enable {
 		t3Icon := "❌"
@@ -132,13 +150,12 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 	return svc.VM.SSH(ctx)
 }
 
-// Logs streams logs for the given service. Service may be one of:
-// "mcpjungle", "monitor", "idle-monitor", "bootstrap", "vm".
+// Logs streams logs for the given service. Built-in services are
+// "monitor" (or "idle-monitor"), "bootstrap", and "vm". Any other name is
+// treated as a sidecar name and routed to the sidecar manager.
 func (svc *LifecycleService) Logs(service string) error {
 	stateDir := svc.Config.StateDir
 	switch service {
-	case "mcpjungle":
-		return svc.MCP.Logs()
 	case "monitor", "idle-monitor":
 		return tailFile(filepath.Join(stateDir, "logs", "idle-monitor.log"))
 	case "bootstrap":
@@ -151,7 +168,8 @@ func (svc *LifecycleService) Logs(service string) error {
 		logFile := fmt.Sprintf("%s.log", backend)
 		return tailFile(filepath.Join(stateDir, "logs", logFile))
 	default:
-		return fmt.Errorf("unknown service: %s\nAvailable: mcpjungle | monitor | bootstrap | vm", service)
+		// Treat as a sidecar name.
+		return svc.Sidecars.Logs(service)
 	}
 }
 

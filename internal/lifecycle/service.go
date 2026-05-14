@@ -29,7 +29,7 @@ import (
 type LifecycleService struct {
 	Config   *config.Config
 	VM       vm.VM
-	MCP      mcp.MCPManager
+	Sidecars mcp.SidecarManager
 	T3Code   t3code.Manager
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
@@ -120,6 +120,10 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return err
 	}
 
+	if err := svc.Sidecars.StartAll(ctx); err != nil {
+		svc.log().Warn("starting sidecars: %v", err)
+	}
+
 	if cfg.T3Code.Enable {
 		svc.log().Success("T3 Code mode — idle monitoring disabled")
 		if err := svc.launchT3Code(ctx); err != nil {
@@ -193,8 +197,8 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
 	}
-	if err := svc.MCP.Stop(ctx); err != nil {
-		svc.log().Warn("MCPJungle stop error: %v", err)
+	if err := svc.Sidecars.StopAll(ctx); err != nil {
+		svc.log().Warn("sidecar stop error: %v", err)
 	}
 	svc.log().Success("aivm stopped")
 	return nil
@@ -210,8 +214,8 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return err
 	}
-	if err := svc.MCP.Stop(ctx); err != nil {
-		svc.log().Warn("MCPJungle stop error: %v", err)
+	if err := svc.Sidecars.StopAll(ctx); err != nil {
+		svc.log().Warn("sidecar stop error: %v", err)
 	}
 	svc.log().Success("VM destroyed")
 	return nil

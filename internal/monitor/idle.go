@@ -17,7 +17,7 @@ import (
 type IdleMonitor struct {
 	Sessions      *session.Store
 	VM            vm.VM
-	MCP           mcp.MCPManager
+	Sidecars      mcp.SidecarManager
 	Timeout       time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
@@ -28,11 +28,11 @@ type IdleMonitor struct {
 	DisableDaemonLaunch bool
 }
 
-func NewIdleMonitor(sessions *session.Store, v vm.VM, m mcp.MCPManager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
+func NewIdleMonitor(sessions *session.Store, v vm.VM, s mcp.SidecarManager, timeout, deleteTimeout time.Duration, stateDir string) *IdleMonitor {
 	return &IdleMonitor{
 		Sessions:      sessions,
 		VM:            v,
-		MCP:           m,
+		Sidecars:      s,
 		Timeout:       timeout,
 		DeleteTimeout: deleteTimeout,
 		PollInterval:  30 * time.Second,
@@ -120,16 +120,16 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 				aivmlog.Debug("idle for %s, stop in %s", idle.Round(time.Second), remaining.Round(time.Second))
 
 				if idle >= m.Timeout {
-					aivmlog.Step("Idle timeout reached — stopping VM and MCPJungle (Phase 1)")
+					aivmlog.Step("Idle timeout reached — stopping VM and sidecars (Phase 1)")
 					if err := m.VM.Stop(ctx); err != nil {
 						aivmlog.Warn("VM stop error: %v", err)
 					}
-					if err := m.MCP.Stop(ctx); err != nil {
-						aivmlog.Warn("MCPJungle stop error: %v", err)
+					if err := m.Sidecars.StopAll(ctx); err != nil {
+						aivmlog.Warn("sidecar stop error: %v", err)
 					}
 					m.Sessions.WriteVMStoppedAt()
 					idleSince = time.Time{}
-					aivmlog.Success("VM and MCPJungle stopped — will delete VM after %s if not resumed", m.DeleteTimeout)
+					aivmlog.Success("VM and sidecars stopped — will delete VM after %s if not resumed", m.DeleteTimeout)
 				}
 
 			case vm.StatusStopped:
@@ -154,7 +154,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 			case vm.StatusNotFound:
 				// VM already gone — nothing left to monitor.
 				aivmlog.Info("VM no longer exists — idle monitor exiting")
-				_ = m.MCP.Stop(ctx)
+				_ = m.Sidecars.StopAll(ctx)
 				return nil
 			}
 		}
@@ -167,8 +167,8 @@ func (m *IdleMonitor) destroy(ctx context.Context) error {
 		aivmlog.Warn("VM destroy error: %v", err)
 	}
 	m.Sessions.ClearVMStoppedAt()
-	if err := m.MCP.Stop(ctx); err != nil {
-		aivmlog.Warn("MCPJungle stop error: %v", err)
+	if err := m.Sidecars.StopAll(ctx); err != nil {
+		aivmlog.Warn("sidecar stop error: %v", err)
 	}
 	aivmlog.Success("VM deleted — resources reclaimed")
 	return nil
