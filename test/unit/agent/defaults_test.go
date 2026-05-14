@@ -1,14 +1,17 @@
-package agent
+package agent_test
 
 import (
+	"reflect"
 	"testing"
 	"text/template"
+
+	"github.com/sisimomo/aivm/internal/agent"
 )
 
 // TestLoadDefs_ParsesWithoutError ensures the embedded defaults.yaml is valid YAML
 // and maps cleanly onto the Def struct.
 func TestLoadDefs_ParsesWithoutError(t *testing.T) {
-	defs, err := LoadDefs()
+	defs, err := agent.LoadDefs()
 	if err != nil {
 		t.Fatalf("LoadDefs: %v", err)
 	}
@@ -20,7 +23,7 @@ func TestLoadDefs_ParsesWithoutError(t *testing.T) {
 // TestLoadDefs_AllAgentsPresent validates that every built-in agent is declared
 // with the fields required for bootstrap and runtime launch.
 func TestLoadDefs_AllAgentsPresent(t *testing.T) {
-	defs, err := LoadDefs()
+	defs, err := agent.LoadDefs()
 	if err != nil {
 		t.Fatalf("LoadDefs: %v", err)
 	}
@@ -56,7 +59,7 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 // script parses as a valid Go text/template. This catches accidental breakage
 // of template syntax (e.g. a stray {{ or }}) before any Docker container runs.
 func TestLoadDefs_ScriptsAreValidTemplates(t *testing.T) {
-	defs, err := LoadDefs()
+	defs, err := agent.LoadDefs()
 	if err != nil {
 		t.Fatalf("LoadDefs: %v", err)
 	}
@@ -79,7 +82,7 @@ func TestLoadDefs_ScriptsAreValidTemplates(t *testing.T) {
 // fields correctly. These fields drive the actual VM provisioning, so a
 // mis-mapping would silently break bootstrap without any script error.
 func TestLoadDefs_ToPluginDef(t *testing.T) {
-	defs, err := LoadDefs()
+	defs, err := agent.LoadDefs()
 	if err != nil {
 		t.Fatalf("LoadDefs: %v", err)
 	}
@@ -95,10 +98,10 @@ func TestLoadDefs_ToPluginDef(t *testing.T) {
 		if pd.Setup != def.Setup {
 			t.Errorf("agent %q: ToPluginDef().Setup mismatch", name)
 		}
-		if len(pd.Dependencies) != len(def.Dependencies) {
+		if !reflect.DeepEqual(pd.Dependencies, def.Dependencies) {
 			t.Errorf("agent %q: ToPluginDef().Dependencies=%v, want %v", name, pd.Dependencies, def.Dependencies)
 		}
-		if len(pd.PathEntries) != len(def.PathEntries) {
+		if !reflect.DeepEqual(pd.PathEntries, def.PathEntries) {
 			t.Errorf("agent %q: ToPluginDef().PathEntries=%v, want %v", name, pd.PathEntries, def.PathEntries)
 		}
 	}

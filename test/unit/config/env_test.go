@@ -1,8 +1,10 @@
-package config
+package config_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/sisimomo/aivm/internal/config"
 )
 
 // --- ValidateEnvVarName ---
@@ -19,7 +21,7 @@ func TestValidateEnvVarName_Valid(t *testing.T) {
 		"Mixed_Case_123",
 	}
 	for _, name := range cases {
-		if err := ValidateEnvVarName(name); err != nil {
+		if err := config.ValidateEnvVarName(name); err != nil {
 			t.Errorf("ValidateEnvVarName(%q): unexpected error: %v", name, err)
 		}
 	}
@@ -39,7 +41,7 @@ func TestValidateEnvVarName_Invalid(t *testing.T) {
 		{"$FOO", "not allowed"},
 	}
 	for _, tc := range cases {
-		err := ValidateEnvVarName(tc.name)
+		err := config.ValidateEnvVarName(tc.name)
 		if err == nil {
 			t.Errorf("ValidateEnvVarName(%q): expected error, got nil", tc.name)
 			continue
@@ -64,7 +66,7 @@ func TestValidateEnvVarName_Invalid(t *testing.T) {
 
 func TestResolvedEnv_Nil(t *testing.T) {
 	t.Parallel()
-	vm := &VMConfig{}
+	vm := &config.VMConfig{}
 	if got := vm.ResolvedEnv(); got != nil {
 		t.Errorf("ResolvedEnv() with nil Env: got %v, want nil", got)
 	}
@@ -72,7 +74,7 @@ func TestResolvedEnv_Nil(t *testing.T) {
 
 func TestResolvedEnv_Empty(t *testing.T) {
 	t.Parallel()
-	vm := &VMConfig{Env: map[string]string{}}
+	vm := &config.VMConfig{Env: map[string]string{}}
 	if got := vm.ResolvedEnv(); got != nil {
 		t.Errorf("ResolvedEnv() with empty Env: got %v, want nil", got)
 	}
@@ -80,7 +82,7 @@ func TestResolvedEnv_Empty(t *testing.T) {
 
 func TestResolvedEnv_LiteralValues(t *testing.T) {
 	t.Parallel()
-	vm := &VMConfig{Env: map[string]string{
+	vm := &config.VMConfig{Env: map[string]string{
 		"FOO": "bar",
 		"BAZ": "qux",
 	}}
@@ -95,7 +97,7 @@ func TestResolvedEnv_LiteralValues(t *testing.T) {
 
 func TestResolvedEnv_ExpandsHostVar(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_HOST", "expanded_value")
-	vm := &VMConfig{Env: map[string]string{
+	vm := &config.VMConfig{Env: map[string]string{
 		"MY_VAR": "${AIVM_UNIT_TEST_HOST}",
 	}}
 	got := vm.ResolvedEnv()
@@ -106,7 +108,7 @@ func TestResolvedEnv_ExpandsHostVar(t *testing.T) {
 
 func TestResolvedEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
 	os.Unsetenv("AIVM_UNIT_TEST_MISSING")
-	vm := &VMConfig{Env: map[string]string{
+	vm := &config.VMConfig{Env: map[string]string{
 		"MY_VAR": "${AIVM_UNIT_TEST_MISSING}",
 	}}
 	got := vm.ResolvedEnv()
@@ -118,7 +120,7 @@ func TestResolvedEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
 func TestResolvedEnv_OriginalMapUnmodified(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_ORIG", "resolved")
 	original := map[string]string{"V": "${AIVM_UNIT_TEST_ORIG}"}
-	vm := &VMConfig{Env: original}
+	vm := &config.VMConfig{Env: original}
 	vm.ResolvedEnv()
 	if original["V"] != "${AIVM_UNIT_TEST_ORIG}" {
 		t.Errorf("original map was mutated: got %q", original["V"])

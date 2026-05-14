@@ -15,7 +15,7 @@ PARALLEL ?= 4
 # Override with: make test-e2e RUN=TestIdle
 RUN ?= .
 
-.PHONY: build install install-test uninstall clean test test-e2e test-bootstrap fmt vet release-snapshot release-dry-run
+.PHONY: build install install-test uninstall clean test test-unit test-e2e test-bootstrap fmt vet release-snapshot release-dry-run
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -45,8 +45,8 @@ uninstall:
 clean:
 	rm -rf bin/
 
-test:
-	go test ./...
+test-unit:
+	go test ./test/unit/...
 
 test-e2e:
 	@go build $(BUILD_FLAGS) -o bin/aivm-test ./cmd/aivm

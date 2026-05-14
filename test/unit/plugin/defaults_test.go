@@ -1,15 +1,17 @@
-package plugin
+package plugin_test
 
 import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"github.com/sisimomo/aivm/internal/plugin"
 )
 
 // TestLoadDefaults_ParsesWithoutError ensures the embedded defaults.yaml is
 // valid YAML and maps cleanly onto the PluginDef struct.
 func TestLoadDefaults_ParsesWithoutError(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -21,7 +23,7 @@ func TestLoadDefaults_ParsesWithoutError(t *testing.T) {
 // TestLoadDefaults_AllPluginsPresent validates that every built-in plugin is
 // declared with the fields required for bootstrap execution.
 func TestLoadDefaults_AllPluginsPresent(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -55,7 +57,7 @@ func TestLoadDefaults_AllPluginsPresent(t *testing.T) {
 // system as a dependency so baseline packages (curl, etc.) are guaranteed to
 // be installed before mise's setup script runs.
 func TestLoadDefaults_MiseDependsOnSystem(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -77,7 +79,7 @@ func TestLoadDefaults_MiseDependsOnSystem(t *testing.T) {
 // handles both x86_64 and aarch64 architectures. A regression here would
 // silently install the wrong binary on ARM hosts.
 func TestLoadDefaults_AWSCliIsArchAware(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -100,7 +102,7 @@ func TestLoadDefaults_AWSCliIsArchAware(t *testing.T) {
 // persistence path; if the reference is removed the bind-mount symlink is
 // never created and state is lost on VM recreation.
 func TestLoadDefaults_T3CodeUsesStateDirTemplate(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -118,7 +120,7 @@ func TestLoadDefaults_T3CodeUsesStateDirTemplate(t *testing.T) {
 // TestLoadDefaults_ScriptsAreValidTemplates parses every skip_if and setup
 // script as a Go text/template to catch syntax errors before any container runs.
 func TestLoadDefaults_ScriptsAreValidTemplates(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}

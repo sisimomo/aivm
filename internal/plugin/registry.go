@@ -44,7 +44,7 @@ func (r *Registry) lookup(name string) (Plugin, bool) {
 	if p, ok := r.plugins[name]; ok {
 		return p, ok
 	}
-	return newMisePlugin(name)
+	return NewMisePlugin(name)
 }
 
 func (r *Registry) Get(name string) (Plugin, bool) {

@@ -1,15 +1,17 @@
-package integration
+package integration_test
 
 import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"github.com/sisimomo/aivm/internal/integration"
 )
 
 // TestLoadDefaults_ParsesWithoutError ensures the embedded defaults.yaml is
 // valid YAML and maps cleanly onto []IntegrationDef.
 func TestLoadDefaults_ParsesWithoutError(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -21,13 +23,13 @@ func TestLoadDefaults_ParsesWithoutError(t *testing.T) {
 // TestLoadDefaults_AllIntegrationsPresent validates that every built-in
 // integration is declared with the correct To agent and non-empty scripts.
 func TestLoadDefaults_AllIntegrationsPresent(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
 
 	// Index by Key for easy lookup.
-	byKey := make(map[string]IntegrationDef, len(defs))
+	byKey := make(map[string]integration.IntegrationDef, len(defs))
 	for _, d := range defs {
 		k := d.Key()
 		if _, ok := byKey[k]; ok {
@@ -65,7 +67,7 @@ func TestLoadDefaults_AllIntegrationsPresent(t *testing.T) {
 // TestLoadDefaults_TemplatesCompile parses every skip_if and configure script
 // as a Go text/template to catch syntax errors before any container runs.
 func TestLoadDefaults_TemplatesCompile(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
@@ -89,12 +91,12 @@ func TestLoadDefaults_TemplatesCompile(t *testing.T) {
 // configure script. This prevents silent regressions where the port is
 // hard-coded or the template placeholder is removed.
 func TestLoadDefaults_MCPJunglePorts(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
 
-	byKey := make(map[string]IntegrationDef, len(defs))
+	byKey := make(map[string]integration.IntegrationDef, len(defs))
 	for _, d := range defs {
 		k := d.Key()
 		if _, ok := byKey[k]; ok {
@@ -121,7 +123,7 @@ func TestLoadDefaults_MCPJunglePorts(t *testing.T) {
 // TestLoadDefaults_KeyDerivation verifies that IntegrationDef.Key() returns
 // the Name field when set (as it is for all built-in integrations).
 func TestLoadDefaults_KeyDerivation(t *testing.T) {
-	defs, err := LoadDefaults()
+	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
