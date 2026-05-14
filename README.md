@@ -6,7 +6,7 @@
 [![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](go.mod)
 [![macOS only](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
 
-**aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
+**aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, optionally starts Docker sidecars (e.g. MCP servers) tied to the VM lifecycle, keeps sessions alive while you work, and auto-cleans up when you're idle.
 
 Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)
 
@@ -24,6 +24,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
   - [Idle Management](#idle-management)
   - [Plugins](#plugins)
   - [Integrations](#integrations)
+  - [Sidecars](#sidecars)
   - [T3 Code GUI](#t3-code-gui)
 - [Commands](#commands)
 - [Plugins](#plugins-1)
@@ -244,6 +245,51 @@ integrations:
 
 Omit `from` to run the integration whenever a given agent is active, regardless of plugins.
 
+### Sidecars
+
+Docker containers started and stopped alongside the VM. Use them to run MCP servers, proxies, or any other Docker-based services that should be available while the VM is running.
+
+```yaml
+sidecars:
+  - name: metamcp
+    args: >-
+      -p 127.0.0.1:3000:3000
+      -e AUTH_TOKEN=changeme
+      ghcr.io/metatool-ai/metamcp:latest
+```
+
+The container is named `aivm-<vm.name>-<sidecar-name>` (e.g. `aivm-aivm-metamcp`). The `args` value is the raw string appended after `docker run -d --name <container-name>` — it must include the image name and any flags you need.
+
+**Template variables** available in `args`:
+
+| Variable | Value |
+|----------|-------|
+| `{{ .aivm_data_dir }}` | aivm state directory (e.g. `~/.aivm`) |
+| `{{ .profile }}` | VM profile name (value of `vm.name`) |
+| `{{ .home_dir }}` | Host user home directory |
+
+```yaml
+sidecars:
+  - name: myserver
+    args: >-
+      -v {{ .aivm_data_dir }}/myserver:/data
+      -p 127.0.0.1:8080:8080
+      myimage:latest
+```
+
+**Disable without removing:**
+
+```yaml
+sidecars:
+  - name: metamcp
+    enabled: false
+    args: "..."
+```
+
+**Health display:** `aivm status` reports each sidecar's health. If the container's image defines a Docker `HEALTHCHECK`, that status is shown; otherwise the running state is used.
+
+**Log access:** `aivm logs <sidecar-name>` streams the container's stdout/stderr.
+
 ### T3 Code GUI
 
 When enabled, `aivm launch` starts the [T3 Code](https://t3.tools/) web UI inside the VM and port-forwards it to your host:
@@ -273,7 +319,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm destroy` | Delete the VM entirely (host state in `~/.aivm` is preserved) |
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
-| `aivm logs [service]` | Show logs for a service (`mcpjungle` · `monitor` · `bootstrap` · `vm` · `colima`) |
+| `aivm logs <service>` | Show logs for a service (`<sidecar-name>` · `monitor` · `bootstrap` · `vm`) |
 | `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
 | `aivm version` | Print version |
 

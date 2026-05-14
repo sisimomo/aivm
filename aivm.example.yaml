@@ -88,3 +88,14 @@ idle:
 #       my-tool status --agent claude >/dev/null 2>&1
 #     configure: |
 #       my-tool configure --agent claude
+
+# Docker sidecars — containers started and stopped with the VM.
+# Container names are "aivm-<vm.name>-<sidecar-name>".
+# Args is the raw string appended after `docker run -d --name <name>`, supporting
+# Go template variables: {{ .aivm_data_dir }}, {{ .profile }}, {{ .home_dir }}.
+# sidecars:
+#   - name: metamcp
+#     args: >-
+#       -p 127.0.0.1:3000:3000
+#       -e AUTH_TOKEN=changeme
+#       ghcr.io/metatool-ai/metamcp:latest
