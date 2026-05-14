@@ -7,8 +7,8 @@ system:
     ldconfig -p | grep -q libatomic.so
   setup: |
     export DEBIAN_FRONTEND=noninteractive
-    sudo apt-get update -qq
-    sudo apt-get install -y --no-install-recommends \
+    sudo apt-get -o Acquire::Retries=3 update -qq
+    sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
       git curl wget unzip zip ca-certificates gnupg lsb-release \
       bash-completion jq libatomic1 build-essential
 
@@ -58,5 +58,9 @@ t3code:
     {{ if .state_dir }}
     T3_DIR="{{ .state_dir }}/.t3"
     mkdir -p "$T3_DIR"
+    # Make the directory world-writable with sticky bit so the container user
+    # (which may differ from the host user) can write to it, but only file
+    # owners can remove their own files (prevents accidental deletions).
+    sudo chmod 1777 "$T3_DIR"
     ln -sfn "$T3_DIR" "$HOME/.t3"
     {{ end }}

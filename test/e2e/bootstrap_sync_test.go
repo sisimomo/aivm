@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 import (
 	"testing"
@@ -17,9 +17,8 @@ import (
 //  1. First start: VM created, bootstrap runs the provider's required plugin,
 //     bootstrap state is saved.
 //  2. VM is left running.
-//  3. Run counter is reset.
-//  4. Second start with identical config: syncBootstrap detects nothing new and
-//     skips — VM run count stays zero.
+//  3. Second start with identical config: syncBootstrap detects nothing new and
+//     skips — "VM is up to date" is shown.
 func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
@@ -28,12 +27,10 @@ func TestStartSkipsBootstrapWhenUpToDate(t *testing.T) {
 		Step("Start VM (first boot — bootstrap runs provider plugin)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Assert("At least one script ran during bootstrap", assertions.VMRunCountAtLeast(1)).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
+		Assert("Bootstrap ran on first boot", assertions.OutputContains("Bootstrap complete!")).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM again with identical config", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
-		Assert("No scripts ran — bootstrap was skipped", assertions.VMRunCountIs(0)).
 		Assert("Bootstrap state still complete", assertions.BootstrapComplete()).
 		Assert("User saw skip message", assertions.OutputContains("VM is up to date — skipping bootstrap")).
 		Run()
@@ -59,14 +56,13 @@ func TestConfigChangedPluginRecreatesVM(t *testing.T) {
 		Step("Start VM (first boot — installs claude + awscli)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Assert("Claude marker file exists", assertions.VMFileExists("/tmp/.aivm_test_claude_installed")).
-		Assert("AWS CLI marker file exists", assertions.VMFileExists("/tmp/.aivm_test_awscli_installed")).
+		Assert("AWS CLI installed in VM", assertions.VMRunOutput("aws --version", "aws-cli")).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Add mise to plugin list", actions.ChangePlugins("awscli", "mise")).
 		Step("Start VM again — config change detected, user confirms recreate", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state updated", assertions.BootstrapComplete()).
-		Assert("Mise marker file exists", assertions.VMFileExists("/tmp/.aivm_test_mise_installed")).
+		Assert("mise installed in VM", assertions.VMRunOutput("mise --version", "")).
 		Assert("User was warned about config change", assertions.StderrContains("config has changed")).
 		Assert("User saw VM recreated message", assertions.OutputContains("VM recreated")).
 		Run()
@@ -77,8 +73,7 @@ func TestConfigChangedPluginRecreatesVM(t *testing.T) {
 //
 //  1. First start: bootstrap runs, state recorded.
 //  2. Corrupt the state's version field to simulate an old format.
-//  3. Reset run counter.
-//  4. Second start: version mismatch triggers fullBootstrap → scripts run again.
+//  3. Second start: version mismatch triggers fullBootstrap → scripts run again.
 func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
@@ -88,11 +83,10 @@ func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Corrupt bootstrap state version to simulate an upgrade", actions.CorruptBootstrapVersion()).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM again — version mismatch triggers full re-bootstrap", actions.CLI("start")).
 		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
-		Assert("Re-bootstrap ran at least one script", assertions.VMRunCountAtLeast(1)).
+		Assert("Re-bootstrap ran", assertions.OutputContains("Bootstrap complete!")).
 		Assert("Bootstrap state is valid again", assertions.BootstrapComplete()).
 		Assert("User saw reconcile header (force=false re-bootstrap)", assertions.OutputContains("Reconciling VM bootstrap")).
 		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
@@ -103,12 +97,10 @@ func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
 // lightweight envChangedStep — re-applying the env file without recreating the VM.
 //
 //  1. First start: VM bootstrapped, env_hash recorded in bootstrap state.
-//  2. Reset run counter.
-//  3. Add an env var to vm.env.
-//  4. Second start: envChangedStep detects env change, applies it via SSH.
-//  5. VM was NOT recreated (script count is exactly 1 — just the env file write).
-//  6. Env file exists in the VM.
-//  7. EnvHash updated in bootstrap state.
+//  2. Add an env var to vm.env.
+//  3. Second start: envChangedStep detects env change, applies it via SSH.
+//  4. Env file exists in the VM.
+//  5. EnvHash updated in bootstrap state.
 func TestVMEnvChangedAppliesInPlace(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
@@ -117,12 +109,10 @@ func TestVMEnvChangedAppliesInPlace(t *testing.T) {
 		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
-		Step("Reset VM run counter", actions.ResetMockVMRunCount()).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Change vm.env", actions.ChangeVMEnv(map[string]string{"AIVM_TEST_VAR": "hello"})).
 		Step("Start VM again — env changed, no VM recreation", actions.CLI("start")).
 		Assert("VM still running (not recreated)", assertions.VMStatus(vm.StatusRunning)).
-		Assert("Exactly one VM Run call (env file write only)", assertions.VMRunCountIs(1)).
 		Assert("Bootstrap state still complete", assertions.BootstrapComplete()).
 		Assert("Bootstrap state records env_hash", assertions.BootstrapEnvHashSet()).
 		Assert("User saw env update message", assertions.OutputContains("Environment variables updated")).

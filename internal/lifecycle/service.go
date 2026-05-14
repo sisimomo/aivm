@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -79,11 +80,6 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 
 	svc.log().Step("Starting aivm")
 
-	svc.log().Info("Ensuring MCPJungle is running...")
-	if err := svc.MCP.Start(ctx); err != nil {
-		return fmt.Errorf("starting MCPJungle: %w", err)
-	}
-
 	opts := buildStartOptions(svc.VM, cfg, svc.activeAgentDef())
 
 	status, err := svc.VM.Status(ctx)
@@ -125,7 +121,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if cfg.T3Code.Enable {
-		svc.log().Info("T3 Code mode — idle monitoring disabled")
+		svc.log().Success("T3 Code mode — idle monitoring disabled")
 		if err := svc.launchT3Code(ctx); err != nil {
 			return err
 		}
@@ -281,7 +277,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	svc.log().Info("Host: %s", hostCWD)
 	svc.log().Info("VM:   %s", vmDir)
-	svc.log().Info("Launching %s in VM", svc.Provider.Description())
+	svc.log().Step("Launching %s in VM", svc.Provider.Description())
 
 	providerDef := svc.AgentDefs[svc.Provider.Name()]
 	providerCfg := make(map[string]any)
@@ -315,69 +311,172 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 		return fmt.Errorf("VM is not running — run 'aivm start' first")
 	}
 
+	// Determine the port t3 serve should listen on inside the container.
+	// When cfg.T3Code.Port == 0, Docker auto-assigns a host port mapped to the
+	// default T3 Code container port (3773). Use 3773 so t3 serve actually binds
+	// on the port that Docker is forwarding — port 0 would result in an
+	// OS-assigned random port that Docker cannot reach.
+	containerPort := cfg.T3Code.Port
+	if containerPort == 0 {
+		containerPort = 3773
+	}
+
+	// Check the persistent state file first. Manager.IsRunning() is in-memory
+	// only and loses state between process invocations (e.g. `aivm start` exits
+	// and then `aivm` bare calls Start() again in a new process). The t3code-url
+	// file is written after a successful launch and removed by Stop()/Destroy(),
+	// so its presence means a previous process launched t3 serve successfully.
+	t3codeURLPath := filepath.Join(cfg.StateDir, "t3code-url")
+	if _, statErr := os.Stat(t3codeURLPath); statErr == nil {
+		// Verify t3 serve is still responsive inside the VM before trusting the file.
+		verifyScript := fmt.Sprintf(
+			`if curl -sf --max-time 3 http://localhost:%d/ >/dev/null 2>&1; then echo ok; else echo dead; fi`,
+			containerPort,
+		)
+		verifyOut, _ := svc.VM.RunOutput(ctx, verifyScript, nil)
+		if strings.TrimSpace(verifyOut) == "ok" {
+			// Determine the host-side port to display. When Docker auto-assigns
+			// a port (cfg.T3Code.Port == 0), the real host port is encoded in
+			// the persisted pairing URL.
+			hostPort := containerPort
+			if urlBytes, readErr := os.ReadFile(t3codeURLPath); readErr == nil {
+				re := regexp.MustCompile(`localhost:(\d+)`)
+				if m := re.FindStringSubmatch(string(urlBytes)); len(m) > 1 {
+					if p, atoiErr := strconv.Atoi(m[1]); atoiErr == nil {
+						hostPort = p
+					}
+				}
+			}
+			svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
+			return nil
+		}
+		// t3 serve is no longer responsive — stale file. Remove it and re-launch.
+		_ = os.Remove(t3codeURLPath)
+	}
+
 	if svc.T3Code.IsRunning() {
-		svc.log().Success("T3 Code is already running at http://localhost:%d", cfg.T3Code.Port)
+		// Same-process double-call: in-memory flag is set but state file may not
+		// exist yet (race). Display port from config.
+		svc.log().Success("T3 Code is already running at http://localhost:%d", containerPort)
 		return nil
+	}
+
+	// For Docker VMs (NeedsPortBindingAtBoot=true), t3 serve must bind to
+	// 0.0.0.0 so Docker port forwarding can reach the server from the host.
+	// For Colima VMs, 127.0.0.1 is correct — the SSH tunnel connects internally.
+	bindHost := "127.0.0.1"
+	if svc.VM.NeedsPortBindingAtBoot() {
+		bindHost = "0.0.0.0"
 	}
 
 	// Daemonize t3 serve inside the VM. nohup + & ensures it survives the SSH
 	// session closing. mise shims are on PATH via /etc/profile.d/aivm-path.sh
 	// which is sourced by every login shell (all VM.Run calls use bash -lc).
 	startScript := fmt.Sprintf(`
-nohup t3 serve --host 127.0.0.1 --port %d > /tmp/t3code.log 2>&1 &
-echo "t3 serve started with PID $!"
-`, cfg.T3Code.Port)
+t3_path=$(command -v t3 2>/dev/null || echo "NOT_FOUND")
+echo "t3_diag: path=$t3_path"
+if [ "$t3_path" = "NOT_FOUND" ]; then
+    echo "t3_diag: PATH=$PATH"
+else
+    t3_ver=$(t3 --version 2>&1 | head -1)
+    echo "t3_diag: version=$t3_ver"
+    nohup t3 serve --host %s --port %d > /tmp/t3code.log 2>&1 &
+    echo "t3_diag: serve_pid=$!"
+fi
+`, bindHost, containerPort)
 
 	svc.log().Info("Starting T3 Code server in VM...")
-	if err := svc.VM.Run(ctx, startScript, nil); err != nil {
-		return fmt.Errorf("starting t3 serve in VM: %w", err)
+	startOut, startErr := svc.VM.RunOutput(ctx, startScript, nil)
+	if startErr != nil {
+		return fmt.Errorf("starting t3 serve in VM: %w", startErr)
+	}
+	svc.log().Warn("t3 diag: %s", strings.TrimSpace(startOut))
+	// Fail fast if t3 binary is missing
+	if strings.Contains(startOut, "t3_diag: path=NOT_FOUND") {
+		return fmt.Errorf("t3 binary not found in VM — bootstrap may have failed")
 	}
 
-	svc.log().Info("Starting SSH port-forward tunnel...")
-	if err := svc.T3Code.Launch(ctx, cfg.T3Code.Port); err != nil {
+	svc.log().Info("Starting T3 Code tunnel...")
+	if err := svc.T3Code.Launch(ctx, containerPort); err != nil {
 		return fmt.Errorf("starting T3 Code tunnel: %w", err)
 	}
 
-	// Wait for the server to print its pairing info (up to 30 s), then display
-	// everything from "T3 Code server is ready." onwards — this skips the noisy
-	// migration logs and bash login-shell warnings that precede it.
-	pairingScript := `
+	// Poll via HTTP from inside the VM for readiness — more robust than
+	// grepping the log for a specific string (avoids log-format fragility).
+	// After the server responds, display any pairing info from the log.
+	// Poll for HTTP readiness. --max-time 3 prevents the first few curl attempts
+	// from hanging indefinitely when t3 serve has accepted the TCP connection but
+	// hasn't yet sent back a response (happens during its startup window).
+	pairingScript := fmt.Sprintf(`
 for i in $(seq 1 60); do
-    if grep -q "T3 Code server is ready" /tmp/t3code.log 2>/dev/null; then
+    if curl -sf --max-time 3 http://localhost:%d/ >/dev/null 2>&1; then
         break
     fi
     sleep 0.5
 done
 sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
-`
+`, containerPort)
+
 	pairingInfo, err := svc.VM.RunOutput(ctx, pairingScript, nil)
 	if err != nil {
 		svc.log().Warn("Could not read T3 Code pairing info: %v", err)
-		svc.log().Success("T3 Code is running at http://localhost:%d", cfg.T3Code.Port)
-	} else if strings.TrimSpace(pairingInfo) != "" {
-		// Rewrite the VM-internal address to localhost (SSH-tunnel side) so every
-		// URL the user sees is consistent and actually reachable from the host.
-		displayInfo := strings.ReplaceAll(strings.TrimSpace(pairingInfo), "127.0.0.1", "localhost")
-		// Persist the token-bearing URL so 'aivm status' can show it later.
-		pairingURL := parsePairingURL(pairingInfo, cfg.T3Code.Port)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0644)
-		fmt.Fprintln(svc.log().Out, displayInfo)
-	} else {
-		svc.log().Success("T3 Code is running at http://localhost:%d", cfg.T3Code.Port)
+		if logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || true", nil); strings.TrimSpace(logContents) != "" {
+			svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
+		}
+		return fmt.Errorf("failed to retrieve T3 Code pairing info: %w", err)
 	}
+
+	trimmedInfo := strings.TrimSpace(pairingInfo)
+	if trimmedInfo == "" {
+		// HTTP poll timed out or t3 serve hasn't printed pairing info yet.
+		// Fail fast instead of writing a fallback URL.
+		logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || echo '(t3code.log not found)'", nil)
+		svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
+		return fmt.Errorf("T3 Code server did not respond or print pairing info within timeout")
+	}
+
+	// Rewrite any VM-internal IP address to localhost so every URL the user
+	// sees is consistent and actually reachable from the host. t3 serve may
+	// advertise its container IP (e.g. 172.17.0.x) rather than 127.0.0.1,
+	// so we replace any IPv4 address rather than only 127.0.0.1.
+	displayInfo := rewriteIPsToLocalhost(trimmedInfo)
+
+	// When cfg.T3Code.Port == 0 and Docker auto-assigned a host port, we need
+	// to extract the actual forwarded port from the pairing URL.
+	if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
+		// parsePairingURL will extract the real host port from the pairing info
+		pairingURL := parsePairingURL(pairingInfo, containerPort)
+		// Persist the token-bearing URL with the real host port (owner-only permissions)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+	} else {
+		// Persist the token-bearing URL so 'aivm status' can show it later (owner-only permissions)
+		pairingURL := parsePairingURL(pairingInfo, containerPort)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+	}
+
+	fmt.Fprintln(svc.log().Out, displayInfo)
 	return nil
 }
 
 // parsePairingURL extracts the "Pairing URL:" line from t3 serve startup output,
-// rewrites the VM-internal address (127.0.0.1) to localhost (exposed by the SSH
-// tunnel), and returns the result. Falls back to a bare URL if not found.
+// rewrites any VM-internal IP address to localhost (exposed by the SSH tunnel or
+// Docker port forwarding), and returns the result. Falls back to a bare URL if not found.
 func parsePairingURL(output string, port int) string {
 	for _, line := range strings.Split(output, "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "Pairing URL:"); ok {
-			return strings.ReplaceAll(strings.TrimSpace(after), "127.0.0.1", "localhost")
+			return rewriteIPsToLocalhost(strings.TrimSpace(after))
 		}
 	}
 	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+// rewriteIPsToLocalhost replaces all IPv4 addresses in s with "localhost".
+// t3 serve advertises its container/VM IP (e.g. 172.17.0.x) rather than
+// 127.0.0.1, so we normalise all IPs so URLs are reachable from the host.
+var ipRe = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+
+func rewriteIPsToLocalhost(s string) string {
+	return ipRe.ReplaceAllString(s, "localhost")
 }
 
 // checkBaseImageAge prompts the user when the base image is older than the configured
@@ -533,6 +632,12 @@ func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.V
 
 // doHardRebuild destroys the current VM, recreates it, and runs full bootstrap.
 func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
+	// Stop the idle monitor so it cannot interfere with the fresh container.
+	// The monitor daemon is started by 'aivm start' and keeps running after that
+	// subprocess exits. If not killed here, it will stop the freshly rebuilt
+	// container within its idle timeout (typically 10–30 s of no active sessions).
+	svc.Monitor.Stop()
+
 	svc.log().Step("Destroying existing VM")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)

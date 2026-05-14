@@ -1,9 +1,11 @@
-package plugin
+package plugin_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/sisimomo/aivm/internal/plugin"
 )
 
 type mockVMRunner struct {
@@ -35,16 +37,16 @@ func TestNewMisePlugin_Parsing(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			p, ok := newMisePlugin(tc.input)
+			p, ok := plugin.NewMisePlugin(tc.input)
 			if ok != tc.wantOK {
-				t.Fatalf("newMisePlugin(%q) ok=%v, want %v", tc.input, ok, tc.wantOK)
+				t.Fatalf("NewMisePlugin(%q) ok=%v, want %v", tc.input, ok, tc.wantOK)
 			}
 			if !ok {
 				return
 			}
-			mp := p.(*misePlugin)
-			if mp.tool != tc.wantTool {
-				t.Errorf("tool=%q, want %q", mp.tool, tc.wantTool)
+			mp := p.(*plugin.MisePlugin)
+			if mp.Tool != tc.wantTool {
+				t.Errorf("Tool=%q, want %q", mp.Tool, tc.wantTool)
 			}
 			if p.Name() != tc.input {
 				t.Errorf("Name()=%q, want %q", p.Name(), tc.input)
@@ -57,9 +59,9 @@ func TestNewMisePlugin_Parsing(t *testing.T) {
 }
 
 func TestMisePlugin_Dependencies(t *testing.T) {
-	p, ok := newMisePlugin("mise-go")
+	p, ok := plugin.NewMisePlugin("mise-go")
 	if !ok {
-		t.Fatal("expected newMisePlugin to succeed")
+		t.Fatal("expected NewMisePlugin to succeed")
 	}
 	deps := p.Dependencies()
 	if len(deps) != 1 || deps[0] != "mise" {
@@ -89,10 +91,10 @@ func wantSkipIfScript(tool string, versions ...string) string {
 }
 
 func TestMisePlugin_SkipIf_DefaultVersion(t *testing.T) {
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm}
+	env := plugin.InstallEnv{VM: vm}
 	skip, err := p.SkipIf(context.Background(), env)
 	if err != nil {
 		t.Fatalf("SkipIf returned unexpected error: %v", err)
@@ -107,10 +109,10 @@ func TestMisePlugin_SkipIf_DefaultVersion(t *testing.T) {
 }
 
 func TestMisePlugin_SkipIf_PinnedVersion(t *testing.T) {
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{"version": "22"}}
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{"version": "22"}}
 	skip, err := p.SkipIf(context.Background(), env)
 	if err != nil {
 		t.Fatalf("SkipIf returned unexpected error: %v", err)
@@ -125,10 +127,10 @@ func TestMisePlugin_SkipIf_PinnedVersion(t *testing.T) {
 }
 
 func TestMisePlugin_SkipIf_MultiVersion(t *testing.T) {
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
 		"version":        "22",
 		"extra_versions": []string{"20", "18"},
 	}}
@@ -147,10 +149,10 @@ func TestMisePlugin_SkipIf_MultiVersion(t *testing.T) {
 
 func TestMisePlugin_SkipIf_MultiVersion_YAMLSlice(t *testing.T) {
 	// Simulate YAML-unmarshalled []interface{} (as viper/mapstructure produces).
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
 		"version":        "22",
 		"extra_versions": []interface{}{"20", "18"},
 	}}
@@ -165,10 +167,10 @@ func TestMisePlugin_SkipIf_MultiVersion_YAMLSlice(t *testing.T) {
 }
 
 func TestMisePlugin_SkipIf_NotInstalled(t *testing.T) {
-	p, _ := newMisePlugin("mise-rust")
+	p, _ := plugin.NewMisePlugin("mise-rust")
 	vm := &mockVMRunner{err: errExitNonZero}
 
-	env := InstallEnv{VM: vm}
+	env := plugin.InstallEnv{VM: vm}
 	skip, err := p.SkipIf(context.Background(), env)
 	if err != nil {
 		t.Fatalf("SkipIf returned unexpected error: %v", err)
@@ -179,10 +181,10 @@ func TestMisePlugin_SkipIf_NotInstalled(t *testing.T) {
 }
 
 func TestMisePlugin_Setup_DefaultVersion(t *testing.T) {
-	p, _ := newMisePlugin("mise-go")
+	p, _ := plugin.NewMisePlugin("mise-go")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{}}
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{}}
 	if err := p.Setup(context.Background(), env); err != nil {
 		t.Fatalf("Setup returned unexpected error: %v", err)
 	}
@@ -193,10 +195,10 @@ func TestMisePlugin_Setup_DefaultVersion(t *testing.T) {
 }
 
 func TestMisePlugin_Setup_CustomVersion(t *testing.T) {
-	p, _ := newMisePlugin("mise-java")
+	p, _ := plugin.NewMisePlugin("mise-java")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{"version": "21"}}
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{"version": "21"}}
 	if err := p.Setup(context.Background(), env); err != nil {
 		t.Fatalf("Setup returned unexpected error: %v", err)
 	}
@@ -207,10 +209,10 @@ func TestMisePlugin_Setup_CustomVersion(t *testing.T) {
 }
 
 func TestMisePlugin_Setup_ExtraVersions(t *testing.T) {
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
 		"version":        "22",
 		"extra_versions": []string{"20", "18"},
 	}}
@@ -224,10 +226,10 @@ func TestMisePlugin_Setup_ExtraVersions(t *testing.T) {
 }
 
 func TestMisePlugin_Setup_ExtraVersions_Latest(t *testing.T) {
-	p, _ := newMisePlugin("mise-node")
+	p, _ := plugin.NewMisePlugin("mise-node")
 	vm := &mockVMRunner{}
 
-	env := InstallEnv{VM: vm, Config: map[string]any{
+	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
 		"version":        "22",
 		"extra_versions": []string{"latest", "20"},
 	}}

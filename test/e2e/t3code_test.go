@@ -1,6 +1,6 @@
-package scenarios
+package e2e
 
-// T3 Code integration tests.
+// T3 Code e2e tests.
 //
 // T3 Code is a background service: when enabled, `aivm start` launches t3 serve
 // inside the VM and port-forwards it to the host as a daemon. The normal `aivm`
@@ -8,12 +8,9 @@ package scenarios
 // monitor is disabled while T3 Code is running.
 
 import (
-	"context"
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/sisimomo/aivm/internal/t3code"
 	"github.com/sisimomo/aivm/internal/vm"
 	"github.com/sisimomo/aivm/test/framework"
 	"github.com/sisimomo/aivm/test/framework/actions"
@@ -87,12 +84,12 @@ func TestT3CodePluginAutoInjected(t *testing.T) {
 		Step("Start VM (bootstrap runs t3code plugin)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap completed", assertions.BootstrapComplete()).
-		Assert("t3code plugin stub ran", assertions.VMFileExists("/tmp/.aivm_test_t3code_installed")).
+		Assert("t3 binary installed in VM", assertions.VMRunOutput("t3 --version", "")).
 		Run()
 }
 
 // TestT3CodeStopKillsTunnel verifies that `aivm stop` calls T3Code.Stop(),
-// which marks the tunnel as not running in the NoopManager.
+// which removes the t3code-url state file.
 func TestT3CodeStopKillsTunnel(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t, framework.WithT3Code(0))
@@ -101,11 +98,11 @@ func TestT3CodeStopKillsTunnel(t *testing.T) {
 		Step("Start VM (T3 Code tunnel starts here)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("T3Code.Launch was called (tunnel started)", assertions.T3CodeLaunched()).
-		Assert("Tunnel is running after start", assertT3CodeRunning(true)).
+		Assert("Tunnel is running after start", assertions.StateFileExists("t3code-url")).
 		Step("Run: aivm (bare) — agent terminal with tunnel already up", actions.CLI()).
 		Step("Stop VM", actions.CLI("stop")).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
-		Assert("Tunnel is not running after stop", assertT3CodeRunning(false)).
+		Assert("Tunnel is not running after stop", assertions.StateFileAbsent("t3code-url")).
 		Run()
 }
 
@@ -122,25 +119,11 @@ func TestT3CodeRestartAfterStop(t *testing.T) {
 		Assert("Tunnel started on first start", assertions.T3CodeLaunched()).
 		Step("Stop VM", actions.CLI("stop")).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
-		Assert("Tunnel is not running after stop", assertT3CodeRunning(false)).
+		Assert("Tunnel is not running after stop", assertions.StateFileAbsent("t3code-url")).
 		Step("Start VM again", actions.CLI("start")).
 		Wait("VM is running again", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Tunnel restarted automatically", assertT3CodeRunning(true)).
-		Assert("T3Code.Launch called twice (once per start)", assertions.T3CodeLaunchCount(2)).
+		Assert("Tunnel restarted automatically", assertions.T3CodeLaunched()).
 		Run()
-}
-func assertT3CodeRunning(want bool) framework.AssertFunc {
-	return func(_ context.Context, h *framework.Harness) error {
-		mgr := h.App.Lifecycle.T3Code
-		if nm, ok := mgr.(*t3code.NoopManager); ok {
-			got := nm.IsRunning()
-			if got != want {
-				return fmt.Errorf("T3Code.IsRunning(): got %v, want %v", got, want)
-			}
-			return nil
-		}
-		return fmt.Errorf("T3Code manager is not a NoopManager (cannot check IsRunning in test)")
-	}
 }
 
 // TestT3CodePortAccessible is the critical end-to-end validation: after

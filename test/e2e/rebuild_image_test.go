@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 import (
 	"testing"
@@ -43,25 +43,27 @@ func TestRebuildImageForceNoSessions(t *testing.T) {
 
 // TestRebuildImageForceWithSessions verifies that DoRebuildImage(force=true)
 // sends SIGTERM to all active sessions and proceeds with the rebuild without
-// prompting. The rebuild succeeds regardless of active sessions.
+// prompting.
 //
-// Note: in production the session lock files are removed when those processes
-// exit. In tests the "fake session" PID is the test process itself, which
-// survives SIGTERM; we verify the rebuild completed rather than session count.
+// A real aivm session is held open via a background "sleep 30" launch command.
+// The rebuild kills the session and completes.
 func TestRebuildImageForceWithSessions(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t)
+	h := framework.New(t, framework.WithLaunchCommand("sleep 30"))
+
+	cancelSession, bgLaunch := actions.AsyncCLI()
 
 	h.Scenario("force rebuild proceeds without prompts even when sessions are active").
 		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Create a fake active session", actions.CreateFakeSession()).
+		Step("Launch aivm in background (holds session lock)", bgLaunch).
+		Wait("Session registered", conditions.SessionCount(1), 15*time.Second).
 		Assert("One session is active before rebuild", assertions.SessionCount(1)).
 		Step("Force rebuild — SIGTERM sent to sessions, rebuild proceeds", actions.CLI("rebuild-image", "--force")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Rebuild succeeded — VM is running", assertions.VMStatus(vm.StatusRunning)).
 		Assert("New base image saved after rebuild", assertions.BaseImageExists()).
-		Step("Clean up fake session lock file", actions.RemoveFakeSessions()).
+		Step("Cancel background session goroutine (already killed by rebuild)", cancelSession).
 		Run()
 }
 
@@ -120,28 +122,27 @@ func TestRebuildImageInteractiveCancel(t *testing.T) {
 // TestRebuildImageInteractiveKillSessionsThenRebuild verifies the flow where
 // the user has active sessions and chooses to kill them and rebuild now.
 //
-//  1. Start VM.
-//  2. Create a fake session.
-//  3. RebuildImage(force=false): "Kill all sessions? [y/N]" → "y" kills sessions and rebuilds.
+// A real session is held via a background "sleep 30" launch command.
+// The rebuild prompt is answered "y" — sessions are killed and rebuild proceeds.
 func TestRebuildImageInteractiveKillSessionsThenRebuild(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
+		framework.WithLaunchCommand("sleep 30"),
 		framework.WithInteractive("y"), // prompt: kill sessions and rebuild
 	)
+
+	cancelSession, bgLaunch := actions.AsyncCLI()
 
 	h.Scenario("interactive rebuild with sessions — kill sessions and rebuild").
 		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Create a fake active session", actions.CreateFakeSession()).
+		Step("Launch aivm in background (holds session lock)", bgLaunch).
+		Wait("Session registered", conditions.SessionCount(1), 15*time.Second).
 		Assert("One session is active", assertions.SessionCount(1)).
 		Step("Rebuild image (non-force) — asked to kill sessions, answer 'y'",
 			actions.CLI("rebuild-image")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("New base image saved", assertions.BaseImageExists()).
-		// KillAll sends SIGTERM but does not remove lock files — processes clean
-		// up their own lock files on exit. We remove the fake lock file here to
-		// simulate the child exiting after receiving SIGTERM.
-		Step("Simulate session exiting (remove lock file)", actions.RemoveFakeSessions()).
-		Assert("No sessions remain after rebuild", assertions.SessionCount(0)).
+		Step("Cancel background goroutine (session already killed by rebuild)", cancelSession).
 		Run()
 }

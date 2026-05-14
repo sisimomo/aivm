@@ -91,15 +91,22 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	aivmlog.Info("Waiting for MCPJungle to become healthy...")
-	deadline := time.Now().Add(40 * time.Second)
-	for time.Now().Before(deadline) {
-		if m.IsHealthy(ctx) {
-			aivmlog.Success("MCPJungle is healthy on port %d", m.Port)
-			return nil
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	timeout := time.After(90 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("MCPJungle failed to become healthy after 90s")
+		case <-ticker.C:
+			if m.IsHealthy(ctx) {
+				aivmlog.Success("MCPJungle is healthy on port %d", m.Port)
+				return nil
+			}
 		}
-		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("MCPJungle failed to become healthy after 40s")
 }
 
 func (m *Manager) Stop(ctx context.Context) error {

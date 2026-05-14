@@ -36,6 +36,22 @@ func (e *Executor) Ordered() ([]Plugin, error) {
 	return e.Registry.Resolve(e.Enabled)
 }
 
+// maxSetupRetries is the number of times a plugin Setup is retried on failure
+// before giving up. Transient errors (network blips, apt-get lock contention,
+// OOM-killed processes) are common when multiple VMs bootstrap in parallel, so
+// a small retry budget with backoff makes the bootstrap loop resilient without
+// hiding real failures.
+const maxSetupRetries = 3
+
+// setupRetryDelay returns the backoff duration before attempt n (1-indexed).
+// Attempt 1 is immediate; subsequent attempts wait 10 s, 20 s, …
+func setupRetryDelay(attempt int) time.Duration {
+	if attempt <= 1 {
+		return 0
+	}
+	return time.Duration(attempt-1) * 10 * time.Second
+}
+
 // Run executes all enabled plugins in DAG order.
 //
 // When force is true every plugin's Install+Configure steps run unconditionally
@@ -128,8 +144,47 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		e.log().Step("Plugin: %s", p.Name())
 		start := time.Now()
 
-		if err := p.Setup(ctx, env); err != nil {
-			return fmt.Errorf("setup %s: %w", p.Name(), err)
+		var setupErr error
+		for attempt := 1; attempt <= maxSetupRetries; attempt++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
+			// Before each retry (not the first attempt), wait for the backoff
+			// duration and then re-check SkipIf — the previous attempt may have
+			// partially succeeded even though it returned an error.
+			if attempt > 1 {
+				delay := setupRetryDelay(attempt)
+				e.log().Warn("setup %s failed (attempt %d/%d): %v — retrying in %s...",
+					p.Name(), attempt-1, maxSetupRetries, setupErr, delay)
+				select {
+				case <-time.After(delay):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				// Re-run SkipIf: if the tool is already installed despite the
+				// error (e.g. the install script exited non-zero but the binary
+				// is present), treat Setup as succeeded.
+				if installed, _ := p.SkipIf(ctx, env); installed {
+					setupErr = nil
+					break
+				}
+			}
+
+			setupErr = p.Setup(ctx, env)
+			if setupErr == nil {
+				break
+			}
+		}
+
+		if setupErr != nil {
+			// Final check: if the plugin is now skippable (installed despite error),
+			// treat the setup as successful.
+			if installed, _ := p.SkipIf(ctx, env); installed {
+				setupErr = nil
+			} else {
+				return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
+			}
 		}
 
 		e.log().Success("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second))

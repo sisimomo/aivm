@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 import (
 	"testing"
@@ -33,7 +33,6 @@ func TestIdleDeleteRecreate(t *testing.T) {
 		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image saved", assertions.BaseImageExists()).
-		Step("Start idle monitor (in-process)", actions.StartMonitor(nil)).
 		// Phase 1: idle timeout elapses → VM suspended.
 		Wait("VM auto-stopped (Phase 1)", conditions.VMStatus(vm.StatusStopped), 60*time.Second).
 		Wait("vm-stopped-at marker written", conditions.StateFileExists("vm-stopped-at"), 5*time.Second).

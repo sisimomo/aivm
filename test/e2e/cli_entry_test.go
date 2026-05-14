@@ -1,4 +1,4 @@
-package scenarios
+package e2e
 
 // TestCLIEntryPoint demonstrates invoking AIVM through the real Cobra CLI
 // entry point — the same path a user takes when running `aivm` in a terminal.
@@ -29,20 +29,33 @@ import (
 // TestCLIStartStop verifies that `aivm start` and `aivm stop` routed through
 // the real Cobra entry point produce the same outcomes as calling DoStart/DoStop
 // directly. This confirms the CLI wiring is correct end-to-end.
+//
+// Also covers the output assertions previously in TestStartOutputReady,
+// TestStopOutputMessage, and TestStatusCommandOutput — all of which required
+// the same VM boot, so they are folded here to avoid redundant boots.
 func TestCLIStartStop(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
-	h.Scenario("aivm start → aivm stop via CLI entry point").
+	h.Scenario("aivm start → status → stop via CLI entry point").
 		Step("Run: aivm start", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
 		Assert("Base image saved after start", assertions.BaseImageExists()).
 		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
+		Assert("User saw starting step", assertions.OutputContains("Starting aivm")).
+		Step("Reset output buffer", actions.ResetOutput()).
+		Step("Run: aivm status", actions.CLI("status")).
+		Assert("Status output contains header", assertions.OutputContains("aivm status")).
+		Assert("Status output contains profile name", assertions.OutputContains(h.Profile)).
+		Assert("Status output shows running", assertions.OutputContains("Running")).
+		Assert("Status output contains MCPJungle line", assertions.OutputContains("MCPJungle")).
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Run: aivm stop", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Assert("VM is stopped", assertions.VMStatus(vm.StatusStopped)).
 		Assert("User saw stop confirmation", assertions.OutputContains("aivm stopped")).
+		Assert("Stop output does not show ready message", assertions.OutputNotContains("aivm is ready")).
 		Run()
 }
 
@@ -51,6 +64,7 @@ func TestCLIStartStop(t *testing.T) {
 // image. Tests that the --force flag is correctly parsed by the rebuild-image
 // subcommand.
 func TestCLIRebuildImageForceFlag(t *testing.T) {
+	t.Parallel()
 	h := framework.New(t)
 
 	var v1ID string
