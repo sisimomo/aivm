@@ -7,10 +7,10 @@ import (
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/cli"
+	"github.com/sisimomo/aivm/internal/compose"
 	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/lifecycle"
 	aivmlog "github.com/sisimomo/aivm/internal/log"
-	"github.com/sisimomo/aivm/internal/mcp"
 	"github.com/sisimomo/aivm/internal/monitor"
 	"github.com/sisimomo/aivm/internal/providers/generic"
 	"github.com/sisimomo/aivm/internal/session"
@@ -73,32 +73,21 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vm backend: %w", err)
 	}
-	dockerHost, err := mcp.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
+
+	dockerHost, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
 	if err != nil {
 		aivmlog.Warn("Docker socket: %v", err)
 		dockerHost = ""
 	}
 
-	devRoot := ""
-	for _, m := range cfg.VM.ParsedMounts {
-		if m.Writable {
-			devRoot = m.HostPath
-			break
-		}
-	}
-
-	mcpMgr := &mcp.Manager{
-		Port:          cfg.MCP.Port,
-		DataDir:       cfg.MCP.DataDir,
-		DockerHost:    dockerHost,
-		DevRoot:       devRoot,
-		ImageTag:      cfg.MCP.ImageTag,
-		ServerMode:    cfg.MCP.ServerMode,
-		ContainerName: "mcpjungle-" + vmInst.Profile(),
+	composeMgr := &compose.Manager{
+		ComposeFile: cfg.ComposeFile,
+		DockerHost:  dockerHost,
+		Profile:     vmInst.Profile(),
 	}
 
 	sessions := session.NewStore(cfg.StateDir)
-	mon := monitor.NewIdleMonitor(sessions, vmInst, mcpMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
+	mon := monitor.NewIdleMonitor(sessions, vmInst, composeMgr, cfg.Idle.StopTimeout, cfg.Idle.DeleteTimeout, cfg.StateDir)
 	if cfg.Idle.PollInterval > 0 {
 		mon.PollInterval = cfg.Idle.PollInterval
 	}
@@ -124,7 +113,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,
-			MCP:          mcpMgr,
+			Sidecars:     composeMgr,
 			T3Code:       t3codeMgr,
 			Sessions:     sessions,
 			Monitor:      mon,
