@@ -206,6 +206,15 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 
 	// Resolve compose_file path relative to the config file directory.
 	if cfg.ComposeFile != "" {
+		// Expand tilde (~/) to user's home directory
+		if strings.HasPrefix(cfg.ComposeFile, "~/") {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("expanding ~ in compose_file: %w", err)
+			}
+			cfg.ComposeFile = filepath.Join(homeDir, cfg.ComposeFile[2:])
+		}
+
 		if !filepath.IsAbs(cfg.ComposeFile) {
 			if cfgFile := v.ConfigFileUsed(); cfgFile != "" {
 				cfg.ComposeFile = filepath.Join(filepath.Dir(cfgFile), cfg.ComposeFile)
