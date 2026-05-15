@@ -6,7 +6,7 @@
 [![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](go.mod)
 [![macOS only](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
 
-**aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, wires up [MCP](https://modelcontextprotocol.io/) via [mcpjungle](https://github.com/HenrySchulz/mcpjungle), keeps sessions alive while you work, and auto-cleans up when you're idle.
+**aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, optionally starts Docker Compose services (e.g. MCP servers) tied to the VM lifecycle, keeps sessions alive while you work, and auto-cleans up when you're idle.
 
 Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)
 
@@ -24,6 +24,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
   - [Idle Management](#idle-management)
   - [Plugins](#plugins)
   - [Integrations](#integrations)
+  - [Compose File](#compose-file)
   - [T3 Code GUI](#t3-code-gui)
 - [Commands](#commands)
 - [Plugins](#plugins-1)
@@ -244,6 +245,35 @@ integrations:
 
 Omit `from` to run the integration whenever a given agent is active, regardless of plugins.
 
+### Compose File
+
+Point aivm at a standard `docker-compose.yml` to run services alongside the VM. All services are brought up with `docker compose up -d` when the VM starts, and torn down with `docker compose down` on stop (volumes are also removed on `aivm destroy`).
+
+```yaml
+compose_file: ./docker-compose.yml
+```
+
+The path is resolved relative to `aivm.yaml`. The compose project name is set to the VM profile name (`vm.name`).
+
+**Example `docker-compose.yml`:**
+
+```yaml
+services:
+  metamcp:
+    image: ghcr.io/metatool-ai/metamcp:latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      AUTH_TOKEN: changeme
+    restart: unless-stopped
+```
+
+Use your compose file's native `.env` file or `environment:` keys for variable substitution — no aivm-specific template variables are needed.
+
+**Status display:** `aivm status` reports each service's running state.
+
+**Log access:** `aivm logs` (no arguments) streams logs for all compose services via `docker compose logs -f`.
+
 ### T3 Code GUI
 
 When enabled, `aivm launch` starts the [T3 Code](https://t3.tools/) web UI inside the VM and port-forwards it to your host:
@@ -273,7 +303,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm destroy` | Delete the VM entirely (host state in `~/.aivm` is preserved) |
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
-| `aivm logs [service]` | Show logs for a service (`mcpjungle` · `monitor` · `bootstrap` · `vm` · `colima`) |
+| `aivm logs [service]` | Show logs for a service (`monitor` · `bootstrap` · `vm`) or all compose services (no arg) |
 | `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
 | `aivm version` | Print version |
 
