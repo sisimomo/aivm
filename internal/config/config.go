@@ -20,7 +20,7 @@ import (
 var defaultsYAML []byte
 
 type Config struct {
-	VM           VMConfig                     `mapstructure:"vm"`
+	VM VMConfig `mapstructure:"vm"`
 	// ComposeFile is the path to a docker compose file whose services are
 	// started and stopped alongside the VM. The raw value from YAML is resolved
 	// to an absolute path relative to the config file directory during loading.
@@ -205,10 +205,17 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	}
 
 	// Resolve compose_file path relative to the config file directory.
-	if cfg.ComposeFile != "" && !filepath.IsAbs(cfg.ComposeFile) {
-		if cfgFile := v.ConfigFileUsed(); cfgFile != "" {
-			cfg.ComposeFile = filepath.Join(filepath.Dir(cfgFile), cfg.ComposeFile)
+	if cfg.ComposeFile != "" {
+		if !filepath.IsAbs(cfg.ComposeFile) {
+			if cfgFile := v.ConfigFileUsed(); cfgFile != "" {
+				cfg.ComposeFile = filepath.Join(filepath.Dir(cfgFile), cfg.ComposeFile)
+			}
 		}
+		absPath, err := filepath.Abs(cfg.ComposeFile)
+		if err != nil {
+			return nil, fmt.Errorf("resolving compose_file to absolute path: %w", err)
+		}
+		cfg.ComposeFile = absPath
 	}
 
 	return &cfg, nil

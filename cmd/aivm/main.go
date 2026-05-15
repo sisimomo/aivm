@@ -74,10 +74,14 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		return nil, fmt.Errorf("vm backend: %w", err)
 	}
 
-	dockerHost, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
-	if err != nil {
-		aivmlog.Warn("Docker socket: %v", err)
-		dockerHost = ""
+	dockerHost := ""
+	if cfg.ComposeFile != "" {
+		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
+		if err != nil {
+			aivmlog.Warn("Docker socket: %v", err)
+		} else {
+			dockerHost = dockerHostProbe
+		}
 	}
 
 	composeMgr := &compose.Manager{

@@ -264,9 +264,11 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      AUTH_TOKEN: changeme
+      AUTH_TOKEN: ${AUTH_TOKEN}  # source from .env or export before launching aivm
     restart: unless-stopped
 ```
+
+**Security note:** Always use a strong, randomly generated secret for `AUTH_TOKEN`. Set it in a `.env` file (add `.env` to `.gitignore`) or export it before launching aivm. Never commit weak or placeholder credentials like "changeme".
 
 Use your compose file's native `.env` file or `environment:` keys for variable substitution — no aivm-specific template variables are needed.
 

@@ -121,7 +121,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if err := svc.Sidecars.Up(ctx); err != nil {
-		svc.log().Warn("starting sidecars: %v", err)
+		return fmt.Errorf("starting sidecars: %w", err)
 	}
 
 	if cfg.T3Code.Enable {
@@ -194,11 +194,23 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	var vmErr, sidecarErr error
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
+		vmErr = err
 	}
 	if err := svc.Sidecars.Down(ctx, false); err != nil {
 		svc.log().Warn("compose stop error: %v", err)
+		sidecarErr = err
+	}
+	if vmErr != nil || sidecarErr != nil {
+		if vmErr != nil && sidecarErr != nil {
+			return fmt.Errorf("VM stop: %w; compose stop: %v", vmErr, sidecarErr)
+		}
+		if vmErr != nil {
+			return fmt.Errorf("VM stop: %w", vmErr)
+		}
+		return fmt.Errorf("compose stop: %w", sidecarErr)
 	}
 	svc.log().Success("aivm stopped")
 	return nil
@@ -211,11 +223,22 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	var vmErr, sidecarErr error
 	if err := svc.VM.Destroy(ctx); err != nil {
-		return err
+		vmErr = err
 	}
 	if err := svc.Sidecars.Down(ctx, true); err != nil {
 		svc.log().Warn("compose destroy error: %v", err)
+		sidecarErr = err
+	}
+	if vmErr != nil || sidecarErr != nil {
+		if vmErr != nil && sidecarErr != nil {
+			return fmt.Errorf("VM destroy: %w; compose destroy: %v", vmErr, sidecarErr)
+		}
+		if vmErr != nil {
+			return fmt.Errorf("VM destroy: %w", vmErr)
+		}
+		return fmt.Errorf("compose destroy: %w", sidecarErr)
 	}
 	svc.log().Success("VM destroyed")
 	return nil

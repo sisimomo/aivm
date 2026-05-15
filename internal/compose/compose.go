@@ -93,7 +93,10 @@ func (m *Manager) HealthMap(ctx context.Context) map[string]bool {
 	}
 
 	// Services currently running.
-	runOut, _ := m.composeCmd(ctx, "ps", "--services", "--filter", "status=running").Output()
+	runOut, err := m.composeCmd(ctx, "ps", "--services", "--filter", "status=running").Output()
+	if err != nil {
+		return nil
+	}
 	running := make(map[string]bool, len(allNames))
 	for _, name := range parseLines(string(runOut)) {
 		running[name] = true

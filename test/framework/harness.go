@@ -53,8 +53,9 @@ type Harness struct {
 	// Output captures all stdout/stderr written by the subprocess.
 	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
 	// between RunCLI calls when per-command isolation matters.
-	Output  *OutputBuffer
-	workDir string
+	Output         *OutputBuffer
+	workDir        string
+	composeStarted bool
 }
 
 // New creates a new Harness for the calling test.
@@ -126,7 +127,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		// Tear down any compose services created for this profile. These are
 		// normally stopped by 'aivm stop/destroy', but may be left running if
 		// the test fails before reaching that step.
-		if h.tc.ComposeContent != "" {
+		if h.composeStarted {
 			composeFile := filepath.Join(h.StateDir, "docker-compose.yml")
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			cmd := exec.CommandContext(ctx, "docker", "compose",
@@ -169,6 +170,7 @@ func (h *Harness) WriteConfig() {
 		if err := os.WriteFile(composePath, []byte(h.tc.ComposeContent), 0644); err != nil {
 			h.t.Fatalf("harness: write docker-compose.yml: %v", err)
 		}
+		h.composeStarted = true
 	}
 	yaml := buildTestYAML(h.Profile, h.StateDir, h.tc)
 	path := filepath.Join(h.StateDir, "aivm.yaml")
@@ -256,6 +258,9 @@ func (h *Harness) ChangeVMEnv(env map[string]string) {
 // the compose file and aivm.yaml so the next RunCLI picks up the change.
 func (h *Harness) ChangeComposeFile(content string) {
 	h.tc.ComposeContent = content
+	if content == "" {
+		h.composeStarted = false
+	}
 	h.WriteConfig()
 }
 
