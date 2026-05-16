@@ -9,7 +9,7 @@ import (
 func DestroyCmd(getApp func() (*App, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "destroy",
-		Short: "Delete the VM (host state preserved)",
+		Short: "Delete the VM (volumes and host state preserved)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {

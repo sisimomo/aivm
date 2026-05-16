@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/compose"
 	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/integration"
 	aivmlog "github.com/sisimomo/aivm/internal/log"
-	"github.com/sisimomo/aivm/internal/mcp"
 	"github.com/sisimomo/aivm/internal/monitor"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/session"
@@ -29,7 +29,7 @@ import (
 type LifecycleService struct {
 	Config   *config.Config
 	VM       vm.VM
-	MCP      mcp.MCPManager
+	Compose  compose.ComposeManager
 	T3Code   t3code.Manager
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
@@ -120,6 +120,10 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return err
 	}
 
+	if err := svc.Compose.Up(ctx); err != nil {
+		return fmt.Errorf("starting compose services: %w", err)
+	}
+
 	if cfg.T3Code.Enable {
 		svc.log().Success("T3 Code mode — idle monitoring disabled")
 		if err := svc.launchT3Code(ctx); err != nil {
@@ -190,11 +194,23 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	var vmErr, composeErr error
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
+		vmErr = err
 	}
-	if err := svc.MCP.Stop(ctx); err != nil {
-		svc.log().Warn("MCPJungle stop error: %v", err)
+	if err := svc.Compose.Down(ctx); err != nil {
+		svc.log().Warn("compose stop error: %v", err)
+		composeErr = err
+	}
+	if vmErr != nil || composeErr != nil {
+		if vmErr != nil && composeErr != nil {
+			return fmt.Errorf("VM stop: %w; compose stop: %v", vmErr, composeErr)
+		}
+		if vmErr != nil {
+			return fmt.Errorf("VM stop: %w", vmErr)
+		}
+		return fmt.Errorf("compose stop: %w", composeErr)
 	}
 	svc.log().Success("aivm stopped")
 	return nil
@@ -207,11 +223,22 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	var vmErr, composeErr error
 	if err := svc.VM.Destroy(ctx); err != nil {
-		return err
+		vmErr = err
 	}
-	if err := svc.MCP.Stop(ctx); err != nil {
-		svc.log().Warn("MCPJungle stop error: %v", err)
+	if err := svc.Compose.Down(ctx); err != nil {
+		svc.log().Warn("compose destroy error: %v", err)
+		composeErr = err
+	}
+	if vmErr != nil || composeErr != nil {
+		if vmErr != nil && composeErr != nil {
+			return fmt.Errorf("VM destroy: %w; compose destroy: %v", vmErr, composeErr)
+		}
+		if vmErr != nil {
+			return fmt.Errorf("VM destroy: %w", vmErr)
+		}
+		return fmt.Errorf("compose destroy: %w", composeErr)
 	}
 	svc.log().Success("VM destroyed")
 	return nil

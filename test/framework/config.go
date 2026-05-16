@@ -3,6 +3,7 @@ package framework
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -52,10 +53,6 @@ type testConfig struct {
 	// StdinAnswers is fed to the subprocess stdin, one answer per prompt.
 	StdinAnswers []string
 
-	// MCPJunglePort is the host port for the mcpjungle container. Allocated
-	// once per harness via FreePort() so parallel tests don't share port 7593.
-	MCPJunglePort int
-
 	// T3CodeEnabled, when true, sets t3code.enable: true in the YAML config.
 	T3CodeEnabled bool
 	// T3CodePort sets t3code.port in the YAML. 0 = auto-assign by Docker.
@@ -65,6 +62,9 @@ type testConfig struct {
 	Plugins []string
 	// VMEnv sets vm.env in the YAML.
 	VMEnv map[string]string
+	// ComposeContent, when non-empty, is written to <stateDir>/docker-compose.yml
+	// and referenced as compose_file in aivm.yaml.
+	ComposeContent string
 }
 
 func defaultTestConfig() testConfig {
@@ -171,6 +171,13 @@ func WithVMEnv(env map[string]string) Option {
 	return func(c *testConfig) { c.VMEnv = env }
 }
 
+// WithComposeContent sets the docker-compose.yml content for the test Harness.
+// The framework writes it to <stateDir>/docker-compose.yml and references it
+// as compose_file in aivm.yaml. Use standard docker compose YAML.
+func WithComposeContent(content string) Option {
+	return func(c *testConfig) { c.ComposeContent = content }
+}
+
 // WithLaunchCommand overrides the launch_command for the active provider in
 // the generated aivm.yaml. Use this when a test needs a long-lived agent
 // process (e.g. "sleep 30" for session idle tests) rather than the default
@@ -250,18 +257,6 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		}
 	}
 
-	// ── mcp_jungle ────────────────────────────────────────────────────────
-	// Enabled for real — mcpjungle starts as a host Docker container named
-	// "mcpjungle-<profile>" (unique per harness, safe for parallel tests).
-	// Port is allocated per-harness via FreePort() to avoid parallel conflicts.
-	// data_dir is scoped to stateDir so concurrent tests do not share
-	// MCPJungle state (shared state causes startup conflicts / health check
-	// timeouts when multiple containers bind-mount the same host path).
-	fmt.Fprintf(&sb, "mcp_jungle:\n")
-	fmt.Fprintf(&sb, "  enable: true\n")
-	fmt.Fprintf(&sb, "  port: %d\n", tc.MCPJunglePort)
-	fmt.Fprintf(&sb, "  data_dir: %q\n", stateDir+"/mcpjungle-data")
-
 	// ── t3code ────────────────────────────────────────────────────────────
 	fmt.Fprintf(&sb, "t3code:\n")
 	fmt.Fprintf(&sb, "  enable: %v\n", tc.T3CodeEnabled)
@@ -300,6 +295,12 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		for _, p := range plugins {
 			fmt.Fprintf(&sb, "    - %q\n", p)
 		}
+	}
+
+	// ── compose_file ──────────────────────────────────────────────────────
+	if tc.ComposeContent != "" {
+		composePath := filepath.Join(stateDir, "docker-compose.yml")
+		fmt.Fprintf(&sb, "compose_file: %q\n", composePath)
 	}
 
 	return sb.String()

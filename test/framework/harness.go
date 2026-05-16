@@ -37,13 +37,6 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-// mcpJungleContainerName returns the mcpjungle Docker container name for this
-// harness. It mirrors the naming used by cmd/aivm/main.go: "mcpjungle-<profile>".
-// This lets cleanup remove the container even when aivm stop was never called.
-func mcpJungleContainerName(profile string) string {
-	return "mcpjungle-" + profile
-}
-
 // Harness holds the full isolated test environment for one test.
 // Each Harness gets a unique Docker container profile and temp state directory.
 // Both are always cleaned up when the test finishes, even on failure.
@@ -60,8 +53,9 @@ type Harness struct {
 	// Output captures all stdout/stderr written by the subprocess.
 	// Use Output.Stdout() / Output.Stderr() in assertions, and Output.Reset()
 	// between RunCLI calls when per-command isolation matters.
-	Output  *OutputBuffer
-	workDir string
+	Output         *OutputBuffer
+	workDir        string
+	composeStarted bool
 }
 
 // New creates a new Harness for the calling test.
@@ -83,11 +77,6 @@ func New(t *testing.T, opts ...Option) *Harness {
 	tc := defaultTestConfig()
 	for _, opt := range opts {
 		opt(&tc)
-	}
-	// Allocate a unique mcpjungle host port per harness to prevent parallel
-	// tests from competing for the default port (7593).
-	if tc.MCPJunglePort == 0 {
-		tc.MCPJunglePort = FreePort()
 	}
 
 	suffix := mustRandomHex(6)
@@ -130,12 +119,24 @@ func New(t *testing.T, opts ...Option) *Harness {
 		workDir:  tc.DevRoot,
 	}
 
-	// Write initial config YAML so the subprocess can read it.
+	// Write initial config YAML (and compose file if configured).
 	h.WriteConfig()
 
 	t.Cleanup(func() {
 		h.killIdleMonitor()
-		h.killMCPJungle()
+		// Tear down any compose services created for this profile. These are
+		// normally stopped by 'aivm stop/destroy', but may be left running if
+		// the test fails before reaching that step.
+		if h.composeStarted {
+			composeFile := filepath.Join(h.StateDir, "docker-compose.yml")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			cmd := exec.CommandContext(ctx, "docker", "compose",
+				"-f", composeFile,
+				"--project-name", h.Profile,
+				"down", "-v")
+			_ = cmd.Run()
+			cancel()
+		}
 		dockerVM.DestroyWithImages()
 		// Files inside the .t3 bind-mount may be owned by the container user
 		// (different UID than the host test runner). Use sudo chmod -R 0777 so
@@ -158,11 +159,19 @@ func New(t *testing.T, opts ...Option) *Harness {
 	return h
 }
 
-// WriteConfig writes the current testConfig as aivm.yaml in the state directory.
+// WriteConfig writes the current testConfig as aivm.yaml in the state directory,
+// and writes docker-compose.yml when ComposeContent is set.
 // Called automatically by New() and by all mutator methods (ChangeProvider,
 // ChangePlugins, ChangeVMEnv, AppendPlugin) after updating tc.
 func (h *Harness) WriteConfig() {
 	h.t.Helper()
+	if h.tc.ComposeContent != "" {
+		composePath := filepath.Join(h.StateDir, "docker-compose.yml")
+		if err := os.WriteFile(composePath, []byte(h.tc.ComposeContent), 0644); err != nil {
+			h.t.Fatalf("harness: write docker-compose.yml: %v", err)
+		}
+		h.composeStarted = true
+	}
 	yaml := buildTestYAML(h.Profile, h.StateDir, h.tc)
 	path := filepath.Join(h.StateDir, "aivm.yaml")
 	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
@@ -245,6 +254,16 @@ func (h *Harness) ChangeVMEnv(env map[string]string) {
 	h.WriteConfig()
 }
 
+// ChangeComposeFile replaces the docker-compose.yml content and rewrites both
+// the compose file and aivm.yaml so the next RunCLI picks up the change.
+func (h *Harness) ChangeComposeFile(content string) {
+	h.tc.ComposeContent = content
+	if content == "" {
+		h.composeStarted = false
+	}
+	h.WriteConfig()
+}
+
 // ProviderLaunchCount returns the number of times the agent launch command was
 // executed inside the Docker container. It reads the line count of the
 // /tmp/.aivm_agent_launched marker file (each launch appends one line).
@@ -318,18 +337,6 @@ func (h *Harness) verifyIdleMonitorPID(pid int) bool {
 	// idle-monitor is invoked with the state directory as an argument.
 	// Check if the cmdline contains "idle-monitor" and our StateDir.
 	return strings.Contains(cmdline, "idle-monitor") && strings.Contains(cmdline, h.StateDir)
-}
-
-// killMCPJungle removes the mcpjungle Docker container for this harness. This
-// is a best-effort cleanup that runs even when aivm stop was never called (e.g.
-// test panicked or timed out). Errors are silently ignored.
-func (h *Harness) killMCPJungle() {
-	name := mcpJungleContainerName(h.Profile)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	// stop then remove; ignore errors (container may not exist)
-	_ = exec.CommandContext(ctx, "docker", "stop", name).Run()
-	_ = exec.CommandContext(ctx, "docker", "rm", "-f", name).Run()
 }
 
 // buildSubprocessEnv returns the environment for subprocess invocations.

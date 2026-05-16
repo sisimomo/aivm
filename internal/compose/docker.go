@@ -1,4 +1,4 @@
-package mcp
+package compose
 
 import (
 	"context"
@@ -9,6 +9,9 @@ import (
 	"github.com/sisimomo/aivm/internal/run"
 )
 
+// FindHostDockerSocket probes for a host-side Docker runtime separate from the
+// aivm Colima VM. It checks the current docker context, common socket paths
+// (OrbStack, Docker Desktop), and any active Colima profiles.
 func FindHostDockerSocket(ctx context.Context, colimaProfile string) (string, error) {
 	home, _ := os.UserHomeDir()
 	aivmSock := filepath.Join(home, ".colima", colimaProfile, "docker.sock")
@@ -59,7 +62,7 @@ func FindHostDockerSocket(ctx context.Context, colimaProfile string) (string, er
 	}
 
 	return "", fmt.Errorf(`no suitable host Docker runtime found.
-MCPJungle requires a Docker runtime separate from the aivm Colima VM.
+Compose services require a Docker runtime separate from the aivm Colima VM.
 Options:
   • Docker Desktop:  https://www.docker.com/products/docker-desktop/
   • OrbStack:        https://orbstack.dev/

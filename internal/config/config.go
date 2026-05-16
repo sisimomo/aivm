@@ -20,8 +20,11 @@ import (
 var defaultsYAML []byte
 
 type Config struct {
-	VM           VMConfig                     `mapstructure:"vm"`
-	MCP          MCPConfig                    `mapstructure:"mcp_jungle"`
+	VM VMConfig `mapstructure:"vm"`
+	// ComposeFile is the path to a docker compose file whose services are
+	// started and stopped alongside the VM. The raw value from YAML is resolved
+	// to an absolute path relative to the config file directory during loading.
+	ComposeFile  string                       `mapstructure:"compose_file"`
 	T3Code       T3CodeConfig                 `mapstructure:"t3code"`
 	Idle         IdleConfig                   `mapstructure:"idle"`
 	Agents       AgentsConfig                 `mapstructure:"agents"`
@@ -79,14 +82,6 @@ func (vm *VMConfig) Profile() string {
 		return vm.Name
 	}
 	return "aivm"
-}
-
-type MCPConfig struct {
-	Enable     bool   `mapstructure:"enable"`
-	Port       int    `mapstructure:"port"`
-	DataDir    string `mapstructure:"data_dir"`
-	ImageTag   string `mapstructure:"image_tag"`
-	ServerMode string `mapstructure:"server_mode"`
 }
 
 // T3CodeConfig holds configuration for the optional T3 Code web GUI integration.
@@ -203,11 +198,33 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.MCP.DataDir = expandPath(cfg.MCP.DataDir, home)
 	cfg.StateDir = stateDir
 
 	if err := validateAndParse(&cfg, home); err != nil {
 		return nil, err
+	}
+
+	// Resolve compose_file path relative to the config file directory.
+	if cfg.ComposeFile != "" {
+		// Expand tilde (~/) to user's home directory
+		if strings.HasPrefix(cfg.ComposeFile, "~/") {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("expanding ~ in compose_file: %w", err)
+			}
+			cfg.ComposeFile = filepath.Join(homeDir, cfg.ComposeFile[2:])
+		}
+
+		if !filepath.IsAbs(cfg.ComposeFile) {
+			if cfgFile := v.ConfigFileUsed(); cfgFile != "" {
+				cfg.ComposeFile = filepath.Join(filepath.Dir(cfgFile), cfg.ComposeFile)
+			}
+		}
+		absPath, err := filepath.Abs(cfg.ComposeFile)
+		if err != nil {
+			return nil, fmt.Errorf("resolving compose_file to absolute path: %w", err)
+		}
+		cfg.ComposeFile = absPath
 	}
 
 	return &cfg, nil

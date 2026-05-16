@@ -67,9 +67,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 		ActiveAgents:     svc.Config.ActiveAgents(),
 		VM:               targetVM,
 		Log:              svc.log().Writer("integration"),
-		TemplateVars: map[string]any{
-			"mcp_port": fmt.Sprintf("%d", svc.Config.MCP.Port),
-		},
+		TemplateVars:     map[string]any{},
 	}
 
 	matching := exec.Matching()

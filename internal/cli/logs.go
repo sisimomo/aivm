@@ -9,18 +9,18 @@ import (
 func LogsCmd(getApp func() (*App, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logs [service]",
-		Short: "Show logs (mcpjungle | monitor | bootstrap | colima)",
+		Short: "Show logs (compose services by default | monitor | bootstrap | vm)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {
 				return err
 			}
-			svc := "mcpjungle"
+			service := ""
 			if len(args) > 0 {
-				svc = args[0]
+				service = args[0]
 			}
-			return DoLogs(cmd.Context(), app, svc)
+			return DoLogs(cmd.Context(), app, service)
 		},
 	}
 }

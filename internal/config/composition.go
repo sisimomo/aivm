@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/integration"
@@ -158,19 +157,6 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 
 	// Merge user integration overrides.
 	integDefs = append(integDefs, cfg.Integrations...)
-
-	// When MCP Jungle is disabled, filter out integrations that are MCP Jungle-
-	// specific (those whose key starts with "mcpjungle:"). Running them when
-	// the service is disabled would silently misconfigure agent tooling.
-	if !cfg.MCP.Enable {
-		filtered := integDefs[:0]
-		for _, d := range integDefs {
-			if !strings.HasPrefix(d.Key(), "mcpjungle:") {
-				filtered = append(filtered, d)
-			}
-		}
-		integDefs = filtered
-	}
 
 	// Auto-inject the t3code plugin when T3 Code mode is enabled, ensuring it's
 	// always installed without requiring the user to list it in plugins.enabled.
