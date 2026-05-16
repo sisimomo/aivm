@@ -117,7 +117,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		Lifecycle: &lifecycle.LifecycleService{
 			Config:       cfg,
 			VM:           vmInst,
-			Sidecars:     composeMgr,
+			Compose:      composeMgr,
 			T3Code:       t3codeMgr,
 			Sessions:     sessions,
 			Monitor:      mon,

@@ -18,7 +18,7 @@ import (
 type IdleMonitor struct {
 	Sessions      *session.Store
 	VM            vm.VM
-	Sidecars      compose.ComposeManager
+	Compose       compose.ComposeManager
 	Timeout       time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
@@ -33,7 +33,7 @@ func NewIdleMonitor(sessions *session.Store, v vm.VM, s compose.ComposeManager, 
 	return &IdleMonitor{
 		Sessions:      sessions,
 		VM:            v,
-		Sidecars:      s,
+		Compose:       s,
 		Timeout:       timeout,
 		DeleteTimeout: deleteTimeout,
 		PollInterval:  30 * time.Second,
@@ -126,7 +126,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 						aivmlog.Warn("VM stop error: %v", err)
 						continue
 					}
-					if err := m.Sidecars.Down(ctx); err != nil {
+					if err := m.Compose.Down(ctx); err != nil {
 						aivmlog.Warn("compose stop error: %v", err)
 					}
 					m.Sessions.WriteVMStoppedAt()
@@ -156,8 +156,8 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 			case vm.StatusNotFound:
 				// VM already gone — nothing left to monitor.
 				aivmlog.Info("VM no longer exists — idle monitor exiting")
-				if err := m.Sidecars.Down(ctx); err != nil {
-					return fmt.Errorf("tearing down orphaned sidecars: %w", err)
+				if err := m.Compose.Down(ctx); err != nil {
+					return fmt.Errorf("tearing down orphaned compose services: %w", err)
 				}
 				return nil
 			}
@@ -171,7 +171,7 @@ func (m *IdleMonitor) destroy(ctx context.Context) error {
 		aivmlog.Warn("VM destroy error: %v", err)
 	}
 	m.Sessions.ClearVMStoppedAt()
-	if err := m.Sidecars.Down(ctx); err != nil {
+	if err := m.Compose.Down(ctx); err != nil {
 		aivmlog.Warn("compose destroy error: %v", err)
 	}
 	aivmlog.Success("VM deleted — resources reclaimed")

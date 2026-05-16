@@ -46,7 +46,7 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 
 	// Compose services section — only shown when compose_file is configured.
 	if cfg.ComposeFile != "" {
-		hm := svc.Sidecars.HealthMap(ctx)
+		hm := svc.Compose.HealthMap(ctx)
 		serviceNames := make([]string, 0, len(hm))
 		for n := range hm {
 			serviceNames = append(serviceNames, n)
@@ -150,8 +150,8 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 func (svc *LifecycleService) Logs(service string) error {
 	stateDir := svc.Config.StateDir
 	switch service {
-	case "", "sidecars", "compose":
-		return svc.Sidecars.Logs()
+	case "", "compose":
+		return svc.Compose.Logs()
 	case "monitor", "idle-monitor":
 		return tailFile(filepath.Join(stateDir, "logs", "idle-monitor.log"))
 	case "bootstrap":

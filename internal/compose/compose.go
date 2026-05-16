@@ -11,7 +11,7 @@ import (
 )
 
 // Manager is the concrete implementation of ComposeManager. It delegates all
-// sidecar lifecycle to docker compose, using a user-provided compose file.
+// compose_file lifecycle to docker compose, using a user-provided compose file.
 type Manager struct {
 	// ComposeFile is the absolute path to the docker compose file. When empty,
 	// all operations are no-ops.

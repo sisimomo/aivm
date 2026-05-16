@@ -29,7 +29,7 @@ import (
 type LifecycleService struct {
 	Config   *config.Config
 	VM       vm.VM
-	Sidecars compose.ComposeManager
+	Compose  compose.ComposeManager
 	T3Code   t3code.Manager
 	Sessions *session.Store
 	Monitor  *monitor.IdleMonitor
@@ -120,8 +120,8 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return err
 	}
 
-	if err := svc.Sidecars.Up(ctx); err != nil {
-		return fmt.Errorf("starting sidecars: %w", err)
+	if err := svc.Compose.Up(ctx); err != nil {
+		return fmt.Errorf("starting compose services: %w", err)
 	}
 
 	if cfg.T3Code.Enable {
@@ -194,23 +194,23 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
-	var vmErr, sidecarErr error
+	var vmErr, composeErr error
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
 		vmErr = err
 	}
-	if err := svc.Sidecars.Down(ctx); err != nil {
+	if err := svc.Compose.Down(ctx); err != nil {
 		svc.log().Warn("compose stop error: %v", err)
-		sidecarErr = err
+		composeErr = err
 	}
-	if vmErr != nil || sidecarErr != nil {
-		if vmErr != nil && sidecarErr != nil {
-			return fmt.Errorf("VM stop: %w; compose stop: %v", vmErr, sidecarErr)
+	if vmErr != nil || composeErr != nil {
+		if vmErr != nil && composeErr != nil {
+			return fmt.Errorf("VM stop: %w; compose stop: %v", vmErr, composeErr)
 		}
 		if vmErr != nil {
 			return fmt.Errorf("VM stop: %w", vmErr)
 		}
-		return fmt.Errorf("compose stop: %w", sidecarErr)
+		return fmt.Errorf("compose stop: %w", composeErr)
 	}
 	svc.log().Success("aivm stopped")
 	return nil
@@ -223,22 +223,22 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
-	var vmErr, sidecarErr error
+	var vmErr, composeErr error
 	if err := svc.VM.Destroy(ctx); err != nil {
 		vmErr = err
 	}
-	if err := svc.Sidecars.Down(ctx); err != nil {
+	if err := svc.Compose.Down(ctx); err != nil {
 		svc.log().Warn("compose destroy error: %v", err)
-		sidecarErr = err
+		composeErr = err
 	}
-	if vmErr != nil || sidecarErr != nil {
-		if vmErr != nil && sidecarErr != nil {
-			return fmt.Errorf("VM destroy: %w; compose destroy: %v", vmErr, sidecarErr)
+	if vmErr != nil || composeErr != nil {
+		if vmErr != nil && composeErr != nil {
+			return fmt.Errorf("VM destroy: %w; compose destroy: %v", vmErr, composeErr)
 		}
 		if vmErr != nil {
 			return fmt.Errorf("VM destroy: %w", vmErr)
 		}
-		return fmt.Errorf("compose destroy: %w", sidecarErr)
+		return fmt.Errorf("compose destroy: %w", composeErr)
 	}
 	svc.log().Success("VM destroyed")
 	return nil
