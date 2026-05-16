@@ -95,7 +95,7 @@ func (svc *LifecycleService) currentEnvHash() string {
 // currentConfigHash computes the hash covering all execution-relevant config.
 func (svc *LifecycleService) currentConfigHash() string {
 	enabled := bootstrapEnabledPlugins(svc.Registry, svc.Provider, svc.Config.Plugins.Enabled)
-	return computeConfigHash(
+	return ComputeConfigHash(
 		svc.PluginDefs,
 		svc.Config.Plugins.Config,
 		svc.Integrations,
@@ -111,13 +111,13 @@ func (svc *LifecycleService) currentConfigHash() string {
 	)
 }
 
-// computeConfigHash returns a SHA-256 hex digest of all execution-relevant
+// ComputeConfigHash returns a SHA-256 hex digest of all execution-relevant
 // configuration: provider, agent defs, VM resources, enabled plugin list,
 // effective plugin defs, plugin config overrides, and integration defs.
 //
 // Excluded intentionally: MCP, T3Code, Idle timeouts, debug flag, and VM
 // prompt-threshold fields — none of these affect what runs inside the VM.
-func computeConfigHash(
+func ComputeConfigHash(
 	pluginDefs map[string]plugin.PluginDef,
 	pluginConfig map[string]map[string]any,
 	integrations []integration.IntegrationDef,
@@ -133,6 +133,22 @@ func computeConfigHash(
 ) string {
 	sorted := append([]string(nil), enabledPlugins...)
 	sort.Strings(sorted)
+
+	// Normalise nil vs empty so that semantically equivalent values always
+	// produce the same hash. Viper and mapstructure can deserialise the same
+	// YAML differently (nil vs empty slice/map) depending on whether a key is
+	// explicitly present in the config file. Without normalisation a user who
+	// adds then removes `vm.mounts: []` (or `plugins.config: {}`) would see a
+	// false-positive "VM config has changed" prompt on every run.
+	if vmMounts == nil {
+		vmMounts = []string{}
+	}
+	if integrations == nil {
+		integrations = []integration.IntegrationDef{}
+	}
+	if pluginConfig == nil {
+		pluginConfig = map[string]map[string]any{}
+	}
 
 	type hashInput struct {
 		Provider       string
