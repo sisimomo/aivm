@@ -133,7 +133,7 @@ func doBuildTestImage() error {
 		}
 	}
 
-	buildCtx, buildCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	buildCtx, buildCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer buildCancel()
 
 	cmd := exec.CommandContext(buildCtx, "docker", "build",
@@ -146,7 +146,7 @@ func doBuildTestImage() error {
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
 		if buildCtx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("docker build: timeout after 2m\n%s", buf.String())
+			return fmt.Errorf("docker build: timeout after 10m\n%s", buf.String())
 		}
 		return fmt.Errorf("docker build: %w\n%s", err, buf.String())
 	}
