@@ -9,9 +9,9 @@ type ComposeManager interface {
 	// already running are skipped. Called during VM startup.
 	Up(ctx context.Context) error
 
-	// Down stops and removes compose services. When removeVolumes is true,
-	// named volumes are also removed (used by `aivm destroy`).
-	Down(ctx context.Context, removeVolumes bool) error
+	// Down stops and removes compose services. Named volumes are always
+	// preserved — they are never deleted by aivm.
+	Down(ctx context.Context) error
 
 	// HealthMap returns a map of service name → healthy for all services
 	// defined in the compose file. Used by `aivm status`.

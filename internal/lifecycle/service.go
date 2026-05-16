@@ -199,7 +199,7 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 		svc.log().Warn("VM stop error: %v", err)
 		vmErr = err
 	}
-	if err := svc.Sidecars.Down(ctx, false); err != nil {
+	if err := svc.Sidecars.Down(ctx); err != nil {
 		svc.log().Warn("compose stop error: %v", err)
 		sidecarErr = err
 	}
@@ -227,7 +227,7 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.VM.Destroy(ctx); err != nil {
 		vmErr = err
 	}
-	if err := svc.Sidecars.Down(ctx, true); err != nil {
+	if err := svc.Sidecars.Down(ctx); err != nil {
 		svc.log().Warn("compose destroy error: %v", err)
 		sidecarErr = err
 	}

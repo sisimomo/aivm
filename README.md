@@ -247,7 +247,7 @@ Omit `from` to run the integration whenever a given agent is active, regardless 
 
 ### Compose File
 
-Point aivm at a standard `docker-compose.yml` to run services alongside the VM. All services are brought up with `docker compose up -d` when the VM starts, and torn down with `docker compose down` on stop (volumes are also removed on `aivm destroy`).
+Point aivm at a standard `docker-compose.yml` to run services alongside the VM. All services are brought up with `docker compose up -d` when the VM starts, and torn down with `docker compose down` on stop. Named volumes are **never** deleted by aivm — they persist across VM recreations and `aivm destroy`.
 
 ```yaml
 compose_file: ./docker-compose.yml
@@ -302,7 +302,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm start` | Start VM and services only |
 | `aivm stop` | Stop VM and services (disk preserved) |
 | `aivm restart` | Stop then start VM and services |
-| `aivm destroy` | Delete the VM entirely (host state in `~/.aivm` is preserved) |
+| `aivm destroy` | Delete the VM entirely (volumes and host state in `~/.aivm` are preserved) |
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
 | `aivm logs [service]` | Show logs for a service (`monitor` · `bootstrap` · `vm`) or all compose services (no arg) |

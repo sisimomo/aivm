@@ -126,7 +126,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 						aivmlog.Warn("VM stop error: %v", err)
 						continue
 					}
-					if err := m.Sidecars.Down(ctx, false); err != nil {
+					if err := m.Sidecars.Down(ctx); err != nil {
 						aivmlog.Warn("compose stop error: %v", err)
 					}
 					m.Sessions.WriteVMStoppedAt()
@@ -156,7 +156,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 			case vm.StatusNotFound:
 				// VM already gone — nothing left to monitor.
 				aivmlog.Info("VM no longer exists — idle monitor exiting")
-				if err := m.Sidecars.Down(ctx, false); err != nil {
+				if err := m.Sidecars.Down(ctx); err != nil {
 					return fmt.Errorf("tearing down orphaned sidecars: %w", err)
 				}
 				return nil
@@ -171,7 +171,7 @@ func (m *IdleMonitor) destroy(ctx context.Context) error {
 		aivmlog.Warn("VM destroy error: %v", err)
 	}
 	m.Sessions.ClearVMStoppedAt()
-	if err := m.Sidecars.Down(ctx, true); err != nil {
+	if err := m.Sidecars.Down(ctx); err != nil {
 		aivmlog.Warn("compose destroy error: %v", err)
 	}
 	aivmlog.Success("VM deleted — resources reclaimed")

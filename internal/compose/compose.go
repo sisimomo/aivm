@@ -54,18 +54,14 @@ func (m *Manager) Up(ctx context.Context) error {
 	return nil
 }
 
-// Down implements ComposeManager. It runs `docker compose down` (optionally
-// with -v to remove named volumes). Returns nil when ComposeFile is empty.
-func (m *Manager) Down(ctx context.Context, removeVolumes bool) error {
+// Down implements ComposeManager. It runs `docker compose down`.
+// Named volumes are always preserved. Returns nil when ComposeFile is empty.
+func (m *Manager) Down(ctx context.Context) error {
 	if m.ComposeFile == "" {
 		return nil
 	}
-	args := []string{"down"}
-	if removeVolumes {
-		args = append(args, "-v")
-	}
 	w := aivmlog.Writer("compose")
-	cmd := m.composeCmd(ctx, args...)
+	cmd := m.composeCmd(ctx, "down")
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
