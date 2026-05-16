@@ -115,6 +115,12 @@ func (svc *LifecycleService) currentConfigHash() string {
 // configuration: provider, agent defs, VM resources, enabled plugin list,
 // effective plugin defs, plugin config overrides, and integration defs.
 //
+// Nil slices and maps are normalized to empty collections before hashing. This
+// ensures deterministic hashes across YAML deserialization variations, where
+// Viper and mapstructure may produce nil vs empty depending on config presence.
+// The function is insensitive to nil vs empty collections, performing inline
+// normalization of vmMounts, integrations, and pluginConfig parameters.
+//
 // Excluded intentionally: MCP, T3Code, Idle timeouts, debug flag, and VM
 // prompt-threshold fields — none of these affect what runs inside the VM.
 func ComputeConfigHash(
