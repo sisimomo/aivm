@@ -63,7 +63,12 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 
 	if cfg.T3Code.Enable {
 		t3Icon := "❌"
-		if svc.T3Code.IsRunning() {
+		// Use the presence of the t3code-url state file as the source of truth
+		// for whether T3 Code is running. IsRunning() relies on in-memory state
+		// that is reset on every new process, so it always returns false when
+		// `aivm status` is invoked as a separate subprocess after `aivm start`.
+		t3URLFile := filepath.Join(cfg.StateDir, "t3code-url")
+		if _, err := os.Stat(t3URLFile); err == nil {
 			t3Icon = "✅"
 		}
 		t3URL := readT3CodeURL(cfg.StateDir, cfg.T3Code.Port)
