@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/vm"
@@ -63,16 +62,13 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 
 	if cfg.T3Code.Enable {
 		t3Icon := "❌"
-		// Use the presence of the t3code-url state file as the source of truth
-		// for whether T3 Code is running. IsRunning() relies on in-memory state
-		// that is reset on every new process, so it always returns false when
-		// `aivm status` is invoked as a separate subprocess after `aivm start`.
-		t3URLFile := filepath.Join(cfg.StateDir, "t3code-url")
-		if _, err := os.Stat(t3URLFile); err == nil {
+		// Resolve the host port and display URL in one pass from the state file.
+		// Probe from the host: verifies both t3 serve and port-forwarding are working.
+		state := readT3CodeState(cfg.StateDir, cfg.T3Code.Port)
+		if t3CodeIsAlive(state.HostPort) {
 			t3Icon = "✅"
 		}
-		t3URL := readT3CodeURL(cfg.StateDir, cfg.T3Code.Port)
-		fmt.Fprintf(out, "  │  T3 Code:           %s %s\n", t3Icon, t3URL)
+		fmt.Fprintf(out, "  │  T3 Code:           %s %s\n", t3Icon, state.DisplayURL)
 		fmt.Fprintf(out, "  │  Idle monitor:      — (disabled in T3 Code mode)\n")
 	} else {
 		monitorPID := filepath.Join(cfg.StateDir, "idle-monitor.pid")
@@ -171,17 +167,6 @@ func (svc *LifecycleService) Logs(service string) error {
 	default:
 		return fmt.Errorf("unknown service %q — valid services: monitor, bootstrap, vm (or omit for compose logs)", service)
 	}
-}
-
-// readT3CodeURL reads the persisted T3 Code pairing URL (which includes the
-// auth token) from the state directory. Falls back to a bare URL if the file
-// is absent (e.g. tunnel not yet started or server did not emit a pairing URL).
-func readT3CodeURL(stateDir string, port int) string {
-	data, err := os.ReadFile(filepath.Join(stateDir, "t3code-url"))
-	if err != nil || len(strings.TrimSpace(string(data))) == 0 {
-		return fmt.Sprintf("http://localhost:%d", port)
-	}
-	return strings.TrimSpace(string(data))
 }
 
 func tailFile(path string) error {

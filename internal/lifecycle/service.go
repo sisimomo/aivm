@@ -193,7 +193,7 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
-	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
@@ -222,7 +222,7 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
-	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
 	if err := svc.VM.Destroy(ctx); err != nil {
 		vmErr = err
@@ -353,31 +353,16 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 	// and then `aivm` bare calls Start() again in a new process). The t3code-url
 	// file is written after a successful launch and removed by Stop()/Destroy(),
 	// so its presence means a previous process launched t3 serve successfully.
-	t3codeURLPath := filepath.Join(cfg.StateDir, "t3code-url")
+	t3codeURLPath := filepath.Join(cfg.StateDir, t3codeURLFile)
 	if _, statErr := os.Stat(t3codeURLPath); statErr == nil {
-		// Verify t3 serve is still responsive inside the VM before trusting the file.
-		verifyScript := fmt.Sprintf(
-			`if curl -sf --max-time 3 http://localhost:%d/ >/dev/null 2>&1; then echo ok; else echo dead; fi`,
-			containerPort,
-		)
-		verifyOut, _ := svc.VM.RunOutput(ctx, verifyScript, nil)
-		if strings.TrimSpace(verifyOut) == "ok" {
-			// Determine the host-side port to display. When Docker auto-assigns
-			// a port (cfg.T3Code.Port == 0), the real host port is encoded in
-			// the persisted pairing URL.
-			hostPort := containerPort
-			if urlBytes, readErr := os.ReadFile(t3codeURLPath); readErr == nil {
-				re := regexp.MustCompile(`localhost:(\d+)`)
-				if m := re.FindStringSubmatch(string(urlBytes)); len(m) > 1 {
-					if p, atoiErr := strconv.Atoi(m[1]); atoiErr == nil {
-						hostPort = p
-					}
-				}
-			}
-			svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
+		// Parse the host port from the persisted pairing URL (handles Docker
+		// auto-assigned ports) and probe from the host to confirm reachability.
+		state := readT3CodeState(cfg.StateDir, containerPort)
+		if t3CodeIsAlive(state.HostPort) {
+			svc.log().Success("T3 Code is already running at http://localhost:%d", state.HostPort)
 			return nil
 		}
-		// t3 serve is no longer responsive — stale file. Remove it and re-launch.
+		// No longer reachable from the host — stale file. Remove it and re-launch.
 		_ = os.Remove(t3codeURLPath)
 	}
 
@@ -474,11 +459,11 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 		// parsePairingURL will extract the real host port from the pairing info
 		pairingURL := parsePairingURL(pairingInfo, containerPort)
 		// Persist the token-bearing URL with the real host port (owner-only permissions)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
 	} else {
 		// Persist the token-bearing URL so 'aivm status' can show it later (owner-only permissions)
 		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+		_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
 	}
 
 	fmt.Fprintln(svc.log().Out, displayInfo)
