@@ -142,7 +142,7 @@ func TestT3CodeStatusShowsRunningIcon(t *testing.T) {
 		Run()
 }
 
-// TestT3CodeStatusShowsPortAccessible is the critical end-to-end validation: after
+// TestT3CodePortAccessible is the critical end-to-end validation: after
 // `aivm start` the T3 Code port must be reachable via HTTP on localhost.
 // This test uses no mocks for port verification — it makes a real TCP/HTTP
 // connection to the port that Docker forwarded from the container running
