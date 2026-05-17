@@ -72,4 +72,10 @@ type VM interface {
 	CreateSnapshot(ctx context.Context, name string) error
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)
 	ListSnapshots(ctx context.Context) ([]Snapshot, error)
+	// GetPublishedPort returns the host port that maps to the given container
+	// port. For Docker this queries the actual Docker-assigned port (important
+	// when the host port was 0 / auto-assigned at container creation). For
+	// Colima, which uses an SSH tunnel, host port == container port, so
+	// containerPort is returned unchanged.
+	GetPublishedPort(containerPort int) (int, error)
 }
