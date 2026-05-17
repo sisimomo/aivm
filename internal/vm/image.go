@@ -76,13 +76,17 @@ func (m *ImageManager) LoadBaseImage() *BaseImage {
 	return &img
 }
 
-// TryRestoreBaseImage restores the VM to the current base image snapshot, skipping bootstrap.
-// Returns true on success. Returns false — triggering normal bootstrap — when no snapshot
-// was stored (e.g. the VM backend does not support snapshots) or the snapshot is unavailable.
+// TryRestoreBaseImage restores the VM to the current base image, skipping bootstrap.
+// Returns true on success. Returns false — triggering normal bootstrap — when no base
+// image is recorded or the restore cannot be applied.
+//
+// When SnapshotName is empty the backend uses a disk-file-only restore path (e.g.
+// Colima on VZ/Apple Silicon where QEMU snapshots are unavailable). The VM is stopped,
+// the staged bootstrap disk is installed, and the VM is restarted.
 func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 	img := m.LoadBaseImage()
-	if img == nil || img.SnapshotName == "" {
-		aivmlog.Debug("no restorable base image snapshot — will run bootstrap")
+	if img == nil {
+		aivmlog.Debug("no base image recorded — will run bootstrap")
 		return false
 	}
 
@@ -92,11 +96,19 @@ func (m *ImageManager) TryRestoreBaseImage(ctx context.Context) bool {
 		return false
 	}
 	if !found {
-		aivmlog.Debug("base image snapshot '%s' not found — will run bootstrap", img.SnapshotName)
+		if img.SnapshotName != "" {
+			aivmlog.Debug("base image snapshot '%s' not found — will run bootstrap", img.SnapshotName)
+		} else {
+			aivmlog.Debug("no staged disk files for base image — will run bootstrap")
+		}
 		return false
 	}
 
-	aivmlog.Success("restored from base image '%s' (id=%s) — bootstrap skipped", img.SnapshotName, img.ID)
+	if img.SnapshotName != "" {
+		aivmlog.Success("restored from base image '%s' (id=%s) — bootstrap skipped", img.SnapshotName, img.ID)
+	} else {
+		aivmlog.Success("restored from base image (id=%s) — bootstrap skipped", img.ID)
+	}
 	m.RecordVMImageRef(img.ID)
 	return true
 }
@@ -153,23 +165,29 @@ func (m *ImageManager) writeBaseImage(img *BaseImage) error {
 }
 
 // AdoptSnapshot transfers the snapshot created by sourceVM into this
-// ImageManager's profile, then writes the base image metadata. If the
-// backend cannot transfer snapshots (e.g. Colima), the SnapshotName is
-// cleared so that a full bootstrap is used on the next recreate instead of
-// silently failing to restore.
+// ImageManager's profile, then writes the base image metadata.
+//
+// TransferSnapshot is always attempted regardless of whether a named snapshot
+// was created. Colima ignores the snapshot name and transfers disk files
+// directly, so the disk (which is the bootstrap state) is staged even when
+// QEMU-style snapshots are unavailable (e.g. on VZ/Apple Silicon).
+// For backends that cannot transfer at all, SnapshotName is cleared so that
+// a full bootstrap is used on the next recreate instead of silently failing.
 func (m *ImageManager) AdoptSnapshot(ctx context.Context, sourceVM VM, img *BaseImage) error {
 	adopted := *img // shallow copy so we don't mutate the caller's struct
 
-	if adopted.SnapshotName != "" {
-		if transferErr := sourceVM.TransferSnapshot(ctx, adopted.SnapshotName, m.vm.Profile()); transferErr != nil {
-			aivmlog.Debug("snapshot transfer not supported (%v) — adopted base image will require full bootstrap", transferErr)
-			adopted.SnapshotName = ""
-		}
+	if transferErr := sourceVM.TransferSnapshot(ctx, adopted.SnapshotName, m.vm.Profile()); transferErr != nil {
+		aivmlog.Debug("snapshot transfer not supported (%v) — adopted base image will require full bootstrap", transferErr)
+		adopted.SnapshotName = ""
 	}
 
 	if err := m.writeBaseImage(&adopted); err != nil {
 		return fmt.Errorf("writing adopted base image: %w", err)
 	}
-	aivmlog.Success("base image adopted: %s (id=%s)", adopted.SnapshotName, adopted.ID)
+	if adopted.SnapshotName != "" {
+		aivmlog.Success("base image adopted: %s (id=%s)", adopted.SnapshotName, adopted.ID)
+	} else {
+		aivmlog.Success("base image adopted (id=%s)", adopted.ID)
+	}
 	return nil
 }

@@ -660,9 +660,9 @@ func (svc *LifecycleService) RecreateVM(ctx context.Context, rebuild bool) error
 		return svc.doHardRebuild(ctx, imgMgr)
 	}
 
-	// Fast path: restore from snapshot.
+	// Fast path: restore from base image (snapshot or staged disk files).
 	img := imgMgr.LoadBaseImage()
-	if img == nil || img.SnapshotName == "" {
+	if img == nil {
 		// No base image — ask the user what to do.
 		switch promptRecreateNoBaseImage(svc.log().Out, svc.Confirmer) {
 		case recreateRebuild:
@@ -680,7 +680,11 @@ func (svc *LifecycleService) RecreateVM(ctx context.Context, rebuild bool) error
 		}
 	}
 
-	svc.log().Step("Recreating VM from base image '%s' (id=%s)", img.SnapshotName, img.ID)
+	if img.SnapshotName != "" {
+		svc.log().Step("Recreating VM from base image '%s' (id=%s)", img.SnapshotName, img.ID)
+	} else {
+		svc.log().Step("Recreating VM from base image (id=%s)", img.ID)
+	}
 
 	// Stop the VM (and services) before restoring the snapshot.
 	svc.log().Step("Stopping VM...")

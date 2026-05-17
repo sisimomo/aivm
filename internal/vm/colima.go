@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -251,6 +250,31 @@ func (c *ColimaVM) CreateSnapshot(ctx context.Context, name string) error {
 }
 
 func (c *ColimaVM) RestoreSnapshot(ctx context.Context, name string) (bool, error) {
+	// Disk-file-only restore (no named QEMU snapshot): used on VZ / Apple Silicon
+	// where QEMU-style snapshots are unavailable. The staged disk files represent the
+	// full bootstrap state. We must stop the currently-running (blank) VM, install the
+	// staged disk, and restart so the VM boots from the bootstrap image.
+	if name == "" {
+		stagingDir := colimaSnapshotStagingDir(c.profile)
+		if _, err := os.Stat(stagingDir); os.IsNotExist(err) {
+			aivmlog.Debug("no staged disk files for disk-only restore")
+			return false, nil
+		}
+		if err := run.Quiet(ctx, "colima", "stop", c.profile, "--force"); err != nil {
+			return false, fmt.Errorf("stopping VM for disk-only restore: %w", err)
+		}
+		if err := c.applyStagedDiskFiles(ctx); err != nil {
+			return false, fmt.Errorf("applying staged disk files: %w", err)
+		}
+		if err := run.Quiet(ctx, "colima", "start", c.profile); err != nil {
+			return false, fmt.Errorf("restarting VM after disk restore: %w", err)
+		}
+		if err := c.WaitReady(ctx, 90*time.Second); err != nil {
+			return false, fmt.Errorf("VM not ready after disk restore: %w", err)
+		}
+		return true, nil
+	}
+
 	// If staged disk files exist (written by TransferSnapshot from a shadow VM),
 	// install them into this profile's Lima instance dir before asking Lima/QEMU
 	// to restore the named snapshot.  The staging dir is cleaned up on success.
@@ -391,41 +415,14 @@ func colimaSnapshotStagingDir(profile string) string {
 	return filepath.Join(home, ".colima-aivm-staging", profile)
 }
 
-// copyFile copies src to dst, overwriting dst if it exists.
+// copyFile copies src to dst preserving sparse regions so that the host file
+// only occupies space for data that has actually been written.  Lima disk
+// images start life as sparse files (a 60 GiB virtual disk may occupy only a
+// few GiB on the host), but a naive byte-by-byte copy materialises every zero
+// hole as real disk blocks.  We avoid that by using platform-specific sparse
+// copy semantics.
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	info, err := in.Stat()
-	if err != nil {
-		return err
-	}
-
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	buf := make([]byte, 4*1024*1024) // 4 MiB chunks
-	for {
-		n, readErr := in.Read(buf)
-		if n > 0 {
-			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			return readErr
-		}
-	}
-	return nil
+	return sparseCopyFile(src, dst)
 }
 
 func (c *ColimaVM) vmTypeFlags(vmType string) []string {
