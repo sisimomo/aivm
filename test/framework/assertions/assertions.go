@@ -43,6 +43,19 @@ func BaseImageExists() fw.AssertFunc {
 	}
 }
 
+// BaseImageNotExists asserts that no base image metadata file exists in StateDir.
+func BaseImageNotExists() fw.AssertFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		path := filepath.Join(h.StateDir, "base-image.json")
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("expected no base image file but found one at: %s", path)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+}
+
 // BaseImageHasSnapshot asserts that the saved base image includes a snapshot
 // name (i.e. the VM backend supports snapshots).
 func BaseImageHasSnapshot() fw.AssertFunc {

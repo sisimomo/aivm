@@ -152,13 +152,24 @@ func (m *ImageManager) writeBaseImage(img *BaseImage) error {
 	return os.WriteFile(filepath.Join(m.stateDir, baseImageFile), data, 0644)
 }
 
-// AdoptSnapshot writes the given BaseImage metadata into this ImageManager's
-// state directory. Use this to propagate a snapshot created by a shadow VM
-// into the main VM's state without re-running the snapshot operation.
-func (m *ImageManager) AdoptSnapshot(img *BaseImage) error {
-	if err := m.writeBaseImage(img); err != nil {
+// AdoptSnapshot transfers the snapshot created by sourceVM into this
+// ImageManager's profile, then writes the base image metadata. If the
+// backend cannot transfer snapshots (e.g. Colima), the SnapshotName is
+// cleared so that a full bootstrap is used on the next recreate instead of
+// silently failing to restore.
+func (m *ImageManager) AdoptSnapshot(ctx context.Context, sourceVM VM, img *BaseImage) error {
+	adopted := *img // shallow copy so we don't mutate the caller's struct
+
+	if adopted.SnapshotName != "" {
+		if transferErr := sourceVM.TransferSnapshot(ctx, adopted.SnapshotName, m.vm.Profile()); transferErr != nil {
+			aivmlog.Debug("snapshot transfer not supported (%v) — adopted base image will require full bootstrap", transferErr)
+			adopted.SnapshotName = ""
+		}
+	}
+
+	if err := m.writeBaseImage(&adopted); err != nil {
 		return fmt.Errorf("writing adopted base image: %w", err)
 	}
-	aivmlog.Success("base image adopted: %s (id=%s)", img.SnapshotName, img.ID)
+	aivmlog.Success("base image adopted: %s (id=%s)", adopted.SnapshotName, adopted.ID)
 	return nil
 }

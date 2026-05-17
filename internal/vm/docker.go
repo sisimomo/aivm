@@ -274,6 +274,25 @@ func (d *DockerVM) snapshotTag(name string) string {
 	return fmt.Sprintf("aivm-snap-%s-%s:latest", d.profile, safe)
 }
 
+// TransferSnapshot re-tags the snapshot image so it is accessible under
+// targetProfile. The old tag (scoped to d.profile) is removed after the new
+// tag is created. This is needed when a shadow VM builds a snapshot that must
+// be adopted by the main VM profile.
+func (d *DockerVM) TransferSnapshot(ctx context.Context, snapshotName, targetProfile string) error {
+	srcTag := d.snapshotTag(snapshotName)
+	safe := strings.NewReplacer(" ", "-", "/", "-", ":", "-").Replace(snapshotName)
+	dstTag := fmt.Sprintf("aivm-snap-%s-%s:latest", targetProfile, safe)
+	if srcTag == dstTag {
+		return nil
+	}
+	if err := dockerCmd(ctx, "tag", srcTag, dstTag); err != nil {
+		return fmt.Errorf("re-tagging snapshot %q to profile %q: %w", snapshotName, targetProfile, err)
+	}
+	// Remove the old tag so it doesn't linger after the shadow VM is cleaned up.
+	_ = dockerCmd(ctx, "rmi", srcTag)
+	return nil
+}
+
 // GetPublishedPort retrieves the host port that Docker assigned for the given
 // container port. Returns 0 if the port is not published or the container is not running.
 // This is used by the test harness to discover auto-assigned ports after container creation.

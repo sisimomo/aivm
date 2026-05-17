@@ -71,8 +71,9 @@ func TestRecreateRebuildForceWithSessions(t *testing.T) {
 // with no base image prompts the user and proceeds with a full rebuild when answered "y".
 //
 //  1. Start VM (base image saved).
-//  2. RecreateVM(rebuild=false) in interactive mode — no base image prompt answered "y".
-//  3. VM is rebuilt; new base image saved.
+//  2. Delete base image metadata to simulate the no-base-image precondition.
+//  3. RecreateVM(rebuild=false) in interactive mode — no base image prompt answered "y".
+//  4. VM is rebuilt; new base image saved.
 func TestRecreateRebuildInteractiveConfirm(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
@@ -83,8 +84,9 @@ func TestRecreateRebuildInteractiveConfirm(t *testing.T) {
 		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("No active sessions", assertions.SessionCount(0)).
-		Step("Wait 1s to ensure new image gets a different timestamp",
-			sleepStep(1100*time.Millisecond)).
+		Step("Delete base image metadata to trigger no-base-image prompt",
+			actions.DeleteBaseImage()).
+		Assert("Base image metadata removed", assertions.BaseImageNotExists()).
 		Step("Recreate (non-rebuild) — prompt shown, answered 'y'",
 			actions.CLI("recreate")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
@@ -97,25 +99,26 @@ func TestRecreateRebuildInteractiveConfirm(t *testing.T) {
 // when the user answers "n" at the no-base-image prompt.
 //
 //  1. Start VM → base image v1 saved.
-//  2. RecreateVM(rebuild=false) in interactive mode, answer "n".
-//  3. VM is still running; base image is unchanged (still v1).
+//  2. Delete base image metadata to simulate the no-base-image precondition.
+//  3. RecreateVM(rebuild=false) in interactive mode, answer "n".
+//  4. VM is still running; base image metadata is absent (cancelled, no new image).
 func TestRecreateRebuildInteractiveCancel(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
 		framework.WithInteractive("n"), // "Run a full rebuild now? [y/N]"
 	)
 
-	var v1ID string
-
 	h.Scenario("interactive recreate — user cancels with 'n'").
 		Step("Start VM (creates base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v1 saved", assertions.BaseImageExists()).
-		Step("Capture base image v1 ID", captureBaseImageID(t, &v1ID)).
+		Step("Delete base image metadata to trigger no-base-image prompt",
+			actions.DeleteBaseImage()).
+		Assert("Base image metadata removed", assertions.BaseImageNotExists()).
 		Step("Recreate (non-rebuild) — prompt shown, answered 'n'",
 			actions.CLI("recreate")).
 		Assert("VM still running (recreate was cancelled)", assertions.VMStatus(vm.StatusRunning)).
-		Assert("Base image unchanged (still v1)", assertions.BaseImageIs(&v1ID)).
+		Assert("No base image saved (rebuild was cancelled)", assertions.BaseImageNotExists()).
 		Run()
 }
 

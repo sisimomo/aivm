@@ -673,6 +673,9 @@ func (svc *LifecycleService) RecreateVM(ctx context.Context, rebuild bool) error
 			}
 			return svc.doHardRebuild(ctx, imgMgr)
 		default:
+			if !svc.Confirmer.IsInteractive() {
+				return fmt.Errorf("no base image snapshot found; run 'aivm recreate --rebuild'")
+			}
 			return nil
 		}
 	}
@@ -734,7 +737,9 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context) error {
 	// Ensure the shadow VM is destroyed on exit (success or failure).
 	defer func() {
 		svc.log().Step("Destroying shadow VM (%s)...", shadowProfile)
-		if destroyErr := shadowVM.Destroy(ctx); destroyErr != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if destroyErr := shadowVM.Destroy(cleanupCtx); destroyErr != nil {
 			svc.log().Warn("shadow VM destroy error (non-fatal): %v", destroyErr)
 		}
 		_ = os.RemoveAll(shadowStateDir)
@@ -753,7 +758,7 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context) error {
 	// The snapshot itself lives inside the VM backend (Colima/Docker), not in
 	// stateDir, so only the JSON metadata needs to be propagated.
 	mainImgMgr := svc.imageManager()
-	if copyErr := mainImgMgr.AdoptSnapshot(img); copyErr != nil {
+	if copyErr := mainImgMgr.AdoptSnapshot(ctx, shadowVM, img); copyErr != nil {
 		return fmt.Errorf("adopting shadow base image: %w", copyErr)
 	}
 

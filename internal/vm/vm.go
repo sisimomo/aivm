@@ -72,4 +72,11 @@ type VM interface {
 	CreateSnapshot(ctx context.Context, name string) error
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)
 	ListSnapshots(ctx context.Context) ([]Snapshot, error)
+	// TransferSnapshot makes an existing snapshot (created under this VM's
+	// profile) accessible under targetProfile. For backends where snapshots
+	// are profile-scoped (e.g. Docker image tags), this re-tags the underlying
+	// artifact. For backends that cannot transfer snapshots, it returns an
+	// error; callers should treat that as non-fatal and clear the snapshot
+	// reference so that a full bootstrap is used instead.
+	TransferSnapshot(ctx context.Context, snapshotName, targetProfile string) error
 }
