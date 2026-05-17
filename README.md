@@ -306,7 +306,9 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
 | `aivm logs [service]` | Show logs for a service (`monitor` · `bootstrap` · `vm`) or all compose services (no arg) |
-| `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
+| `aivm recreate` | Restore VM from the saved base image snapshot (fast clean reset) |
+| `aivm recreate --rebuild` | Full bootstrap on a blank VM and save as new base image (slow) |
+| `aivm rebuild-image` | Rebuild base image using a shadow VM — running VM and sessions untouched |
 | `aivm version` | Print version |
 
 **Global flags:**
@@ -316,14 +318,27 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `--config <path>` | Path to `aivm.yaml` (default: `~/.aivm/aivm.yaml`) |
 | `--debug` | Enable verbose debug logging |
 
-### `aivm rebuild-image`
+### `aivm recreate`
 
-Re-runs the full bootstrap process on a clean blank VM, unconditionally installing all plugins. Useful after adding new plugins or when the image has drifted.
+Restores the VM from the saved base image snapshot — stops the current VM, destroys it, and recreates it from the snapshot without running bootstrap. This is the fastest way to undo any changes an AI agent may have introduced and return to a known-good clean state.
 
 ```bash
-aivm rebuild-image          # prompts if active sessions exist
-aivm rebuild-image --force  # stop active sessions without prompting
+aivm recreate           # fast: restore from base image snapshot
+aivm recreate --rebuild # slow: full bootstrap on a blank VM, saves a new base image
 ```
+
+If no base image snapshot exists yet (first run or cleared), `aivm recreate` will prompt you to run a full rebuild instead.
+
+### `aivm rebuild-image`
+
+Rebuilds the base image using a **shadow VM** — a temporary container is bootstrapped from scratch in the background, the resulting snapshot is saved as the new base image, and the shadow container is destroyed. The currently running VM and any active sessions are never interrupted.
+
+```bash
+aivm rebuild-image   # rebuild base image in background; running VM untouched
+aivm recreate        # apply the new base image (briefly restarts the VM)
+```
+
+Use `rebuild-image` when you want to refresh the base image (e.g. after changing plugins or updating tool versions) without disrupting an ongoing session.
 
 ---
 

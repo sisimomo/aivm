@@ -151,3 +151,14 @@ func (m *ImageManager) writeBaseImage(img *BaseImage) error {
 	}
 	return os.WriteFile(filepath.Join(m.stateDir, baseImageFile), data, 0644)
 }
+
+// AdoptSnapshot writes the given BaseImage metadata into this ImageManager's
+// state directory. Use this to propagate a snapshot created by a shadow VM
+// into the main VM's state without re-running the snapshot operation.
+func (m *ImageManager) AdoptSnapshot(img *BaseImage) error {
+	if err := m.writeBaseImage(img); err != nil {
+		return fmt.Errorf("writing adopted base image: %w", err)
+	}
+	aivmlog.Success("base image adopted: %s (id=%s)", img.SnapshotName, img.ID)
+	return nil
+}

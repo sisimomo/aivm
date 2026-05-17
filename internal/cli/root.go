@@ -49,7 +49,10 @@ Examples:
   aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
-  aivm status            Show status`,
+  aivm status            Show status
+  aivm recreate          Restore VM from base image (clean environment)
+  aivm recreate --rebuild  Full bootstrap and save a new base image
+  aivm rebuild-image     Rebuild base image using shadow VM (running VM untouched)`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -81,6 +84,7 @@ Examples:
 		RestartCmd(getApp),
 		StatusCmd(getApp),
 		SSHCmd(getApp),
+		RecreateCmd(getApp),
 		RebuildImageCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),

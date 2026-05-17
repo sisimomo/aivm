@@ -600,45 +600,6 @@ func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, f
 	return svc.syncBootstrap(ctx)
 }
 
-// RebuildImage rebuilds the base VM image by re-running bootstrap on a fresh VM.
-func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error {
-	imgMgr := svc.imageManager()
-	current := imgMgr.LoadBaseImage()
-
-	fmt.Fprintln(svc.log().Out)
-	svc.log().Warn("Base image rebuild requested.")
-	if current != nil {
-		svc.log().Warn("Current base image: id=%s, created %s",
-			current.ID, current.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
-	} else {
-		svc.log().Warn("No existing base image found.")
-	}
-
-	sessions, _ := svc.Sessions.List()
-	if len(sessions) > 0 {
-		svc.log().Warn("%d active session(s) detected.", len(sessions))
-	}
-
-	if force {
-		if len(sessions) > 0 {
-			killed := svc.Sessions.KillAll()
-			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
-		}
-		return svc.doHardRebuild(ctx, imgMgr)
-	}
-
-	switch promptImageRebuild(svc.log().Out, svc.Confirmer, len(sessions)) {
-	case imageRebuildHard:
-		if len(sessions) > 0 {
-			killed := svc.Sessions.KillAll()
-			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
-		}
-		return svc.doHardRebuild(ctx, imgMgr)
-	default:
-		return nil
-	}
-}
-
 // bootstrapFreshVM starts targetVM fresh, runs a full bootstrap, and saves the base image.
 // It records the VM creation timestamp and image reference. Returns the saved image.
 func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.VM, imgMgr *vm.ImageManager) (*vm.BaseImage, error) {
@@ -677,5 +638,126 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 
 	svc.log().Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
 	svc.log().Info("Future VMs will start from this image.")
+	return nil
+}
+
+// RecreateVM restores the VM from the saved base image snapshot and restarts it.
+// When rebuild is true, a full bootstrap is run instead (equivalent to the old
+// rebuild-image flow), and the new clean state is saved as the updated base image.
+// If no base image exists and rebuild is false, the user is prompted interactively.
+func (svc *LifecycleService) RecreateVM(ctx context.Context, rebuild bool) error {
+	imgMgr := svc.imageManager()
+
+	if rebuild {
+		// Full rebuild: destroy → bootstrap → save new base image → done.
+		// Sessions must be stopped first.
+		sessions, _ := svc.Sessions.List()
+		if len(sessions) > 0 {
+			svc.log().Warn("%d active session(s) detected.", len(sessions))
+			killed := svc.Sessions.KillAll()
+			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
+		}
+		return svc.doHardRebuild(ctx, imgMgr)
+	}
+
+	// Fast path: restore from snapshot.
+	img := imgMgr.LoadBaseImage()
+	if img == nil || img.SnapshotName == "" {
+		// No base image — ask the user what to do.
+		switch promptRecreateNoBaseImage(svc.log().Out, svc.Confirmer) {
+		case recreateRebuild:
+			sessions, _ := svc.Sessions.List()
+			if len(sessions) > 0 {
+				killed := svc.Sessions.KillAll()
+				svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
+			}
+			return svc.doHardRebuild(ctx, imgMgr)
+		default:
+			return nil
+		}
+	}
+
+	svc.log().Step("Recreating VM from base image '%s' (id=%s)", img.SnapshotName, img.ID)
+
+	// Stop the VM (and services) before restoring the snapshot.
+	svc.log().Step("Stopping VM...")
+	if err := svc.Stop(ctx); err != nil {
+		svc.log().Warn("Stop error (continuing): %v", err)
+	}
+
+	// Destroy and recreate: restoring a snapshot requires a fresh VM creation.
+	svc.log().Step("Destroying VM for snapshot restore...")
+	if err := svc.VM.Destroy(ctx); err != nil {
+		return fmt.Errorf("destroying VM: %w", err)
+	}
+
+	// Start fresh — ensureBootstrapped will call TryRestoreBaseImage which
+	// applies the snapshot, skipping full bootstrap.
+	svc.log().Step("Starting VM from base image...")
+	if err := svc.Start(ctx); err != nil {
+		return fmt.Errorf("starting VM from base image: %w", err)
+	}
+
+	svc.log().Success("VM recreated from base image — clean environment ready")
+	return nil
+}
+
+// RebuildImage rebuilds the base VM image using a shadow VM so the currently
+// running VM (and any active sessions) are not interrupted.
+//
+// A temporary VM is created under profile "<mainprofile>-rebuild" with its own
+// isolated state directory. Full bootstrap runs on it, the resulting snapshot
+// is saved as the new base image (overwriting the previous one), and then the
+// shadow VM is destroyed. The primary VM continues running throughout.
+func (svc *LifecycleService) RebuildImage(ctx context.Context) error {
+	cfg := svc.Config
+	mainProfile := svc.VM.Profile()
+	shadowProfile := mainProfile + "-rebuild"
+	shadowStateDir := filepath.Join(cfg.StateDir, "rebuild-tmp")
+
+	svc.log().Step("Rebuilding base image using shadow VM (profile: %s)", shadowProfile)
+	svc.log().Info("Running VM (%s) will not be interrupted.", mainProfile)
+
+	// Clean up any leftover shadow state from a previous interrupted rebuild.
+	if err := os.RemoveAll(shadowStateDir); err != nil {
+		svc.log().Warn("could not clean shadow state dir: %v", err)
+	}
+	if err := os.MkdirAll(shadowStateDir, 0755); err != nil {
+		return fmt.Errorf("creating shadow state dir: %w", err)
+	}
+
+	shadowVM, err := vm.NewWithProfile(&cfg.VM, shadowProfile, shadowStateDir)
+	if err != nil {
+		return fmt.Errorf("creating shadow VM: %w", err)
+	}
+
+	// Ensure the shadow VM is destroyed on exit (success or failure).
+	defer func() {
+		svc.log().Step("Destroying shadow VM (%s)...", shadowProfile)
+		if destroyErr := shadowVM.Destroy(ctx); destroyErr != nil {
+			svc.log().Warn("shadow VM destroy error (non-fatal): %v", destroyErr)
+		}
+		_ = os.RemoveAll(shadowStateDir)
+		svc.log().Info("Shadow VM cleaned up.")
+	}()
+
+	shadowImgMgr := vm.NewImageManager(shadowVM, shadowStateDir)
+
+	svc.log().Step("Bootstrapping shadow VM...")
+	img, err := svc.bootstrapFreshVM(ctx, shadowVM, shadowImgMgr)
+	if err != nil {
+		return fmt.Errorf("bootstrapping shadow VM: %w", err)
+	}
+
+	// Copy the new base image metadata from the shadow state to the main state.
+	// The snapshot itself lives inside the VM backend (Colima/Docker), not in
+	// stateDir, so only the JSON metadata needs to be propagated.
+	mainImgMgr := svc.imageManager()
+	if copyErr := mainImgMgr.AdoptSnapshot(img); copyErr != nil {
+		return fmt.Errorf("adopting shadow base image: %w", copyErr)
+	}
+
+	svc.log().Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
+	svc.log().Info("Future VMs will start from this image. Run 'aivm recreate' to apply it to the current VM.")
 	return nil
 }

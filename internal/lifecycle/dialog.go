@@ -41,38 +41,35 @@ func promptYesNo(out io.Writer, c Confirmer, prompt string) bool {
 	return ans == "y" || ans == "Y"
 }
 
-// imageRebuildDecision is the user's choice when `aivm rebuild-image` is run.
-type imageRebuildDecision int
-
-const (
-	imageRebuildCancel imageRebuildDecision = iota
-	imageRebuildHard                        // destroy VM and rebuild in place
-)
-
-// promptImageRebuild drives the interactive decision tree for `aivm rebuild-image`
-// when force is false. Returns imageRebuildCancel if the user backs out.
-func promptImageRebuild(out io.Writer, c Confirmer, nSessions int) imageRebuildDecision {
-	if nSessions > 0 {
-		fmt.Fprintf(out, "\n  Kill all active sessions now? [y/N] ")
-		if ans := c.ReadAnswer(); ans == "y" || ans == "Y" {
-			return imageRebuildHard
-		}
-		fmt.Fprintf(out, "ℹ️  Rebuild cancelled.\n")
-		return imageRebuildCancel
-	}
-	// No active sessions — confirm hard rebuild.
-	fmt.Fprintf(out, "\n  Proceed with base image rebuild? [y/N] ")
-	if ans := c.ReadAnswer(); ans == "y" || ans == "Y" {
-		return imageRebuildHard
-	}
-	fmt.Fprintf(out, "ℹ️  Rebuild cancelled.\n")
-	return imageRebuildCancel
-}
-
 // promptConfigChanged asks the user whether to recreate the VM to apply
 // pending config changes. Returns true only when the user answers y/Y.
 func promptConfigChanged(out io.Writer, c Confirmer) bool {
 	fmt.Fprintf(out, "  → Recreate VM to apply changes? [y/N] ")
 	ans := c.ReadAnswer()
 	return ans == "y" || ans == "Y"
+}
+
+// recreateDecision is the user's choice when `aivm recreate` is run without a base image.
+type recreateDecision int
+
+const (
+	recreateCancel  recreateDecision = iota
+	recreateRestore                  // restore from base image (fast)
+	recreateRebuild                  // full rebuild (slow)
+)
+
+// promptRecreateNoBaseImage asks what to do when no base image snapshot exists.
+func promptRecreateNoBaseImage(out io.Writer, c Confirmer) recreateDecision {
+	if !c.IsInteractive() {
+		fmt.Fprintf(out, "No base image found and running non-interactively — aborting recreate.\n")
+		return recreateCancel
+	}
+	fmt.Fprintf(out, "\nNo base image snapshot found.\n")
+	fmt.Fprintf(out, "  → Run a full rebuild now (destroys VM and re-runs bootstrap)? [y/N] ")
+	ans := c.ReadAnswer()
+	if ans == "y" || ans == "Y" {
+		return recreateRebuild
+	}
+	fmt.Fprintf(out, "ℹ️  Recreate cancelled. Run 'aivm recreate --rebuild' to build a base image first.\n")
+	return recreateCancel
 }
