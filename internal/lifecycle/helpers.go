@@ -62,9 +62,10 @@ func readT3CodeState(stateDir string, fallbackPort int) t3CodeState {
 }
 
 // t3CodeIsAlive probes T3 Code from the host machine by making an HTTP GET to
-// http://localhost:{hostPort}/. It returns true only when the server responds
-// with a 2xx status code within 3 seconds, confirming that both t3 serve and
-// the port-forwarding path are working.
+// http://localhost:{hostPort}/. It returns true when the server sends any HTTP
+// response within 3 seconds, confirming that both t3 serve and the
+// port-forwarding path are working. A connection error or timeout means the
+// service is not reachable.
 func t3CodeIsAlive(hostPort int) bool {
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", hostPort))
@@ -72,7 +73,7 @@ func t3CodeIsAlive(hostPort int) bool {
 		return false
 	}
 	resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	return true
 }
 
 func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, configured []string) []string {
