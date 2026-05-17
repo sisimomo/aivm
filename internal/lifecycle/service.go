@@ -453,18 +453,18 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 	// so we replace any IPv4 address rather than only 127.0.0.1.
 	displayInfo := rewriteIPsToLocalhost(trimmedInfo)
 
-	// When cfg.T3Code.Port == 0 and Docker auto-assigned a host port, we need
-	// to extract the actual forwarded port from the pairing URL.
+	// Derive the host-side port for the pairing URL. For Docker with port 0
+	// (auto-assign), the host port differs from containerPort and must be
+	// queried from Docker. For all other cases host port == containerPort.
+	hostPort := containerPort
 	if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
-		// parsePairingURL will extract the real host port from the pairing info
-		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		// Persist the token-bearing URL with the real host port (owner-only permissions)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
-	} else {
-		// Persist the token-bearing URL so 'aivm status' can show it later (owner-only permissions)
-		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
+		if p, err := svc.VM.GetPublishedPort(containerPort); err == nil && p > 0 {
+			hostPort = p
+		}
 	}
+
+	pairingURL := parsePairingURL(pairingInfo, hostPort)
+	_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
 
 	fmt.Fprintln(svc.log().Out, displayInfo)
 	return nil
