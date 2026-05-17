@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +19,61 @@ import (
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/vm"
 )
+
+// t3codeURLFile is the name of the state file that holds the T3 Code pairing URL.
+const t3codeURLFile = "t3code-url"
+
+// t3CodeState is the parsed contents of the t3code-url state file.
+type t3CodeState struct {
+	// DisplayURL is the full pairing URL to show to the user (may include a token fragment).
+	DisplayURL string
+	// HostPort is the TCP port on localhost that T3 Code is forwarded to.
+	HostPort int
+}
+
+// readT3CodeState reads the t3code-url state file and parses both the display
+// URL and the host port from it in a single pass. fallbackPort is used when the
+// file is absent or cannot be parsed.
+func readT3CodeState(stateDir string, fallbackPort int) t3CodeState {
+	raw, err := os.ReadFile(filepath.Join(stateDir, t3codeURLFile))
+	if err != nil {
+		return t3CodeState{
+			DisplayURL: fmt.Sprintf("http://localhost:%d", fallbackPort),
+			HostPort:   fallbackPort,
+		}
+	}
+	displayURL := strings.TrimSpace(string(raw))
+
+	// Parse the host port from the URL using stdlib — no regex needed.
+	// url.Parse handles the fragment (#token=…) correctly.
+	parsed, parseErr := url.Parse(displayURL)
+	if parseErr == nil {
+		host, portStr, splitErr := net.SplitHostPort(parsed.Host)
+		_ = host
+		if splitErr == nil {
+			if p, atoiErr := strconv.Atoi(portStr); atoiErr == nil {
+				return t3CodeState{DisplayURL: displayURL, HostPort: p}
+			}
+		}
+	}
+
+	// URL present but port could not be parsed — return the display URL with the fallback port.
+	return t3CodeState{DisplayURL: displayURL, HostPort: fallbackPort}
+}
+
+// t3CodeIsAlive probes T3 Code from the host machine by making an HTTP GET to
+// http://localhost:{hostPort}/. It returns true only when the server responds
+// with a 2xx status code within 3 seconds, confirming that both t3 serve and
+// the port-forwarding path are working.
+func t3CodeIsAlive(hostPort int) bool {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/", hostPort))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
 
 func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, configured []string) []string {
 	enabled := make([]string, 0, len(configured)+len(provider.RequiredPlugins()))
