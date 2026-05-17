@@ -130,6 +130,20 @@ func ChangeVMEnv(env map[string]string) fw.StepFunc {
 	}
 }
 
+// DeleteBaseImage removes the base-image.json metadata file so that the next
+// recreate call sees no base image and exercises the "no base image" prompt path.
+// This does NOT remove the underlying VM snapshot artifact; it only clears the
+// metadata pointer so the CLI treats the image as absent.
+func DeleteBaseImage() fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		imgPath := filepath.Join(h.StateDir, "base-image.json")
+		if err := os.Remove(imgPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("deleting base-image.json: %w", err)
+		}
+		return nil
+	}
+}
+
 // SetVMCreatedDaysAgo backdates the vm-created-at state file so the CLI thinks
 // the VM is <days> days old. Use together with WithMaxAgeDays to exercise the
 // "VM too old" interactive prompt.

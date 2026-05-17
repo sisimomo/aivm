@@ -7,29 +7,30 @@ import (
 )
 
 func RebuildImageCmd(getApp func() (*App, error)) *cobra.Command {
-	var force bool
 	cmd := &cobra.Command{
 		Use:   "rebuild-image",
-		Short: "Rebuild the base VM image by re-running bootstrap",
-		Long: `Rebuild the base VM image by fully re-running the bootstrap process.
+		Short: "Rebuild the base VM image without interrupting the running VM",
+		Long: `Rebuild the base VM image using a shadow VM.
 
-Bootstrap runs on a brand-new blank VM (not restored from a previous image)
-so every plugin executes unconditionally from a clean slate.
+A temporary VM is created in the background, the full bootstrap process runs
+on it unconditionally from a clean slate, and the resulting snapshot is saved
+as the new base image. The shadow VM is then destroyed automatically.
 
-If active sessions exist you will be asked to confirm stopping them before
-the rebuild proceeds.`,
+The currently running VM and any active sessions are not interrupted.
+
+After rebuild-image completes, run 'aivm recreate' to apply the new base image
+to the running VM.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {
 				return err
 			}
-			return DoRebuildImage(cmd.Context(), app, force)
+			return DoRebuildImage(cmd.Context(), app)
 		},
 	}
-	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompts, stop active sessions")
 	return cmd
 }
 
-func DoRebuildImage(ctx context.Context, app *App, force bool) error {
-	return app.Lifecycle.RebuildImage(ctx, force)
+func DoRebuildImage(ctx context.Context, app *App) error {
+	return app.Lifecycle.RebuildImage(ctx)
 }

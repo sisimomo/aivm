@@ -250,6 +250,38 @@ func (c *ColimaVM) CreateSnapshot(ctx context.Context, name string) error {
 }
 
 func (c *ColimaVM) RestoreSnapshot(ctx context.Context, name string) (bool, error) {
+	// Disk-file-only restore (no named QEMU snapshot): used on VZ / Apple Silicon
+	// where QEMU-style snapshots are unavailable. The staged disk files represent the
+	// full bootstrap state. We must stop the currently-running (blank) VM, install the
+	// staged disk, and restart so the VM boots from the bootstrap image.
+	if name == "" {
+		stagingDir := colimaSnapshotStagingDir(c.profile)
+		if _, err := os.Stat(stagingDir); os.IsNotExist(err) {
+			aivmlog.Debug("no staged disk files for disk-only restore")
+			return false, nil
+		}
+		if err := run.Quiet(ctx, "colima", "stop", c.profile, "--force"); err != nil {
+			return false, fmt.Errorf("stopping VM for disk-only restore: %w", err)
+		}
+		if err := c.applyStagedDiskFiles(ctx); err != nil {
+			return false, fmt.Errorf("applying staged disk files: %w", err)
+		}
+		if err := run.Quiet(ctx, "colima", "start", c.profile); err != nil {
+			return false, fmt.Errorf("restarting VM after disk restore: %w", err)
+		}
+		if err := c.WaitReady(ctx, 90*time.Second); err != nil {
+			return false, fmt.Errorf("VM not ready after disk restore: %w", err)
+		}
+		return true, nil
+	}
+
+	// If staged disk files exist (written by TransferSnapshot from a shadow VM),
+	// install them into this profile's Lima instance dir before asking Lima/QEMU
+	// to restore the named snapshot.  The staging dir is cleaned up on success.
+	if err := c.applyStagedDiskFiles(ctx); err != nil {
+		aivmlog.Debug("applying staged disk files failed (non-fatal): %v", err)
+	}
+
 	snapshots, err := c.ListSnapshots(ctx)
 	if err != nil {
 		return false, nil
@@ -260,6 +292,37 @@ func (c *ColimaVM) RestoreSnapshot(ctx context.Context, name string) (bool, erro
 		}
 	}
 	return false, nil
+}
+
+// applyStagedDiskFiles checks for disk files previously staged by TransferSnapshot
+// and, if found, copies them into this profile's Lima instance directory.
+// The staging directory is removed on success.
+func (c *ColimaVM) applyStagedDiskFiles(ctx context.Context) error {
+	stagingDir := colimaSnapshotStagingDir(c.profile)
+	if _, err := os.Stat(stagingDir); os.IsNotExist(err) {
+		return nil // nothing staged — normal path
+	}
+
+	dstDir := colimaLimaInstanceDir(c.profile)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return fmt.Errorf("preparing Lima instance dir: %w", err)
+	}
+
+	for _, fname := range []string{"basedisk", "diffdisk"} {
+		src := filepath.Join(stagingDir, fname)
+		if _, err := os.Stat(src); os.IsNotExist(err) {
+			continue // file not staged; skip
+		}
+		dst := filepath.Join(dstDir, fname)
+		if err := copyFile(src, dst); err != nil {
+			return fmt.Errorf("installing staged %s: %w", fname, err)
+		}
+		aivmlog.Info("installed staged disk file: %s → %s", src, dst)
+	}
+
+	// Clean up staging dir after successful install.
+	_ = os.RemoveAll(stagingDir)
+	return nil
 }
 
 func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
@@ -275,6 +338,91 @@ func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
 		}
 	}
 	return snaps, nil
+}
+
+// TransferSnapshot copies the QEMU/VZ disk files that contain the named
+// snapshot from this (shadow) VM's Lima instance directory into a staging
+// directory inside the target profile's state directory.  The files are
+// applied to the live Lima instance during the next RestoreSnapshot call,
+// i.e. after the main VM has been destroyed and before it is restarted.
+//
+// The staging directory path follows the convention understood by
+// RestoreSnapshot: <targetStateDir>/snapshot-staging/.
+//
+// targetStateDir is derived from targetProfile via colimaStateDir.
+func (c *ColimaVM) TransferSnapshot(ctx context.Context, _ string, targetProfile string) error {
+	srcDir := colimaLimaInstanceDir(c.profile)
+	if _, err := os.Stat(srcDir); err != nil {
+		return fmt.Errorf("shadow Lima instance dir not found at %s: %w", srcDir, err)
+	}
+
+	// Stop the shadow VM so the disk is not in use while we copy it.
+	if err := c.Stop(ctx); err != nil {
+		return fmt.Errorf("stopping shadow VM before disk transfer: %w", err)
+	}
+
+	stagingDir := colimaSnapshotStagingDir(targetProfile)
+	if err := os.MkdirAll(stagingDir, 0755); err != nil {
+		return fmt.Errorf("creating snapshot staging dir: %w", err)
+	}
+
+	for _, fname := range []string{"basedisk", "diffdisk"} {
+		src := filepath.Join(srcDir, fname)
+		dst := filepath.Join(stagingDir, fname)
+		if err := copyFile(src, dst); err != nil {
+			return fmt.Errorf("copying %s to staging: %w", fname, err)
+		}
+	}
+	aivmlog.Info("Colima disk files staged for profile '%s' at %s", targetProfile, stagingDir)
+	return nil
+}
+
+// colimaLimaInstanceDir returns the Lima instance directory for a Colima profile.
+// Colima maps profile names to Lima IDs: the default profile ("colima") stays as
+// "colima"; any other name becomes "colima-<name>".
+// The root is $LIMA_HOME if set, otherwise ~/.lima.
+// Colima stores its Lima instances under a "_lima" sub-directory inside $COLIMA_HOME
+// (defaulting to ~/.colima/_lima).
+func colimaLimaInstanceDir(profile string) string {
+	root := colimaLimaHome()
+	limaID := "colima"
+	if profile != "colima" && profile != "" {
+		limaID = "colima-" + profile
+	}
+	return filepath.Join(root, limaID)
+}
+
+// colimaLimaHome returns the directory where Colima stores Lima instance dirs.
+// It respects $LIMA_HOME (Lima's own override) and $COLIMA_HOME (Colima's home).
+func colimaLimaHome() string {
+	if v := os.Getenv("LIMA_HOME"); v != "" {
+		return v
+	}
+	colimaHome := os.Getenv("COLIMA_HOME")
+	if colimaHome == "" {
+		home, _ := os.UserHomeDir()
+		colimaHome = filepath.Join(home, ".colima")
+	}
+	return filepath.Join(colimaHome, "_lima")
+}
+
+// colimaSnapshotStagingDir returns the staging directory where disk files are
+// held until the target profile's VM is destroyed and ready to receive them.
+// Convention: ~/.colima-aivm-staging/<profile>/ (or $COLIMA_HOME/../colima-aivm-staging/<profile>/).
+// We use the user's home dir to keep it outside any single stateDir.
+func colimaSnapshotStagingDir(profile string) string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".colima-aivm-staging", profile)
+}
+
+// copyFile copies src to dst preserving sparse regions so that the host file
+// only occupies space for data that has actually been written.  Lima disk
+// images start life as sparse files (a 60 GiB virtual disk may occupy only a
+// few GiB on the host), but a naive byte-by-byte copy materialises every zero
+// hole as real disk blocks.  We avoid that by using platform-specific sparse
+// copy semantics.
+func copyFile(src, dst string) error {
+	return sparseCopyFile(src, dst)
 }
 
 func (c *ColimaVM) vmTypeFlags(vmType string) []string {

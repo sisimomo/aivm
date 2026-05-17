@@ -18,7 +18,7 @@ import (
 //  1. Start the VM — full bootstrap runs, base image v1 is saved.
 //  2. Destroy the VM.
 //  3. Start again — VM is restored from base image v1 (no bootstrap).
-//  4. Run `aivm rebuild-image --force` — destroys VM, bootstrap, base image v2.
+//  4. Run `aivm recreate --rebuild` — destroys VM, bootstrap, base image v2.
 //  5. Confirm the new VM uses base image v2.
 func TestBaseImageRebuildImpact(t *testing.T) {
 	t.Parallel()
@@ -50,7 +50,7 @@ func TestBaseImageRebuildImpact(t *testing.T) {
 			time.Sleep(1100 * time.Millisecond)
 			return nil
 		}).
-		Step("Rebuild base image (force — no interactive prompt)", actions.CLI("rebuild-image", "--force")).
+		Step("Rebuild base image (--rebuild — no interactive prompt)", actions.CLI("recreate", "--rebuild")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v2 exists", assertions.BaseImageExists()).
 		Step("Capture base image v2 ID", func(_ context.Context, h *framework.Harness) error {

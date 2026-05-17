@@ -58,24 +58,24 @@ func TestCLIStartStop(t *testing.T) {
 		Run()
 }
 
-// TestCLIRebuildImageForceFlag verifies that `aivm rebuild-image --force`
+// TestCLIRecreateRebuildFlag verifies that `aivm recreate --rebuild`
 // completes without prompts, destroys the current VM, and saves a new base
-// image. Tests that the --force flag is correctly parsed by the rebuild-image
+// image. Tests that the --rebuild flag is correctly parsed by the recreate
 // subcommand.
-func TestCLIRebuildImageForceFlag(t *testing.T) {
+func TestCLIRecreateRebuildFlag(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
 
 	var v1ID string
 
-	h.Scenario("aivm rebuild-image --force via CLI entry point").
+	h.Scenario("aivm recreate --rebuild via CLI entry point").
 		Step("Run: aivm start (creates base image v1)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v1 saved", assertions.BaseImageExists()).
 		Step("Capture base image v1 ID", captureBaseImageID(t, &v1ID)).
 		Step("Wait 1s to ensure new image gets a different timestamp",
 			sleepStep(1100*time.Millisecond)).
-		Step("Run: aivm rebuild-image --force", actions.CLI("rebuild-image", "--force")).
+		Step("Run: aivm recreate --rebuild", actions.CLI("recreate", "--rebuild")).
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("New base image saved", assertions.BaseImageExists()).
 		Assert("Base image ID changed after rebuild", assertions.BaseImageIsNot(&v1ID)).
