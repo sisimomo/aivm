@@ -256,10 +256,14 @@ func VMFileAbsent(path string) fw.AssertFunc {
 // HostFileExists asserts that a file exists on the host at the given absolute path.
 func HostFileExists(path string) fw.AssertFunc {
 	return func(_ context.Context, _ *fw.Harness) error {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		fi, err := os.Stat(path)
+		if os.IsNotExist(err) {
 			return fmt.Errorf("expected host file to exist: %s", path)
 		} else if err != nil {
 			return fmt.Errorf("stat host file %s: %w", path, err)
+		}
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("expected host file to exist but found directory: %s", path)
 		}
 		return nil
 	}
@@ -268,8 +272,13 @@ func HostFileExists(path string) fw.AssertFunc {
 // HostFileAbsent asserts that a file does NOT exist on the host at the given path.
 func HostFileAbsent(path string) fw.AssertFunc {
 	return func(_ context.Context, _ *fw.Harness) error {
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("expected host file to be absent, but found: %s", path)
+		fi, err := os.Stat(path)
+		if err == nil {
+			if fi.Mode().IsRegular() {
+				return fmt.Errorf("expected host file to be absent, but found: %s", path)
+			}
+			// Path exists but is not a regular file (e.g., directory) - not a failure
+			return nil
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("stat host file %s: %w", path, err)
 		}

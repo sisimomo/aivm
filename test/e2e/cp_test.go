@@ -193,6 +193,7 @@ func TestCpNeitherVMPath(t *testing.T) {
 // captured to h.Output so subsequent Assert steps can inspect stderr.
 func cliExpectError(args ...string) framework.StepFunc {
 	return func(ctx context.Context, h *framework.Harness) error {
+		h.Output.Reset()
 		err := h.RunCLI(ctx, args...)
 		if err == nil {
 			return fmt.Errorf("expected CLI command %v to fail, but it succeeded", args)
