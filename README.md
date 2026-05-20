@@ -305,6 +305,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm destroy` | Delete the VM entirely (volumes and host state in `~/.aivm` are preserved) |
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
+| `aivm cp <src> <dst>` | Copy files or directories between host and VM (use `vm:` prefix for VM paths) |
 | `aivm logs [service]` | Show logs for a service (`monitor` · `bootstrap` · `vm`) or all compose services (no arg) |
 | `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
 | `aivm version` | Print version |
@@ -324,6 +325,24 @@ Re-runs the full bootstrap process on a clean blank VM, unconditionally installi
 aivm rebuild-image          # prompts if active sessions exist
 aivm rebuild-image --force  # stop active sessions without prompting
 ```
+
+### `aivm cp`
+
+Copy files or directories between the host and the VM. Prefix VM paths with `vm:`.
+
+```bash
+aivm cp vm:/home/user/file.txt ./local/          # copy file from VM to host
+aivm cp ./local/file.txt vm:/home/user/          # copy file from host to VM
+aivm cp -r vm:/home/user/dir/ ./local/dir/       # copy directory from VM to host
+aivm cp -rf ./local/dir/ vm:/home/user/dir/      # copy directory to VM, overwrite
+```
+
+**Flags:**
+
+| Flag                 | Description                                |
+|----------------------|--------------------------------------------|
+| `-r` / `--recursive` | Copy directories recursively               |
+| `-f` / `--force`     | Overwrite destination if it already exists |
 
 ---
 

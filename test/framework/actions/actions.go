@@ -214,3 +214,24 @@ func RunInVMWithEnv(script string, env map[string]string) fw.StepFunc {
 		return h.DockerVM.Run(ctx, script, env)
 	}
 }
+
+// CreateHostFile writes content to the file at the given absolute host path,
+// creating parent directories as needed. Use this to stage files for
+// host-to-VM copy tests.
+func CreateHostFile(path, content string) fw.StepFunc {
+	return func(_ context.Context, _ *fw.Harness) error {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("create parent dirs for %s: %w", path, err)
+		}
+		return os.WriteFile(path, []byte(content), 0644)
+	}
+}
+
+// CreateHostDir creates the directory at the given absolute host path,
+// including any necessary parents. Use this to stage directories for
+// host-to-VM recursive copy tests.
+func CreateHostDir(path string) fw.StepFunc {
+	return func(_ context.Context, _ *fw.Harness) error {
+		return os.MkdirAll(path, 0755)
+	}
+}

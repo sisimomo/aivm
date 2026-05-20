@@ -233,6 +233,36 @@ func (c *ColimaVM) RunInteractive(ctx context.Context, script string, env map[st
 	return InteractiveSSH(ctx, c.profile, env, script)
 }
 
+// CopyTo copies a file or directory from the host at localPath into the VM at
+// vmPath using scp. Pass recursive=true for directory trees.
+func (c *ColimaVM) CopyTo(ctx context.Context, localPath, vmPath string, recursive bool) error {
+	sshConfig, sshHost := colimaSSHEndpoint(c.profile)
+	args := []string{"-F", sshConfig}
+	if recursive {
+		args = append(args, "-r")
+	}
+	args = append(args, localPath, sshHost+":"+vmPath)
+	cmd := exec.CommandContext(ctx, "scp", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// CopyFrom copies a file or directory from the VM at vmPath to the host at
+// localPath using scp. Pass recursive=true for directory trees.
+func (c *ColimaVM) CopyFrom(ctx context.Context, vmPath, localPath string, recursive bool) error {
+	sshConfig, sshHost := colimaSSHEndpoint(c.profile)
+	args := []string{"-F", sshConfig}
+	if recursive {
+		args = append(args, "-r")
+	}
+	args = append(args, sshHost+":"+vmPath, localPath)
+	cmd := exec.CommandContext(ctx, "scp", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func (c *ColimaVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

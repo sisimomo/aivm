@@ -186,6 +186,26 @@ func (d *DockerVM) SSH(ctx context.Context) error {
 	return cmd.Run()
 }
 
+// CopyTo copies a file or directory from the host at localPath into the
+// container at vmPath. docker cp handles directory trees natively; the
+// recursive flag is accepted for interface compatibility but has no effect.
+func (d *DockerVM) CopyTo(_ context.Context, localPath, vmPath string, _ bool) error {
+	cmd := exec.Command("docker", "cp", localPath, d.containerName+":"+vmPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// CopyFrom copies a file or directory from the container at vmPath to the host
+// at localPath. docker cp handles directory trees natively; the recursive flag
+// is accepted for interface compatibility but has no effect.
+func (d *DockerVM) CopyFrom(_ context.Context, vmPath, localPath string, _ bool) error {
+	cmd := exec.Command("docker", "cp", d.containerName+":"+vmPath, localPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // WaitReady polls until the container responds to a simple command.
 func (d *DockerVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
