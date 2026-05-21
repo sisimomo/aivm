@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -193,7 +195,7 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
-	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
 	if err := svc.VM.Stop(ctx); err != nil {
 		svc.log().Warn("VM stop error: %v", err)
@@ -222,7 +224,7 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.log().Warn("T3 Code tunnel stop error: %v", err)
 	}
-	_ = os.Remove(filepath.Join(svc.Config.StateDir, "t3code-url"))
+	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
 	if err := svc.VM.Destroy(ctx); err != nil {
 		vmErr = err
@@ -353,31 +355,16 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 	// and then `aivm` bare calls Start() again in a new process). The t3code-url
 	// file is written after a successful launch and removed by Stop()/Destroy(),
 	// so its presence means a previous process launched t3 serve successfully.
-	t3codeURLPath := filepath.Join(cfg.StateDir, "t3code-url")
+	t3codeURLPath := filepath.Join(cfg.StateDir, t3codeURLFile)
 	if _, statErr := os.Stat(t3codeURLPath); statErr == nil {
-		// Verify t3 serve is still responsive inside the VM before trusting the file.
-		verifyScript := fmt.Sprintf(
-			`if curl -sf --max-time 3 http://localhost:%d/ >/dev/null 2>&1; then echo ok; else echo dead; fi`,
-			containerPort,
-		)
-		verifyOut, _ := svc.VM.RunOutput(ctx, verifyScript, nil)
-		if strings.TrimSpace(verifyOut) == "ok" {
-			// Determine the host-side port to display. When Docker auto-assigns
-			// a port (cfg.T3Code.Port == 0), the real host port is encoded in
-			// the persisted pairing URL.
-			hostPort := containerPort
-			if urlBytes, readErr := os.ReadFile(t3codeURLPath); readErr == nil {
-				re := regexp.MustCompile(`localhost:(\d+)`)
-				if m := re.FindStringSubmatch(string(urlBytes)); len(m) > 1 {
-					if p, atoiErr := strconv.Atoi(m[1]); atoiErr == nil {
-						hostPort = p
-					}
-				}
-			}
-			svc.log().Success("T3 Code is already running at http://localhost:%d", hostPort)
+		// Parse the host port from the persisted pairing URL (handles Docker
+		// auto-assigned ports) and probe from the host to confirm reachability.
+		state := readT3CodeState(cfg.StateDir, containerPort)
+		if t3CodeIsAlive(state.HostPort) {
+			svc.log().Success("T3 Code is already running at http://localhost:%d", state.HostPort)
 			return nil
 		}
-		// t3 serve is no longer responsive — stale file. Remove it and re-launch.
+		// No longer reachable from the host — stale file. Remove it and re-launch.
 		_ = os.Remove(t3codeURLPath)
 	}
 
@@ -468,18 +455,18 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 	// so we replace any IPv4 address rather than only 127.0.0.1.
 	displayInfo := rewriteIPsToLocalhost(trimmedInfo)
 
-	// When cfg.T3Code.Port == 0 and Docker auto-assigned a host port, we need
-	// to extract the actual forwarded port from the pairing URL.
+	// Derive the host-side port for the pairing URL. For Docker with port 0
+	// (auto-assign), the host port differs from containerPort and must be
+	// queried from Docker. For all other cases host port == containerPort.
+	hostPort := containerPort
 	if cfg.T3Code.Port == 0 && svc.VM.NeedsPortBindingAtBoot() {
-		// parsePairingURL will extract the real host port from the pairing info
-		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		// Persist the token-bearing URL with the real host port (owner-only permissions)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
-	} else {
-		// Persist the token-bearing URL so 'aivm status' can show it later (owner-only permissions)
-		pairingURL := parsePairingURL(pairingInfo, containerPort)
-		_ = os.WriteFile(filepath.Join(cfg.StateDir, "t3code-url"), []byte(pairingURL), 0600)
+		if p, err := svc.VM.GetPublishedPort(containerPort); err == nil && p > 0 {
+			hostPort = p
+		}
 	}
+
+	pairingURL := parsePairingURL(pairingInfo, hostPort)
+	_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
 
 	fmt.Fprintln(svc.log().Out, displayInfo)
 	return nil
@@ -487,14 +474,33 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 
 // parsePairingURL extracts the "Pairing URL:" line from t3 serve startup output,
 // rewrites any VM-internal IP address to localhost (exposed by the SSH tunnel or
-// Docker port forwarding), and returns the result. Falls back to a bare URL if not found.
-func parsePairingURL(output string, port int) string {
+// Docker port forwarding), and rewrites the port to hostPort (important when
+// Docker auto-assigns a host port that differs from the container port).
+// Falls back to a bare URL if no pairing line is found.
+func parsePairingURL(output string, hostPort int) string {
 	for _, line := range strings.Split(output, "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "Pairing URL:"); ok {
-			return rewriteIPsToLocalhost(strings.TrimSpace(after))
+			u := rewriteIPsToLocalhost(strings.TrimSpace(after))
+			return rewriteURLPort(u, hostPort)
 		}
 	}
-	return fmt.Sprintf("http://localhost:%d", port)
+	return fmt.Sprintf("http://localhost:%d", hostPort)
+}
+
+// rewriteURLPort replaces the port in rawURL with newPort. If the URL cannot
+// be parsed or has no explicit port, rawURL is returned unchanged.
+func rewriteURLPort(rawURL string, newPort int) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	host, _, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		// No port in host — nothing to rewrite.
+		return rawURL
+	}
+	parsed.Host = net.JoinHostPort(host, strconv.Itoa(newPort))
+	return parsed.String()
 }
 
 // rewriteIPsToLocalhost replaces all IPv4 addresses in s with "localhost".

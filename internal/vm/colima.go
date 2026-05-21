@@ -34,6 +34,10 @@ func NewColima(profile, stateDir string) *ColimaVM {
 func (c *ColimaVM) Profile() string              { return c.profile }
 func (c *ColimaVM) NeedsPortBindingAtBoot() bool { return false }
 
+// GetPublishedPort returns containerPort unchanged. Colima uses an SSH tunnel
+// so the host port always matches the container port; there is no Docker-style
+// auto-assignment.
+func (c *ColimaVM) GetPublishedPort(containerPort int) (int, error) { return containerPort, nil }
 func (c *ColimaVM) Status(ctx context.Context) (Status, error) {
 	lines, err := run.OutputLines(ctx, "colima", "list")
 	if err != nil {

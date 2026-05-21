@@ -126,6 +126,42 @@ func TestT3CodeRestartAfterStop(t *testing.T) {
 		Run()
 }
 
+// TestT3CodeStatusShowsRunningIcon verifies that `aivm status` displays ✅ for
+// T3 Code when the service is running. A real port is used so that the live
+// HTTP probe inside the VM actually gets a 2xx response.
+func TestT3CodeStatusShowsRunningIcon(t *testing.T) {
+	t.Parallel()
+	h := framework.New(t, framework.WithT3Code(framework.FreePort()))
+
+	h.Scenario("T3 Code: status shows ✅ icon when T3 Code is running").
+		Step("Start VM (T3 Code starts here)", actions.CLI("start")).
+		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+		Assert("T3Code.Launch was called", assertions.T3CodeLaunched()).
+		Step("Reset output buffer", actions.ResetOutput()).
+		Step("Run status command", actions.CLI("status")).
+		Assert("T3 Code line shows running (✅)", assertions.OutputMatches(`T3 Code:\s+✅`)).
+		Run()
+}
+
+// TestT3CodeStatusShowsNotRunningIcon verifies that `aivm status` displays ❌
+// when T3 Code is no longer reachable from the host. The test kills the t3
+// serve process inside the VM so that connections from the host are refused,
+// then checks that status reflects the real state rather than a stale state file.
+func TestT3CodeStatusShowsNotRunningIcon(t *testing.T) {
+	t.Parallel()
+	h := framework.New(t, framework.WithT3Code(framework.FreePort()))
+
+	h.Scenario("T3 Code: status shows ❌ icon when T3 Code is not reachable from host").
+		Step("Start VM (T3 Code starts here)", actions.CLI("start")).
+		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+		Assert("T3Code.Launch was called", assertions.T3CodeLaunched()).
+		Step("Kill t3 serve inside the VM so host connections are refused", actions.RunInVM("pkill -f 't3 serve' || true")).
+		Step("Reset output buffer", actions.ResetOutput()).
+		Step("Run status command", actions.CLI("status")).
+		Assert("T3 Code line shows not reachable (❌)", assertions.OutputMatches(`T3 Code:\s+❌`)).
+		Run()
+}
+
 // TestT3CodePortAccessible is the critical end-to-end validation: after
 // `aivm start` the T3 Code port must be reachable via HTTP on localhost.
 // This test uses no mocks for port verification — it makes a real TCP/HTTP
