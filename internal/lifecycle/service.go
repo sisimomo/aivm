@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -472,14 +474,33 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 
 // parsePairingURL extracts the "Pairing URL:" line from t3 serve startup output,
 // rewrites any VM-internal IP address to localhost (exposed by the SSH tunnel or
-// Docker port forwarding), and returns the result. Falls back to a bare URL if not found.
-func parsePairingURL(output string, port int) string {
+// Docker port forwarding), and rewrites the port to hostPort (important when
+// Docker auto-assigns a host port that differs from the container port).
+// Falls back to a bare URL if no pairing line is found.
+func parsePairingURL(output string, hostPort int) string {
 	for _, line := range strings.Split(output, "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "Pairing URL:"); ok {
-			return rewriteIPsToLocalhost(strings.TrimSpace(after))
+			u := rewriteIPsToLocalhost(strings.TrimSpace(after))
+			return rewriteURLPort(u, hostPort)
 		}
 	}
-	return fmt.Sprintf("http://localhost:%d", port)
+	return fmt.Sprintf("http://localhost:%d", hostPort)
+}
+
+// rewriteURLPort replaces the port in rawURL with newPort. If the URL cannot
+// be parsed or has no explicit port, rawURL is returned unchanged.
+func rewriteURLPort(rawURL string, newPort int) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	host, _, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		// No port in host — nothing to rewrite.
+		return rawURL
+	}
+	parsed.Host = net.JoinHostPort(host, strconv.Itoa(newPort))
+	return parsed.String()
 }
 
 // rewriteIPsToLocalhost replaces all IPv4 addresses in s with "localhost".
