@@ -49,7 +49,8 @@ Examples:
   aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
-  aivm status            Show status`,
+  aivm status            Show status
+  aivm cp vm:/path ./    Copy a file from the VM to the host (use vm: prefix for VM paths)`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -81,6 +82,7 @@ Examples:
 		RestartCmd(getApp),
 		StatusCmd(getApp),
 		SSHCmd(getApp),
+		CpCmd(getApp),
 		RebuildImageCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),

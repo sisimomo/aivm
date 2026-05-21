@@ -8,6 +8,20 @@ import (
 	"strings"
 )
 
+// colimaSSHEndpoint returns the scp/ssh config file path and the SSH hostname
+// for a given Colima profile. These are written by colima/lima at VM creation
+// time and consumed by scp/ssh directly (bypassing the `colima ssh` wrapper).
+func colimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
+	home, _ := os.UserHomeDir()
+	colimaHome := os.Getenv("COLIMA_HOME")
+	if colimaHome == "" {
+		colimaHome = filepath.Join(home, ".colima")
+	}
+	sshConfig = filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
+	sshHost = "lima-colima-" + profile
+	return
+}
+
 // InteractiveSSH opens an interactive SSH session into a Colima VM profile,
 // executing script inside the VM. env maps environment variable names to values
 // that are injected into the remote shell environment.
@@ -21,13 +35,7 @@ func InteractiveSSH(ctx context.Context, profile string, env map[string]string, 
 		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
 	}
 
-	home, _ := os.UserHomeDir()
-	colimaHome := os.Getenv("COLIMA_HOME")
-	if colimaHome == "" {
-		colimaHome = filepath.Join(home, ".colima")
-	}
-	sshConfig := filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
-	sshHost := "lima-colima-" + profile
+	sshConfig, sshHost := colimaSSHEndpoint(profile)
 
 	// colima ssh -- CMD runs without a PTY; TUI apps need one, so use ssh -t directly
 	// with the SSH config file that colima/lima writes.

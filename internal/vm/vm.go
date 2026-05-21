@@ -68,6 +68,12 @@ type VM interface {
 	// for TUI applications that need an interactive terminal (e.g. agent CLIs).
 	RunInteractive(ctx context.Context, script string, env map[string]string) error
 	SSH(ctx context.Context) error
+	// CopyTo copies a file or directory from the host at localPath into the VM
+	// at vmPath. When recursive is true, directories are copied recursively.
+	CopyTo(ctx context.Context, localPath, vmPath string, recursive bool) error
+	// CopyFrom copies a file or directory from the VM at vmPath to localPath on
+	// the host. When recursive is true, directories are copied recursively.
+	CopyFrom(ctx context.Context, vmPath, localPath string, recursive bool) error
 	WaitReady(ctx context.Context, timeout time.Duration) error
 	CreateSnapshot(ctx context.Context, name string) error
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)

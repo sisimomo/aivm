@@ -214,3 +214,52 @@ func (svc *LifecycleService) ListPlugins() error {
 func (svc *LifecycleService) RunMonitor(ctx context.Context) error {
 	return svc.Monitor.Run(ctx)
 }
+
+// Copy transfers a file or directory between the host and the VM.
+//
+// Paths inside the VM must be prefixed with "vm:" (e.g. "vm:/home/user/file").
+// One of src or dst must use the vm: prefix; the other is a plain host path.
+//
+// When recursive is true, directories are copied recursively (equivalent to
+// scp -r / docker cp on a directory). When force is false and the destination
+// already exists the command returns an error instead of overwriting.
+func (svc *LifecycleService) Copy(ctx context.Context, src, dst string, recursive, force bool) error {
+	status, err := svc.VM.Status(ctx)
+	if err != nil || status != vm.StatusRunning {
+		return fmt.Errorf("VM is not running — run 'aivm start' first")
+	}
+
+	const vmPrefix = "vm:"
+	srcIsVM := strings.HasPrefix(src, vmPrefix)
+	dstIsVM := strings.HasPrefix(dst, vmPrefix)
+
+	switch {
+	case srcIsVM && dstIsVM:
+		return fmt.Errorf("both source and destination cannot be VM paths")
+	case !srcIsVM && !dstIsVM:
+		return fmt.Errorf("one of source or destination must be a VM path (use 'vm:' prefix, e.g. vm:/home/user/file)")
+	}
+
+	if srcIsVM {
+		// VM → host
+		vmPath := strings.TrimPrefix(src, vmPrefix)
+		localPath := dst
+		if !force {
+			if _, statErr := os.Stat(localPath); statErr == nil {
+				return fmt.Errorf("destination %q already exists — use -f/--force to overwrite", localPath)
+			}
+		}
+		return svc.VM.CopyFrom(ctx, vmPath, localPath, recursive)
+	}
+
+	// host → VM
+	vmPath := strings.TrimPrefix(dst, vmPrefix)
+	localPath := src
+	if !force {
+		out, runErr := svc.VM.RunOutput(ctx, "test -e "+vm.ShellEscape(vmPath)+" && echo exists || echo notfound", nil)
+		if runErr == nil && strings.TrimSpace(out) == "exists" {
+			return fmt.Errorf("destination %q already exists in VM — use -f/--force to overwrite", vmPath)
+		}
+	}
+	return svc.VM.CopyTo(ctx, localPath, vmPath, recursive)
+}
