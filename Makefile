@@ -21,9 +21,9 @@ build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
 
 install: build
-	@mkdir -p $(INSTALL_DIR)
-	install -m 755 bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
-	xattr -dr com.apple.quarantine $(INSTALL_DIR)/$(BINARY) 2>/dev/null || true
+	@mkdir -p "$(INSTALL_DIR)"
+	install -m 755 bin/$(BINARY) "$(INSTALL_DIR)/$(BINARY)"
+	xattr -dr com.apple.quarantine "$(INSTALL_DIR)/$(BINARY)" 2>/dev/null || true
 	@mkdir -p $(STATE_DIR)/logs $(STATE_DIR)/sessions $(STATE_DIR)/plugins
 	@if [ ! -f $(STATE_DIR)/aivm.yaml ]; then \
 	  cp aivm.example.yaml $(STATE_DIR)/aivm.yaml; \
@@ -34,13 +34,13 @@ install: build
 
 install-test:
 	go build $(BUILD_FLAGS) -o bin/aivm-test ./cmd/aivm
-	@mkdir -p $(INSTALL_DIR)
-	install -m 755 bin/aivm-test $(INSTALL_DIR)/aivm-test
-	xattr -dr com.apple.quarantine $(INSTALL_DIR)/aivm-test 2>/dev/null || true
+	@mkdir -p "$(INSTALL_DIR)"
+	install -m 755 bin/aivm-test "$(INSTALL_DIR)/aivm-test"
+	xattr -dr com.apple.quarantine "$(INSTALL_DIR)/aivm-test" 2>/dev/null || true
 	@echo "✓  aivm-test installed to $(INSTALL_DIR)/aivm-test"
 
 uninstall:
-	rm -f $(INSTALL_DIR)/$(BINARY)
+	rm -f "$(INSTALL_DIR)/$(BINARY)"
 
 clean:
 	rm -rf bin/
