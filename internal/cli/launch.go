@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func LaunchCmd(getApp func() (*App, error)) *cobra.Command {
+func LaunchCmd(getApp func() (*App, error), agentOverride *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "launch [directory]",
 		Short: "Launch Claude Code in the VM (default command)",
@@ -15,11 +15,11 @@ func LaunchCmd(getApp func() (*App, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return DoLaunch(cmd.Context(), app)
+			return DoLaunch(cmd.Context(), app, *agentOverride)
 		},
 	}
 }
 
-func DoLaunch(ctx context.Context, app *App) error {
-	return app.Lifecycle.Launch(ctx)
+func DoLaunch(ctx context.Context, app *App, agentOverride string) error {
+	return app.Lifecycle.Launch(ctx, agentOverride)
 }

@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-    "strings"
+	"strings"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/vm"

@@ -1,10 +1,26 @@
 # aivm configuration
 # Copy to aivm.yaml: cp aivm.example.yaml aivm.yaml
 
-# Active agent — claude, copilot, or opencode.
-# Authentication is handled inside the VM on first launch.
+# Agent configuration.
+# List one or more agents to enable. The default agent is launched when you
+# run `aivm` without --agent. All enabled agents are installed in the VM at
+# bootstrap time so you can switch between them without rebuilding.
+#
+# To enable a single agent:
 agents:
-  enabled: claude
+  default: claude
+  define:
+    claude:
+      enable: true
+
+# To enable multiple agents (all installed; choose default and override with --agent):
+# agents:
+#   default: claude
+#   define:
+#     claude:
+#       enable: true
+#     copilot:
+#       enable: true
 
 # VM resources — tune to your machine.
 vm:
@@ -31,6 +47,13 @@ idle:
   stop_timeout: 5m      # stop VM after this much idle time
   delete_timeout: 5m    # delete stopped VM after this long
 
+# Override an agent's launch command or install steps.
+# (These can be added under agents.define alongside enable: true.)
+# agents:
+#   define:
+#     copilot:
+#       launch_command: "gh copilot suggest"
+
 # T3 Code web GUI (optional).
 # When enabled, `aivm launch` starts t3 serve inside the VM and port-forwards
 # it to http://localhost:<port> on the host, letting you interact with your
@@ -39,7 +62,7 @@ idle:
 # Notes:
 #   - idle monitoring is automatically disabled in this mode (the VM runs until
 #     you explicitly run `aivm stop`)
-#   - agents.enabled is still required — T3 Code is a frontend, not an agent
+#   - agents.default is still required — T3 Code is a frontend, not an agent
 #   - `aivm stop` / `aivm destroy` kill the port-forward tunnel automatically
 # t3code:
 #   enable: false
@@ -74,12 +97,6 @@ idle:
 #       setup: |
 #         curl -fsSL https://example.com/install.sh | sh
 
-# Override an agent's launch command or install steps.
-# agents:
-#   define:
-#     copilot:
-#       launch_command: "gh copilot suggest"
-
 # Custom integrations — run a script when a plugin is installed and an agent is active.
 # integrations:
 #   - from: my-tool
@@ -95,3 +112,4 @@ idle:
 # and torn down with `docker compose down` (or `down -v` for `aivm destroy`).
 # The project name is set to the VM profile name.
 # compose_file: ./docker-compose.yml
+

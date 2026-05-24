@@ -51,12 +51,17 @@ type CompositionResult struct {
 	// Agents is the registry of all available agent providers.
 	Agents *agent.Registry
 
-	// ActiveProvider is the selected active agent provider.
+	// ActiveProvider is the default agent provider (from agents.default).
 	ActiveProvider agent.Provider
 
-	// ActiveAgentDef is the effective agent definition for the active provider
+	// ActiveAgentDef is the effective agent definition for the default provider
 	// (built-in defaults merged with user overrides).
 	ActiveAgentDef agent.Def
+
+	// EnabledAgentDefs is the effective set of agent definitions for ALL enabled
+	// agents (those with enable: true in agents.define). Used by bootstrap and
+	// persist-dir mounting to set up every enabled agent in the VM.
+	EnabledAgentDefs map[string]agent.Def
 
 	// PluginDefs is the effective set of all plugin definitions after merging
 	// built-in defaults, agent definitions, and user overrides. Used for config
@@ -80,23 +85,59 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		}
 	}
 
-	// Validate that an agent is configured.
-	activeAgents := cfg.ActiveAgents()
-	if len(activeAgents) == 0 {
+	enabledAgentNames := cfg.ActiveAgents()
+	if len(enabledAgentNames) == 0 {
 		return nil, &CompositionError{
-			Stage:  "load_config",
-			Reason: "no agent configured — set agents.enabled in aivm.yaml",
+			Stage: "load_config",
+			Reason: "no agents enabled — add at least one agent to agents.define with enable: true in aivm.yaml\n" +
+				"  Example:\n" +
+				"    agents:\n" +
+				"      default: claude\n" +
+				"      define:\n" +
+				"        claude:\n" +
+				"          enable: true",
 		}
 	}
 
-	providerName := cfg.Agents.Enabled
-	prov, ok := agents.Get(providerName)
-	if !ok {
-		return nil, &CompositionError{
-			Stage:  "load_config",
-			Reason: fmt.Sprintf("unknown agent provider %q — check agents.enabled in aivm.yaml", providerName),
+	// Validate that all enabled agents are known providers.
+	for _, name := range enabledAgentNames {
+		if _, ok := agents.Get(name); !ok {
+			return nil, &CompositionError{
+				Stage:  "load_config",
+				Reason: fmt.Sprintf("unknown agent %q in agents.define — check your aivm.yaml", name),
+			}
 		}
 	}
+
+	// Resolve the default agent; auto-infer if only one agent is enabled.
+	defaultAgentName := cfg.DefaultAgent()
+	if defaultAgentName == "" {
+		if len(enabledAgentNames) == 1 {
+			defaultAgentName = enabledAgentNames[0]
+		} else {
+			return nil, &CompositionError{
+				Stage:  "load_config",
+				Reason: "agents.default must be set when multiple agents are enabled — set it to one of: " + joinNames(enabledAgentNames),
+			}
+		}
+	}
+
+	// Validate that the default agent is in the enabled set.
+	defaultEnabled := false
+	for _, name := range enabledAgentNames {
+		if name == defaultAgentName {
+			defaultEnabled = true
+			break
+		}
+	}
+	if !defaultEnabled {
+		return nil, &CompositionError{
+			Stage:  "load_config",
+			Reason: fmt.Sprintf("agents.default %q is not enabled — add it to agents.define with enable: true in aivm.yaml", defaultAgentName),
+		}
+	}
+
+	defaultProv, _ := agents.Get(defaultAgentName)
 
 	// Load built-in agent definitions.
 	agentDefs, err := agent.LoadDefs()
@@ -114,8 +155,12 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		agentDefs[name] = agent.MergeDef(base, override)
 	}
 
-	// Get the effective agent definition for the active provider.
-	activeAgentDef := agentDefs[providerName]
+	enabledAgentDefs := make(map[string]agent.Def, len(enabledAgentNames))
+	for _, name := range enabledAgentNames {
+		enabledAgentDefs[name] = agentDefs[name]
+	}
+
+	activeAgentDef := agentDefs[defaultAgentName]
 
 	// Load built-in plugin definitions.
 	pluginDefs, err := plugin.LoadDefaults()
@@ -174,12 +219,25 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	}
 
 	return &CompositionResult{
-		Config:         cfg,
-		Plugins:        pluginReg,
-		Agents:         agents,
-		ActiveProvider: prov,
-		ActiveAgentDef: activeAgentDef,
-		PluginDefs:     pluginDefs,
-		Integrations:   integDefs,
+		Config:           cfg,
+		Plugins:          pluginReg,
+		Agents:           agents,
+		ActiveProvider:   defaultProv,
+		ActiveAgentDef:   activeAgentDef,
+		EnabledAgentDefs: enabledAgentDefs,
+		PluginDefs:       pluginDefs,
+		Integrations:     integDefs,
 	}, nil
+}
+
+// joinNames returns a comma-separated string of names for error messages.
+func joinNames(names []string) string {
+	result := ""
+	for i, n := range names {
+		if i > 0 {
+			result += ", "
+		}
+		result += fmt.Sprintf("%q", n)
+	}
+	return result
 }

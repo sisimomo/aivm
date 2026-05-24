@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/cli"
@@ -113,21 +114,35 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		t3codeMgr = &t3code.NoopManager{}
 	}
 
+	// Sort names for deterministic bootstrap plugin order.
+	enabledNames := make([]string, 0, len(compResult.EnabledAgentDefs))
+	for name := range compResult.EnabledAgentDefs {
+		enabledNames = append(enabledNames, name)
+	}
+	sort.Strings(enabledNames)
+	enabledProviders := make([]agent.Provider, 0, len(enabledNames))
+	for _, name := range enabledNames {
+		if p, ok := agentReg.Get(name); ok {
+			enabledProviders = append(enabledProviders, p)
+		}
+	}
+
 	return &cli.App{
 		Lifecycle: &lifecycle.LifecycleService{
-			Config:       cfg,
-			VM:           vmInst,
-			Compose:      composeMgr,
-			T3Code:       t3codeMgr,
-			Sessions:     sessions,
-			Monitor:      mon,
-			Registry:     compResult.Plugins,
-			Agents:       compResult.Agents,
-			Provider:     compResult.ActiveProvider,
-			AgentDefs:    map[string]agent.Def{compResult.ActiveProvider.Name(): compResult.ActiveAgentDef},
-			PluginDefs:   compResult.PluginDefs,
-			Integrations: compResult.Integrations,
-			Confirmer:    lifecycle.NewTTYConfirmer(),
+			Config:           cfg,
+			VM:               vmInst,
+			Compose:          composeMgr,
+			T3Code:           t3codeMgr,
+			Sessions:         sessions,
+			Monitor:          mon,
+			Registry:         compResult.Plugins,
+			Agents:           compResult.Agents,
+			Provider:         compResult.ActiveProvider,
+			EnabledProviders: enabledProviders,
+			AgentDefs:        compResult.EnabledAgentDefs,
+			PluginDefs:       compResult.PluginDefs,
+			Integrations:     compResult.Integrations,
+			Confirmer:        lifecycle.NewTTYConfirmer(),
 		},
 	}, nil
 }
