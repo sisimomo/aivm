@@ -126,8 +126,10 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return err
 	}
 
-	if err := svc.Compose.Up(ctx); err != nil {
-		return fmt.Errorf("starting compose services: %w", err)
+	if needsStart {
+		if err := svc.Compose.Up(ctx); err != nil {
+			return fmt.Errorf("starting compose services: %w", err)
+		}
 	}
 
 	if cfg.T3Code.Enable {
