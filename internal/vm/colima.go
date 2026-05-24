@@ -296,6 +296,21 @@ func (c *ColimaVM) RestoreSnapshot(ctx context.Context, name string) (bool, erro
 	return false, nil
 }
 
+// DeleteSnapshot removes the named snapshot from the Colima VM.
+// Returns nil if the snapshot does not exist (idempotent).
+func (c *ColimaVM) DeleteSnapshot(ctx context.Context, name string) error {
+	snapshots, err := c.ListSnapshots(ctx)
+	if err != nil {
+		return fmt.Errorf("delete snapshot %q: list snapshots: %w", name, err)
+	}
+	for _, s := range snapshots {
+		if s.Name == name {
+			return run.Quiet(ctx, "colima", "snapshot", "delete", "--name", name, c.profile)
+		}
+	}
+	return nil
+}
+
 func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
 	lines, err := run.OutputLines(ctx, "colima", "snapshot", "list", c.profile)
 	if err != nil {

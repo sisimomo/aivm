@@ -171,6 +171,40 @@ func BaseImageIsNot(prev *string) fw.AssertFunc {
 	}
 }
 
+// SnapshotCount asserts that the VM has exactly n snapshots.
+func SnapshotCount(want int) fw.AssertFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		snaps, err := h.DockerVM.ListSnapshots(ctx)
+		if err != nil {
+			return fmt.Errorf("list snapshots: %w", err)
+		}
+		if len(snaps) != want {
+			names := make([]string, len(snaps))
+			for i, s := range snaps {
+				names[i] = s.Name
+			}
+			return fmt.Errorf("snapshot count: got %d %v, want %d", len(snaps), names, want)
+		}
+		return nil
+	}
+}
+
+// SnapshotAbsent asserts that no snapshot with the given name exists on the VM.
+func SnapshotAbsent(name string) fw.AssertFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		snaps, err := h.DockerVM.ListSnapshots(ctx)
+		if err != nil {
+			return fmt.Errorf("list snapshots: %w", err)
+		}
+		for _, s := range snaps {
+			if s.Name == name {
+				return fmt.Errorf("snapshot %q still exists but should have been pruned", name)
+			}
+		}
+		return nil
+	}
+}
+
 // SessionCount asserts that exactly n active sessions exist.
 func SessionCount(want int) fw.AssertFunc {
 	return func(_ context.Context, h *fw.Harness) error {

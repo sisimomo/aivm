@@ -35,8 +35,12 @@ func NewImageManager(v VM, stateDir string) *ImageManager {
 // SaveBaseImage records the current VM state as the new base image.
 // Metadata is always persisted; a VM snapshot is attempted as a best-effort
 // optimisation (skipped silently when the VM backend does not support it).
+// The previous snapshot (if any) is deleted after the new one is created so
+// that stale snapshots do not accumulate on disk.
 // All future VM creations will reference this image.
 func (m *ImageManager) SaveBaseImage(ctx context.Context) (*BaseImage, error) {
+	previous := m.LoadBaseImage()
+
 	id := strconv.FormatInt(time.Now().Unix(), 10)
 	snapshotName := "aivm-base-" + id
 
@@ -57,6 +61,15 @@ func (m *ImageManager) SaveBaseImage(ctx context.Context) (*BaseImage, error) {
 		img.SnapshotName = snapshotName
 		_ = m.writeBaseImage(img) // update with snapshot name
 		aivmlog.Success("base image saved: %s (id=%s)", snapshotName, id)
+
+		// Prune the previous snapshot now that the new one is safely stored.
+		if previous != nil && previous.SnapshotName != "" {
+			if err := m.vm.DeleteSnapshot(ctx, previous.SnapshotName); err != nil {
+				aivmlog.Warn("could not delete old snapshot %q (non-fatal): %v", previous.SnapshotName, err)
+			} else {
+				aivmlog.Debug("deleted old snapshot %q", previous.SnapshotName)
+			}
+		}
 	}
 
 	aivmlog.Info("base image recorded: id=%s", id)

@@ -236,6 +236,22 @@ func (d *DockerVM) CreateSnapshot(ctx context.Context, name string) error {
 	return nil
 }
 
+// DeleteSnapshot removes the Docker image for the named snapshot.
+// Returns nil when the image does not exist (already absent is not an error).
+func (d *DockerVM) DeleteSnapshot(ctx context.Context, name string) error {
+	tag := d.snapshotTag(name)
+	err := dockerCmd(ctx, "rmi", "-f", tag)
+	if err == nil {
+		return nil
+	}
+	// "No such image" means the snapshot is already absent — idempotent, not a failure.
+	// Any other error (daemon unreachable, auth, etc.) is propagated.
+	if strings.Contains(err.Error(), "No such image") {
+		return nil
+	}
+	return fmt.Errorf("delete snapshot %q: %w", name, err)
+}
+
 // RestoreSnapshot recreates the container from a previously committed snapshot
 // image, re-applying the original start options (mounts and port bindings).
 // Returns (false, nil) when the snapshot does not exist.

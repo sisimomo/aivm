@@ -77,6 +77,10 @@ type VM interface {
 	WaitReady(ctx context.Context, timeout time.Duration) error
 	CreateSnapshot(ctx context.Context, name string) error
 	RestoreSnapshot(ctx context.Context, name string) (bool, error)
+	// DeleteSnapshot removes the named snapshot.
+	// Implementations must be idempotent: if the snapshot does not exist,
+	// DeleteSnapshot returns nil. Only genuine backend errors are returned.
+	DeleteSnapshot(ctx context.Context, name string) error
 	ListSnapshots(ctx context.Context) ([]Snapshot, error)
 	// GetPublishedPort returns the host port that maps to the given container
 	// port. For Docker this queries the actual Docker-assigned port (important
