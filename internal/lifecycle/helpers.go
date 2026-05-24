@@ -76,9 +76,14 @@ func t3CodeIsAlive(hostPort int) bool {
 	return true
 }
 
-func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, configured []string) []string {
-	enabled := make([]string, 0, len(configured)+len(provider.RequiredPlugins()))
-	seen := make(map[string]bool, len(configured)+len(provider.RequiredPlugins()))
+// bootstrapEnabledPlugins returns the deduplicated ordered list of plugins to install.
+func bootstrapEnabledPlugins(reg *plugin.Registry, providers []agent.Provider, configured []string) []string {
+	total := len(configured)
+	for _, p := range providers {
+		total += len(p.RequiredPlugins())
+	}
+	enabled := make([]string, 0, total)
+	seen := make(map[string]bool, total)
 
 	add := func(name string) {
 		if name == "" || seen[name] {
@@ -91,8 +96,10 @@ func bootstrapEnabledPlugins(reg *plugin.Registry, provider agent.Provider, conf
 	for _, name := range configured {
 		add(name)
 	}
-	for _, name := range provider.RequiredPlugins() {
-		add(name)
+	for _, prov := range providers {
+		for _, name := range prov.RequiredPlugins() {
+			add(name)
+		}
 	}
 	return enabled
 }
@@ -118,11 +125,17 @@ func vmCreatedRecently(stateDir string) bool {
 }
 
 // ensureAgentPersistDirs creates the host-side directories that are mounted
-// into the VM for persistence. Directories are driven by the active agent's
-// Persist field so no code change is needed when adding a new agent.
-func ensureAgentPersistDirs(cfg *config.Config, agentDef agent.Def) {
-	for _, rel := range agentDef.Persist {
-		_ = os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
+// into the VM for persistence.
+func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
+	seen := make(map[string]bool)
+	for _, def := range agentDefs {
+		for _, rel := range def.Persist {
+			if seen[rel] {
+				continue
+			}
+			seen[rel] = true
+			_ = os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
+		}
 	}
 	if cfg.T3Code.Enable {
 		_ = os.MkdirAll(filepath.Join(cfg.StateDir, ".t3"), 0755)
@@ -131,13 +144,26 @@ func ensureAgentPersistDirs(cfg *config.Config, agentDef agent.Def) {
 
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
-func buildStartOptions(v vm.VM, cfg *config.Config, agentDef agent.Def) vm.StartOptions {
-	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts)+len(agentDef.Persist)+1)
+func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) vm.StartOptions {
+	seenPersist := make(map[string]bool)
+	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts))
 	for _, m := range cfg.VM.ParsedMounts {
 		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
 	}
-	for _, rel := range agentDef.Persist {
-		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, rel), Writable: true})
+	agentNames := make([]string, 0, len(agentDefs))
+	for k := range agentDefs {
+		agentNames = append(agentNames, k)
+	}
+	sort.Strings(agentNames)
+	for _, name := range agentNames {
+		def := agentDefs[name]
+		for _, rel := range def.Persist {
+			if seenPersist[rel] {
+				continue
+			}
+			seenPersist[rel] = true
+			mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, rel), Writable: true})
+		}
 	}
 	if cfg.T3Code.Enable {
 		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".t3"), Writable: true})
@@ -196,9 +222,9 @@ sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
 
 // startFreshVM starts v using config-derived options and waits until ready.
 // Use for all VM creation and rebuild operations.
-func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config, agentDef agent.Def) error {
-	ensureAgentPersistDirs(cfg, agentDef)
-	opts := buildStartOptions(v, cfg, agentDef)
+func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) error {
+	ensureAgentPersistDirs(cfg, agentDefs)
+	opts := buildStartOptions(v, cfg, agentDefs)
 	if err := v.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
 	}

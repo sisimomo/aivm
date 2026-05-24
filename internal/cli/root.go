@@ -20,6 +20,7 @@ type AppFactory func(cfgPath string) (*App, error)
 func NewRootCmd(version string, buildApp AppFactory) *cobra.Command {
 	var cfgPath string
 	var debugMode bool
+	var agentOverride string
 
 	// Build the App exactly once per CLI invocation.
 	var (
@@ -42,10 +43,11 @@ func NewRootCmd(version string, buildApp AppFactory) *cobra.Command {
 Launch AI agents in a secure, disposable Colima VM.
 Run from any directory under your dev root.
 
-Supported providers: claude, copilot
+Supported providers: claude, copilot, opencode
 
 Examples:
   aivm                   Launch the configured AI agent in the current directory (starts VM if needed)
+  aivm --agent copilot   Launch a specific enabled agent instead of the default
   aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
@@ -68,12 +70,13 @@ Examples:
 			if err := DoStart(ctx, app); err != nil {
 				return err
 			}
-			return DoLaunch(ctx, app)
+			return DoLaunch(ctx, app, agentOverride)
 		},
 	}
 
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "path to aivm.yaml")
 	root.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
+	root.Flags().StringVar(&agentOverride, "agent", "", "agent to launch (must be enabled in config; overrides agents.default)")
 
 	root.AddCommand(
 		StartCmd(getApp),

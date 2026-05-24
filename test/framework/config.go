@@ -60,6 +60,9 @@ type testConfig struct {
 
 	// Plugins is the list of plugins.enabled entries.
 	Plugins []string
+	// ExtraEnabledAgents contains additional agent names to mark as enabled
+	// alongside Provider. All named agents are installed during bootstrap.
+	ExtraEnabledAgents []string
 	// VMEnv sets vm.env in the YAML.
 	VMEnv map[string]string
 	// ComposeContent, when non-empty, is written to <stateDir>/docker-compose.yml
@@ -141,6 +144,16 @@ func WithBaseImageMaxAgeDays(days int) Option {
 // Defaults to "claude".
 func WithProvider(name string) Option {
 	return func(c *testConfig) { c.Provider = name }
+}
+
+// WithExtraAgents marks additional agents as enabled in the test config.
+// Together with Provider they form the complete set of agents installed during
+// bootstrap. Use WithProvider to set the default agent (the one launched when
+// no --agent flag is given).
+func WithExtraAgents(names ...string) Option {
+	return func(c *testConfig) {
+		c.ExtraEnabledAgents = append(c.ExtraEnabledAgents, names...)
+	}
 }
 
 // WithInteractive simulates running in an interactive terminal.
@@ -272,8 +285,14 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	// Only launch_command is overridden — setup and skip_if come from
 	// defaults.yaml (real curl-based install scripts). This proves the real
 	// binary is installed and callable without requiring interactive TUI auth.
+	// Provider and any ExtraEnabledAgents are marked enable: true so all
+	// configured agents are bootstrapped in the VM.
+	extraEnabled := make(map[string]bool, len(tc.ExtraEnabledAgents))
+	for _, name := range tc.ExtraEnabledAgents {
+		extraEnabled[name] = true
+	}
 	fmt.Fprintf(&sb, "agents:\n")
-	fmt.Fprintf(&sb, "  enabled: %q\n", tc.Provider)
+	fmt.Fprintf(&sb, "  default: %q\n", tc.Provider)
 	fmt.Fprintf(&sb, "  define:\n")
 	for _, name := range []string{"claude", "copilot", "opencode"} {
 		launchCmd := agentLaunchCommand(name, "")
@@ -281,6 +300,9 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 			launchCmd = tc.LaunchCommand
 		}
 		fmt.Fprintf(&sb, "    %s:\n", name)
+		if name == tc.Provider || extraEnabled[name] {
+			fmt.Fprintf(&sb, "      enable: true\n")
+		}
 		fmt.Fprintf(&sb, "      launch_command: %q\n", launchCmd)
 	}
 

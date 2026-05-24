@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,15 +101,12 @@ type IdleConfig struct {
 }
 
 // AgentsConfig is the top-level agents registry. It is independent of plugins.
-// Only one agent may be active at a time; set agents.enabled to its name.
 type AgentsConfig struct {
-	// Enabled is the name of the active agent (e.g. "claude" or "copilot").
-	// Exactly one agent is supported at a time. To switch agents, change this
-	// value — the existing VM will be updated or recreated as needed.
-	Enabled string `mapstructure:"enabled"`
-	// Define holds optional per-agent definition overrides keyed by agent name.
-	// Use this to override an agent's install scripts or runtime defaults
-	// (e.g. agents.define.copilot.defaults.launch_command).
+	// Default is the name of the agent launched when aivm is run without --agent.
+	Default string `mapstructure:"default"`
+	// Define holds per-agent definition entries keyed by agent name.
+	// Set enable: true on any agent to have it bootstrapped in the VM.
+	// Other fields (launch_command, setup, etc.) may also be overridden here.
 	Define map[string]agent.Def `mapstructure:"define"`
 }
 
@@ -126,13 +124,20 @@ type Defaults struct {
 	StateDir string
 }
 
-// ActiveAgents returns the active agent as a single-element slice, or nil if
-// no agent is configured. The slice form is used by the integration executor.
+// ActiveAgents returns the names of all agents with enable: true in agents.define.
 func (c *Config) ActiveAgents() []string {
-	if c.Agents.Enabled != "" {
-		return []string{c.Agents.Enabled}
+	var names []string
+	for name, def := range c.Agents.Define {
+		if def.Enable {
+			names = append(names, name)
+		}
 	}
-	return nil
+	sort.Strings(names)
+	return names
+}
+
+func (c *Config) DefaultAgent() string {
+	return c.Agents.Default
 }
 
 // ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references

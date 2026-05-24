@@ -1,4 +1,5 @@
 claude:
+  enable: false
   description: "Claude Code (Anthropic)"
   dependencies:
     - mise-node
@@ -13,6 +14,7 @@ claude:
     curl -fsSL https://claude.ai/install.sh | bash
 
 copilot:
+  enable: false
   description: "GitHub Copilot CLI (copilot cli)"
   persist:
     - .copilot/session-state
@@ -23,12 +25,13 @@ copilot:
     curl -fsSL https://gh.io/copilot-install | bash
 
 opencode:
+  enable: false
   description: "OpenCode CLI"
   dependencies:
     - system
   path_entries:
     - "$HOME/.opencode/bin"
-  launch_command: "opencode"
+  launch_command: "opencode --dangerously-skip-permissions"
   persist:
     - .local/state/opencode
   skip_if: |

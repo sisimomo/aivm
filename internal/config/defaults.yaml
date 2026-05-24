@@ -18,9 +18,6 @@ idle:
   delete_timeout: 5m
   poll_interval: 30s
 
-agents:
-  enabled: claude
-
 plugins:
   enabled:
     - system
@@ -29,3 +26,4 @@ plugins:
     - mise-uv
 
 debug: false
+

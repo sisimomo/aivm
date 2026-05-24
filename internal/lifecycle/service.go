@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,15 +38,23 @@ type LifecycleService struct {
 	Monitor  *monitor.IdleMonitor
 	Registry *plugin.Registry
 	Agents   *agent.Registry
-	// AgentDefs is the effective set of agent definitions (built-in defaults
-	// merged with user overrides). Used by Launch to pass runtime config to the provider.
+	// AgentDefs is the effective set of agent definitions for ALL enabled agents
+	// (built-in defaults merged with user overrides). Keys are agent names.
+	// Used by Launch to pass runtime config to the provider and by bootstrap
+	// to install every enabled agent in the VM.
 	AgentDefs map[string]agent.Def
 	// PluginDefs is the effective set of all plugin definitions after merging
 	// built-in defaults, agent definitions, and user overrides. Used for config
 	// hash computation (change detection).
 	PluginDefs map[string]plugin.PluginDef
-	// Provider is the active AI agent provider selected from the config.
+	// Provider is the default AI agent provider (from agents.default).
+	// Used for hash/state comparison and as the launch target when no --agent
+	// override is given.
 	Provider agent.Provider
+	// EnabledProviders is the list of all enabled agent providers (those with
+	// enable: true in agents.define). Used by bootstrap to install all agents
+	// and by Launch to validate --agent overrides.
+	EnabledProviders []agent.Provider
 	// Integrations is the complete list of integrations to evaluate during bootstrap.
 	Integrations []integration.IntegrationDef
 	// Confirmer handles interactive terminal I/O. Use NewTTYConfirmer() in production,
@@ -71,18 +80,13 @@ func (svc *LifecycleService) imageManager() *vm.ImageManager {
 	return vm.NewImageManager(svc.VM, svc.Config.StateDir)
 }
 
-// activeAgentDef returns the effective agent definition for the active provider.
-func (svc *LifecycleService) activeAgentDef() agent.Def {
-	return svc.AgentDefs[svc.Provider.Name()]
-}
-
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
 
 	svc.log().Step("Starting aivm")
 
-	opts := buildStartOptions(svc.VM, cfg, svc.activeAgentDef())
+	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
@@ -100,7 +104,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	ensureAgentPersistDirs(cfg, svc.activeAgentDef())
+	ensureAgentPersistDirs(cfg, svc.AgentDefs)
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
@@ -247,10 +251,34 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 }
 
 // Launch launches the configured AI agent in the VM for the current working directory.
+// agentOverride selects a specific enabled agent by name; pass "" to use the default.
 // T3 Code, when enabled, is started by Start() as a background service and does not
 // affect this path — the agent terminal always launches regardless.
-func (svc *LifecycleService) Launch(ctx context.Context) error {
+func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) error {
 	cfg := svc.Config
+
+	// Resolve which provider+def to use for this launch.
+	prov := svc.Provider
+	provDef := svc.AgentDefs[svc.Provider.Name()]
+	if agentOverride != "" {
+		found := false
+		for _, p := range svc.EnabledProviders {
+			if p.Name() == agentOverride {
+				prov = p
+				provDef = svc.AgentDefs[agentOverride]
+				found = true
+				break
+			}
+		}
+		if !found {
+			names := make([]string, 0, len(svc.EnabledProviders))
+			for _, p := range svc.EnabledProviders {
+				names = append(names, p.Name())
+			}
+			sort.Strings(names)
+			return fmt.Errorf("agent %q is not enabled — enabled agents: %v", agentOverride, names)
+		}
+	}
 
 	getCWD := svc.GetWorkDir
 	if getCWD == nil {
@@ -294,24 +322,31 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
+	done := make(chan struct{})
+	defer func() {
+		close(done)
+		signal.Stop(sigCh)
+	}()
 	go func() {
-		<-sigCh
-		if sess != nil {
-			sess.Remove()
+		select {
+		case <-sigCh:
+			if sess != nil {
+				sess.Remove()
+			}
+			os.Exit(0)
+		case <-done:
 		}
-		os.Exit(0)
 	}()
 
 	vmDir := realCWD
 
 	svc.log().Info("Host: %s", hostCWD)
 	svc.log().Info("VM:   %s", vmDir)
-	svc.log().Step("Launching %s in VM", svc.Provider.Description())
+	svc.log().Step("Launching %s in VM", prov.Description())
 
-	providerDef := svc.AgentDefs[svc.Provider.Name()]
 	providerCfg := make(map[string]any)
-	if providerDef.LaunchCommand != "" {
-		providerCfg["launch_command"] = providerDef.LaunchCommand
+	if provDef.LaunchCommand != "" {
+		providerCfg["launch_command"] = provDef.LaunchCommand
 	}
 	env := agent.LaunchEnv{
 		VM:      svc.VM,
@@ -319,7 +354,7 @@ func (svc *LifecycleService) Launch(ctx context.Context) error {
 		Config:  providerCfg,
 	}
 
-	resp, err := svc.Provider.Launch(ctx, env)
+	resp, err := prov.Launch(ctx, env)
 	if err != nil {
 		return err
 	}
@@ -648,7 +683,7 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error
 // bootstrapFreshVM starts targetVM fresh, runs a full bootstrap, and saves the base image.
 // It records the VM creation timestamp and image reference. Returns the saved image.
 func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.VM, imgMgr *vm.ImageManager) (*vm.BaseImage, error) {
-	if err := startFreshVM(ctx, targetVM, svc.Config, svc.activeAgentDef()); err != nil {
+	if err := startFreshVM(ctx, targetVM, svc.Config, svc.AgentDefs); err != nil {
 		return nil, err
 	}
 	imgMgr.RecordCreation()
