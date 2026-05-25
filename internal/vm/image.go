@@ -60,6 +60,7 @@ func (m *ImageManager) SaveBaseImage(ctx context.Context) (*BaseImage, error) {
 	} else {
 		img.SnapshotName = snapshotName
 		if err := m.writeBaseImage(img); err != nil {
+			img.SnapshotName = ""
 			aivmlog.Error("failed to persist snapshot name to metadata: %v", err)
 			aivmlog.Warn("skipping deletion of previous snapshot to preserve restore point")
 		} else {
