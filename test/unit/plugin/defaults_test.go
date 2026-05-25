@@ -125,14 +125,15 @@ func TestLoadDefaults_ScriptsAreValidTemplates(t *testing.T) {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
 
+	fm := plugin.TemplateFuncMap()
 	for name, def := range defs {
 		if def.SkipIf != "" {
-			if _, err := template.New("").Parse(def.SkipIf); err != nil {
+			if _, err := template.New("").Funcs(fm).Parse(def.SkipIf); err != nil {
 				t.Errorf("plugin %q: skip_if is not a valid Go template: %v", name, err)
 			}
 		}
 		if def.Setup != "" {
-			if _, err := template.New("").Parse(def.Setup); err != nil {
+			if _, err := template.New("").Funcs(fm).Parse(def.Setup); err != nil {
 				t.Errorf("plugin %q: setup is not a valid Go template: %v", name, err)
 			}
 		}

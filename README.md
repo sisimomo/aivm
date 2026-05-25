@@ -23,6 +23,7 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
   - [Mounts](#mounts)
   - [Idle Management](#idle-management)
   - [Plugins](#plugins)
+  - [Cocoindex Code](#cocoindex-code)
   - [Integrations](#integrations)
   - [Compose File](#compose-file)
   - [T3 Code GUI](#t3-code-gui)
@@ -355,6 +356,7 @@ Built-in plugins (all idempotent, resolved in dependency order):
 | `system` | Base packages via apt (`git`, `curl`, `jq`, etc.) |
 | `mise` | [mise-en-place](https://mise.jdx.dev/) — universal runtime version manager |
 | `awscli` | AWS CLI v2 |
+| `cocoindex-code` | [Cocoindex Code](https://github.com/cocoindex-io/cocoindex-code) — AST-based semantic code search MCP server |
 | `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) |
 
 **`mise-<tool>` — dynamic tool plugins:**
@@ -389,6 +391,52 @@ Agent are registered automatically based on `agents.enabled`:
 | `claude` | Claude Code CLI (depends on `mise-node`)     |
 | `copilot` | GitHub Copilot CLI (depends on `system`, `gh`) |
 | `opencode` | OpenCode CLI (depends on `system`)           |
+
+---
+
+## Cocoindex Code
+
+[Cocoindex Code](https://github.com/cocoindex-io/cocoindex-code) is an AST-based semantic code search tool that exposes a `search` MCP tool to your AI agent. When enabled, aivm installs `ccc` in the VM and automatically wires it as an MCP server for every active agent.
+
+Add `cocoindex-code` to `plugins.enabled`:
+
+```yaml
+plugins:
+  enabled:
+    - cocoindex-code
+```
+
+That's it. aivm installs the `full` variant by default — local [Snowflake/snowflake-arctic-embed-xs](https://huggingface.co/Snowflake/snowflake-arctic-embed-xs) embeddings, no API key required.
+
+### Cloud embedding provider
+
+To use a cloud provider instead, set `variant: slim` and supply a `config:` block. Its contents are written verbatim as `~/.cocoindex_code/global_settings.yml` inside the VM — see [cocoindex-code's global settings docs](https://github.com/cocoindex-io/cocoindex-code#user-settings-cocoindex_codeglobal_settingsyml) and [embedding model reference](https://github.com/cocoindex-io/cocoindex-code#embedding-models) for all supported keys and providers:
+
+```yaml
+plugins:
+  enabled:
+    - cocoindex-code
+  config:
+    cocoindex-code:
+      variant: slim
+      config:
+        embedding:
+          model: voyage/voyage-code-3
+        envs:
+          VOYAGE_API_KEY: your-api-key
+```
+
+### MCP auto-wiring
+
+When `cocoindex-code` is installed and an agent is active, aivm runs the appropriate integration at bootstrap time:
+
+| Agent | Integration |
+|-------|-------------|
+| `claude` | `claude mcp add cocoindex-code -- ccc mcp` |
+| `copilot` | Patches `~/.copilot/mcp-config.json` |
+| `opencode` | Patches `~/.config/opencode/opencode.json` |
+
+Each integration is idempotent — it is skipped if the MCP server is already registered.
 
 ---
 

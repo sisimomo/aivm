@@ -44,6 +44,27 @@ awscli:
     sudo /tmp/awscliv2/aws/install
     rm -rf /tmp/awscliv2.zip /tmp/awscliv2
 
+cocoindex-code:
+  description: "Cocoindex Code — AST-based semantic code search (MCP server)"
+  dependencies:
+    - mise-uv
+  defaults:
+    variant: "full"
+  skip_if: |
+    command -v ccc >/dev/null 2>&1{{ if .config }} && \
+      test -f "$HOME/.cocoindex_code/global_settings.yml"{{ end }}
+  setup: |
+    {{ if eq .variant "slim" }}
+    uv tool install --upgrade 'cocoindex-code'
+    {{ else }}
+    uv tool install --upgrade 'cocoindex-code[full]'
+    {{ end }}
+    {{ if .config }}
+    mkdir -p "$HOME/.cocoindex_code"
+    printf '%s' '{{ .config | toYAML | b64enc }}' | base64 -d > "$HOME/.cocoindex_code/global_settings.yml"
+    chmod 600 "$HOME/.cocoindex_code/global_settings.yml"
+    {{ end }}
+
 t3code:
   description: "T3 Code web GUI for AI coding agents"
   dependencies:

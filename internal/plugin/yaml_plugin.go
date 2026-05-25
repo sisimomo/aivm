@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
@@ -111,8 +112,27 @@ func (p *YAMLPlugin) effectiveConfig(env InstallEnv) map[string]any {
 	return cfg
 }
 
+// TemplateFuncMap returns the text/template FuncMap available to all plugin
+// setup and skip_if scripts. Exposed so callers (e.g. tests) can parse
+// templates with the same function set that render() uses.
+func TemplateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		// toYAML serialises any value to a YAML string.
+		// Primarily used to embed plugin config sub-trees into setup scripts.
+		"toYAML": func(v any) (string, error) {
+			b, err := yaml.Marshal(v)
+			return string(b), err
+		},
+		// b64enc base64-encodes a string so it can be safely embedded in a
+		// shell single-quoted argument without worrying about special characters.
+		"b64enc": func(s string) string {
+			return base64.StdEncoding.EncodeToString([]byte(s))
+		},
+	}
+}
+
 func (p *YAMLPlugin) render(src string, data map[string]any) (string, error) {
-	t, err := template.New("").Parse(src)
+	t, err := template.New("").Funcs(TemplateFuncMap()).Parse(src)
 	if err != nil {
 		return "", err
 	}
