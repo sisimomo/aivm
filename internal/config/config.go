@@ -196,10 +196,10 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Viper normalises all map keys to lowercase, which corrupts vm.env keys
-	// (e.g. AIVM_BOOT_VAR → aivm_boot_var). Re-read the raw YAML to recover
-	// the original case.
-	if err := preserveVMEnvCase(v, &cfg); err != nil {
+	// Viper normalises all map keys to lowercase, which corrupts vm.env and
+	// plugins.config keys (e.g. AIVM_BOOT_VAR → aivm_boot_var). Re-read the
+	// raw YAML to recover original case for those fields.
+	if err := preserveRawYAMLFields(v, &cfg); err != nil {
 		return nil, err
 	}
 
@@ -352,11 +352,12 @@ func setDefaultsFromMap(v *viper.Viper, m map[string]any, prefix string) {
 	}
 }
 
-// preserveVMEnvCase re-reads the raw config file (if any) and overlays
-// cfg.VM.Env with the original-case keys from vm.env. This works around
+// preserveRawYAMLFields re-reads the raw config file (if any) and overlays
+// selected fields whose keys must not be lowercased. This works around
 // Viper's internal key-normalisation, which lowercases all map keys before
-// unmarshaling (e.g. AIVM_BOOT_VAR → aivm_boot_var).
-func preserveVMEnvCase(v *viper.Viper, cfg *Config) error {
+// unmarshaling (e.g. AIVM_BOOT_VAR → aivm_boot_var, VOYAGE_API_KEY →
+// voyage_api_key inside plugins.config).
+func preserveRawYAMLFields(v *viper.Viper, cfg *Config) error {
 	cfgFile := v.ConfigFileUsed()
 	if cfgFile == "" {
 		return nil
@@ -370,12 +371,18 @@ func preserveVMEnvCase(v *viper.Viper, cfg *Config) error {
 		VM struct {
 			Env map[string]string `yaml:"env"`
 		} `yaml:"vm"`
+		Plugins struct {
+			Config map[string]map[string]any `yaml:"config"`
+		} `yaml:"plugins"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("re-reading vm.env from config: %w", err)
+		return fmt.Errorf("re-reading raw config fields: %w", err)
 	}
 	if len(raw.VM.Env) > 0 {
 		cfg.VM.Env = raw.VM.Env
+	}
+	if len(raw.Plugins.Config) > 0 {
+		cfg.Plugins.Config = raw.Plugins.Config
 	}
 	return nil
 }

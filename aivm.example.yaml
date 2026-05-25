@@ -97,6 +97,31 @@ idle:
 #       setup: |
 #         curl -fsSL https://example.com/install.sh | sh
 
+# Cocoindex Code — AST-based semantic code search MCP server.
+# When enabled, aivm installs `ccc` in the VM and automatically registers it as
+# an MCP server for every active agent (Claude Code, Copilot CLI, OpenCode).
+# Default variant is "full" (local embeddings, no API key required). Use "slim"
+# for a lighter install that requires a cloud embedding provider.
+# plugins:
+#   enabled:
+#     - cocoindex-code
+#   config:
+#     cocoindex-code:
+#       variant: full   # or "slim" for cloud-only embeddings
+
+# Slim variant example — pass any global_settings.yml keys under `config`:
+# plugins:
+#   enabled:
+#     - cocoindex-code
+#   config:
+#     cocoindex-code:
+#       variant: slim
+#       config:                          # written verbatim to ~/.cocoindex_code/global_settings.yml
+#         embedding:
+#           model: voyage/voyage-code-3  # any LiteLLM-supported model
+#         envs:
+#           VOYAGE_API_KEY: your-api-key
+
 # Custom integrations — run a script when a plugin is installed and an agent is active.
 # integrations:
 #   - from: my-tool
