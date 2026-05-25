@@ -151,8 +151,7 @@ func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	imgMgr := svc.imageManager()
-	if _, err := svc.bootstrapFreshVM(ctx, svc.VM, imgMgr); err != nil {
+	if err := svc.Start(ctx); err != nil {
 		return err
 	}
 

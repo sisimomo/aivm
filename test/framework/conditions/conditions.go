@@ -62,12 +62,6 @@ func StateFileAbsent(relPath string) fw.ConditionFunc {
 	}
 }
 
-// BaseImageExists returns a ConditionFunc that resolves to true when a base
-// image has been saved in the harness StateDir.
-func BaseImageExists() fw.ConditionFunc {
-	return StateFileExists("base-image.json")
-}
-
 // BootstrapComplete returns a ConditionFunc that resolves to true when the
 // bootstrap state file exists in the harness StateDir.
 func BootstrapComplete() fw.ConditionFunc {

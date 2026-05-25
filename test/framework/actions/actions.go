@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sisimomo/aivm/internal/vm"
 	fw "github.com/sisimomo/aivm/test/framework"
 )
 
@@ -31,7 +32,7 @@ func RunFunc(fn func() error) fw.StepFunc {
 //	actions.CLI("start")
 //	actions.CLI("bootstrap", "--force")
 //	actions.CLI("bootstrap", "--plugin", "java")
-//	actions.CLI("rebuild-image", "--force")
+//	actions.CLI("recreate", "--force")
 func CLI(args ...string) fw.StepFunc {
 	return func(ctx context.Context, h *fw.Harness) error {
 		return h.RunCLI(ctx, args...)
@@ -136,35 +137,8 @@ func ChangeVMEnv(env map[string]string) fw.StepFunc {
 func SetVMCreatedDaysAgo(days int) fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		ts := time.Now().AddDate(0, 0, -days).Unix()
-		path := filepath.Join(h.StateDir, "vm-created-at")
+		path := filepath.Join(h.StateDir, vm.VMCreatedAtFile)
 		return os.WriteFile(path, []byte(strconv.FormatInt(ts, 10)), 0644)
-	}
-}
-
-// SetBaseImageDaysAgo backdates the base-image.json CreatedAt field so the CLI
-// thinks the base image is <days> days old. Use with WithBaseImageMaxAgeDays
-// to exercise the "image too old" prompt.
-func SetBaseImageDaysAgo(days int) fw.StepFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		imgPath := filepath.Join(h.StateDir, "base-image.json")
-		data, err := os.ReadFile(imgPath)
-		if err != nil {
-			return fmt.Errorf("base-image.json not found (run Start first): %w", err)
-		}
-		var img struct {
-			ID           string    `json:"id"`
-			SnapshotName string    `json:"snapshot_name"`
-			CreatedAt    time.Time `json:"created_at"`
-		}
-		if err := json.Unmarshal(data, &img); err != nil {
-			return fmt.Errorf("parse base-image.json: %w", err)
-		}
-		img.CreatedAt = time.Now().AddDate(0, 0, -days).UTC()
-		out, err := json.MarshalIndent(img, "", "  ")
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(imgPath, out, 0644)
 	}
 }
 

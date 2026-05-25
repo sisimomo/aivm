@@ -36,8 +36,6 @@ type testConfig struct {
 
 	// RecreatePromptAfter in ParsePromptDuration format: "-1" or "Nd".
 	RecreatePromptAfter string
-	// BaseImageRebuildPromptAfter in ParsePromptDuration format: "-1" or "Nd".
-	BaseImageRebuildPromptAfter string
 
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
@@ -72,16 +70,15 @@ type testConfig struct {
 
 func defaultTestConfig() testConfig {
 	return testConfig{
-		CPUs:                        1,
-		Memory:                      "2GB",
-		Disk:                        "10GB",
-		IdleTimeout:                 10 * time.Second,
-		DeleteTimeout:               10 * time.Second,
-		PollInterval:                1 * time.Second,
-		RecreatePromptAfter:         "-1",
-		BaseImageRebuildPromptAfter: "-1",
-		Provider:                    "claude",
-		Plugins:                     []string{},
+		CPUs:                1,
+		Memory:              "2GB",
+		Disk:                "10GB",
+		IdleTimeout:         10 * time.Second,
+		DeleteTimeout:       10 * time.Second,
+		PollInterval:        1 * time.Second,
+		RecreatePromptAfter: "-1",
+		Provider:            "claude",
+		Plugins:             []string{},
 	}
 }
 
@@ -124,18 +121,6 @@ func WithMaxAgeDays(days int) Option {
 			c.RecreatePromptAfter = "-1"
 		} else {
 			c.RecreatePromptAfter = fmt.Sprintf("%dd", days)
-		}
-	}
-}
-
-// WithBaseImageMaxAgeDays configures the base image age threshold (in days)
-// after which the user is prompted to rebuild the base image.
-func WithBaseImageMaxAgeDays(days int) Option {
-	return func(c *testConfig) {
-		if days == -1 {
-			c.BaseImageRebuildPromptAfter = "-1"
-		} else {
-			c.BaseImageRebuildPromptAfter = fmt.Sprintf("%dd", days)
 		}
 	}
 }
@@ -253,7 +238,6 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	fmt.Fprintf(&sb, "  docker_image: %q\n", TestImageName)
 	fmt.Fprintf(&sb, "  name: %q\n", profile)
 	fmt.Fprintf(&sb, "  recreate_prompt_after: %q\n", tc.RecreatePromptAfter)
-	fmt.Fprintf(&sb, "  base_image_rebuild_prompt_after: %q\n", tc.BaseImageRebuildPromptAfter)
 	if tc.DevRoot != "" {
 		fmt.Fprintf(&sb, "  mounts:\n")
 		fmt.Fprintf(&sb, "    - %q\n", tc.DevRoot+":rw")

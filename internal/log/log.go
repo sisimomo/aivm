@@ -69,6 +69,12 @@ func (l *Logger) Info(msg string, args ...any) {
 	}
 }
 
+// Print writes to Out unconditionally in both ModeClean and ModeFull.
+// Use for user-facing messages that must always be visible regardless of log mode.
+func (l *Logger) Print(format string, args ...any) {
+	fmt.Fprintln(l.Out, fmt.Sprintf(format, args...))
+}
+
 func (l *Logger) Success(msg string, args ...any) {
 	text := fmt.Sprintf(msg, args...)
 	if l.mode == ModeFull {
@@ -115,6 +121,7 @@ func (l *Logger) Debug(msg string, args ...any) {
 // Package-level functions delegate to Default for backward compatibility.
 
 func Info(msg string, args ...any)    { Default.Info(msg, args...) }
+func Print(format string, args ...any) { Default.Print(format, args...) }
 func Success(msg string, args ...any) { Default.Success(msg, args...) }
 func Warn(msg string, args ...any)    { Default.Warn(msg, args...) }
 func Error(msg string, args ...any)   { Default.Error(msg, args...) }

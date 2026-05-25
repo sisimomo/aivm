@@ -8,8 +8,7 @@ import (
 )
 
 // DisabledDuration is the sentinel value meaning "this prompt is disabled".
-// Stored in RecreatePromptAfterDuration / BaseImageRebuildPromptAfterDuration
-// when the raw string is "-1".
+// Stored in RecreatePromptAfterDuration when the raw string is "-1".
 const DisabledDuration = time.Duration(-1)
 
 // ParsePromptDuration parses a human-readable duration string used for staleness

@@ -31,7 +31,6 @@ func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 	h.Scenario("VM too old — user accepts recreation").
 		Step("Start VM (first boot, vm-created-at written)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Base image saved after first boot", assertions.BaseImageExists()).
 		Step("Stop VM", actions.CLI("stop")).
 		Wait("VM is stopped", conditions.VMStatus(vm.StatusStopped), 2*time.Minute).
 		Step("Backdate vm-created-at by 31 days (exceeds 30-day threshold)",

@@ -30,34 +30,6 @@ func VMStatus(want vm.Status) fw.AssertFunc {
 	}
 }
 
-// BaseImageExists asserts that a base image has been recorded in StateDir.
-func BaseImageExists() fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		path := filepath.Join(h.StateDir, "base-image.json")
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return fmt.Errorf("base image file not found: %s", path)
-		} else if err != nil {
-			return err
-		}
-		return nil
-	}
-}
-
-// BaseImageHasSnapshot asserts that the saved base image includes a snapshot
-// name (i.e. the VM backend supports snapshots).
-func BaseImageHasSnapshot() fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		img := h.ImageManager().LoadBaseImage()
-		if img == nil {
-			return fmt.Errorf("no base image recorded")
-		}
-		if img.SnapshotName == "" {
-			return fmt.Errorf("base image has no snapshot (VM backend may not support snapshots)")
-		}
-		return nil
-	}
-}
-
 // BootstrapComplete asserts that the bootstrap state file exists in StateDir,
 // indicating that all configured plugins completed successfully.
 func BootstrapComplete() fw.AssertFunc {
@@ -67,33 +39,6 @@ func BootstrapComplete() fw.AssertFunc {
 			return fmt.Errorf("bootstrap state file not found: %s", path)
 		} else if err != nil {
 			return err
-		}
-		return nil
-	}
-}
-
-// VMImageRefCurrent asserts that the VM was created from the current base image.
-func VMImageRefCurrent() fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		imgMgr := h.ImageManager()
-		img := imgMgr.LoadBaseImage()
-		if img == nil {
-			return fmt.Errorf("no base image found")
-		}
-		ref := imgMgr.GetVMImageRef()
-		if ref != "" && ref != img.ID {
-			return fmt.Errorf("VM image ref %q does not match current base image %q", ref, img.ID)
-		}
-		return nil
-	}
-}
-
-// VMImageRefIs asserts that the VM image ref equals the given base image ID.
-func VMImageRefIs(imageID string) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		ref := h.ImageManager().GetVMImageRef()
-		if ref != imageID {
-			return fmt.Errorf("VM image ref: got %q, want %q", ref, imageID)
 		}
 		return nil
 	}
@@ -136,36 +81,6 @@ func VMRunOutput(script, contains string) fw.AssertFunc {
 		}
 		if !strings.Contains(out, contains) {
 			return fmt.Errorf("script %q output does not contain %q\ngot: %s", script, contains, out)
-		}
-		return nil
-	}
-}
-
-// BaseImageIs asserts that the current base image ID equals *want.
-// The pointer form allows the expected value to be captured in a previous step.
-func BaseImageIs(want *string) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		img := h.ImageManager().LoadBaseImage()
-		if img == nil {
-			return fmt.Errorf("no base image recorded")
-		}
-		if img.ID != *want {
-			return fmt.Errorf("base image ID: got %q, want %q", img.ID, *want)
-		}
-		return nil
-	}
-}
-
-// BaseImageIsNot asserts that the current base image ID has changed from *prev.
-// The pointer form allows the previous value to be captured in an earlier step.
-func BaseImageIsNot(prev *string) fw.AssertFunc {
-	return func(_ context.Context, h *fw.Harness) error {
-		img := h.ImageManager().LoadBaseImage()
-		if img == nil {
-			return fmt.Errorf("no base image recorded")
-		}
-		if img.ID == *prev {
-			return fmt.Errorf("base image ID did not change from %q after rebuild", *prev)
 		}
 		return nil
 	}
