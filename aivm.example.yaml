@@ -131,6 +131,24 @@ idle:
 #     configure: |
 #       my-tool configure --agent claude
 
+# Skills — install community-published open-source agent skills via the skills CLI
+# (https://github.com/vercel-labs/skills). When enabled, aivm runs
+# `npx skills@latest add` for each source on every bootstrap (idempotent).
+# Requires mise-node (auto-installed).
+#
+# Each source must specify a `repo` (GitHub shorthand or full URL). Omitting
+# a `skills` list installs everything from the repo (--all); providing one
+# installs only the named skills.
+# plugins:
+#   enabled:
+#     - skills
+#   config:
+#     skills:
+#       sources:
+#         - repo: mattpocock/skills                # installs all skills
+#         - repo: another-author/skills
+#           skills: [tdd, grill-me]                # installs specific skills only
+
 # Docker Compose file — services started and stopped with the VM.
 # Point to a standard docker-compose.yml (relative to this file or absolute).
 # All services are brought up with `docker compose up -d` when the VM starts,
