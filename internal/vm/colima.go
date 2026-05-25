@@ -314,7 +314,7 @@ func (c *ColimaVM) DeleteSnapshot(ctx context.Context, name string) error {
 func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
 	lines, err := run.OutputLines(ctx, "colima", "snapshot", "list", c.profile)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("list snapshots: %w", err)
 	}
 	var snaps []Snapshot
 	for _, line := range lines {

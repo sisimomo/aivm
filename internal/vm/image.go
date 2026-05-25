@@ -59,15 +59,19 @@ func (m *ImageManager) SaveBaseImage(ctx context.Context) (*BaseImage, error) {
 		aivmlog.Debug("VM snapshot unavailable (non-fatal): %v", err)
 	} else {
 		img.SnapshotName = snapshotName
-		_ = m.writeBaseImage(img) // update with snapshot name
-		aivmlog.Success("base image saved: %s (id=%s)", snapshotName, id)
+		if err := m.writeBaseImage(img); err != nil {
+			aivmlog.Error("failed to persist snapshot name to metadata: %v", err)
+			aivmlog.Warn("skipping deletion of previous snapshot to preserve restore point")
+		} else {
+			aivmlog.Success("base image saved: %s (id=%s)", snapshotName, id)
 
-		// Prune the previous snapshot now that the new one is safely stored.
-		if previous != nil && previous.SnapshotName != "" {
-			if err := m.vm.DeleteSnapshot(ctx, previous.SnapshotName); err != nil {
-				aivmlog.Warn("could not delete old snapshot %q (non-fatal): %v", previous.SnapshotName, err)
-			} else {
-				aivmlog.Debug("deleted old snapshot %q", previous.SnapshotName)
+			// Prune the previous snapshot now that the new one is safely stored.
+			if previous != nil && previous.SnapshotName != "" && previous.SnapshotName != snapshotName {
+				if err := m.vm.DeleteSnapshot(ctx, previous.SnapshotName); err != nil {
+					aivmlog.Warn("could not delete old snapshot %q (non-fatal): %v", previous.SnapshotName, err)
+				} else {
+					aivmlog.Debug("deleted old snapshot %q", previous.SnapshotName)
+				}
 			}
 		}
 	}

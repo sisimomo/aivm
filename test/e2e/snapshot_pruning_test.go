@@ -48,8 +48,8 @@ func TestSnapshotPrunedAfterRebuild(t *testing.T) {
 		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Base image v2 saved with snapshot", assertions.BaseImageHasSnapshot()).
 		Assert("Exactly one snapshot exists after rebuild (old one pruned)", assertions.SnapshotCount(1)).
-		Assert("v1 snapshot was deleted", func(_ context.Context, h *framework.Harness) error {
-			return assertions.SnapshotAbsent(v1SnapshotName)(context.Background(), h)
+		Assert("v1 snapshot was deleted", func(ctx context.Context, h *framework.Harness) error {
+			return assertions.SnapshotAbsent(v1SnapshotName)(ctx, h)
 		}).
 		Run()
 }
