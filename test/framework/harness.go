@@ -282,11 +282,6 @@ func (h *Harness) ProviderLaunchCount() int {
 	return n
 }
 
-// ImageManager returns the ImageManager for the test VM, scoped to StateDir.
-func (h *Harness) ImageManager() *vm.ImageManager {
-	return vm.NewImageManager(h.DockerVM, h.StateDir)
-}
-
 // T3CodePort returns the T3 Code port configured for this harness.
 // Valid only when the harness was created with WithT3Code.
 func (h *Harness) T3CodePort() int {

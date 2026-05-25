@@ -44,11 +44,6 @@ type StartOptions struct {
 	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
 }
 
-type Snapshot struct {
-	Name      string
-	CreatedAt time.Time
-}
-
 type VM interface {
 	Profile() string
 	// NeedsPortBindingAtBoot reports whether ports must be declared at container
@@ -75,9 +70,6 @@ type VM interface {
 	// the host. When recursive is true, directories are copied recursively.
 	CopyFrom(ctx context.Context, vmPath, localPath string, recursive bool) error
 	WaitReady(ctx context.Context, timeout time.Duration) error
-	CreateSnapshot(ctx context.Context, name string) error
-	RestoreSnapshot(ctx context.Context, name string) (bool, error)
-	ListSnapshots(ctx context.Context) ([]Snapshot, error)
 	// GetPublishedPort returns the host port that maps to the given container
 	// port. For Docker this queries the actual Docker-assigned port (important
 	// when the host port was 0 / auto-assigned at container creation). For

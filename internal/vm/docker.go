@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,29 +107,20 @@ func (d *DockerVM) Stop(ctx context.Context) error {
 	return dockerCmd(ctx, "stop", d.containerName)
 }
 
-// Destroy stops and removes the container. Snapshot images are preserved so
-// that TryRestoreBaseImage can find them after recreation. Images are removed
-// only by DestroyWithImages, which is called during test teardown.
+// Destroy stops and removes the container.
 func (d *DockerVM) Destroy(ctx context.Context) error {
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
+	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 	return nil
 }
 
-// DestroyWithImages removes the container and all snapshot images created for
-// this profile. Use this for full cleanup (e.g. test teardown).
+// DestroyWithImages removes the container. Use this for full cleanup (e.g. test teardown).
 func (d *DockerVM) DestroyWithImages() {
 	ctx := context.Background()
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-
-	prefix := fmt.Sprintf("aivm-snap-%s-", d.profile)
-	out, _ := dockerOutput(ctx, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
-	for _, ref := range splitLines(out) {
-		if ref != "" {
-			_ = dockerCmd(ctx, "rmi", "-f", ref)
-		}
-	}
+	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 }
 
 // Run executes script inside the container as the container user.
@@ -227,73 +219,6 @@ func (d *DockerVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 	}
 }
 
-// CreateSnapshot commits the current container filesystem as a Docker image tag.
-func (d *DockerVM) CreateSnapshot(ctx context.Context, name string) error {
-	tag := d.snapshotTag(name)
-	if err := dockerCmd(ctx, "commit", d.containerName, tag); err != nil {
-		return fmt.Errorf("create snapshot %q: %w", name, err)
-	}
-	return nil
-}
-
-// RestoreSnapshot recreates the container from a previously committed snapshot
-// image, re-applying the original start options (mounts and port bindings).
-// Returns (false, nil) when the snapshot does not exist.
-func (d *DockerVM) RestoreSnapshot(ctx context.Context, name string) (bool, error) {
-	tag := d.snapshotTag(name)
-	if _, err := dockerOutput(ctx, "inspect", "--type", "image", tag); err != nil {
-		return false, nil
-	}
-
-	_ = dockerCmd(ctx, "stop", d.containerName)
-	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-
-	d.mu.Lock()
-	opts := d.lastStartOpts
-	d.mu.Unlock()
-
-	args := []string{"run", "-d", "--name", d.containerName}
-	for _, pm := range opts.PortMappings {
-		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
-	}
-	for _, m := range opts.Mounts {
-		mode := "ro"
-		if m.Writable {
-			mode = "rw"
-		}
-		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
-	}
-	args = append(args, tag)
-
-	if err := dockerCmd(ctx, args...); err != nil {
-		return false, fmt.Errorf("restore snapshot %q: %w", name, err)
-	}
-	return true, nil
-}
-
-// ListSnapshots queries Docker for snapshot images created for this profile.
-func (d *DockerVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
-	prefix := fmt.Sprintf("aivm-snap-%s-", d.profile)
-	out, err := dockerOutput(ctx, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+prefix+"*")
-	if err != nil {
-		return nil, nil
-	}
-	var snaps []Snapshot
-	for _, ref := range splitLines(out) {
-		if ref == "" {
-			continue
-		}
-		name := strings.TrimSuffix(strings.TrimPrefix(ref, prefix), ":latest")
-		snaps = append(snaps, Snapshot{Name: name})
-	}
-	return snaps, nil
-}
-
-func (d *DockerVM) snapshotTag(name string) string {
-	safe := strings.NewReplacer(" ", "-", "/", "-", ":", "-").Replace(name)
-	return fmt.Sprintf("aivm-snap-%s-%s:latest", d.profile, safe)
-}
-
 // GetPublishedPort retrieves the host port that Docker assigned for the given
 // container port. Returns 0 if the port is not published or the container is not running.
 // This is used by the test harness to discover auto-assigned ports after container creation.
@@ -355,9 +280,4 @@ func dockerOutput(ctx context.Context, args ...string) (string, error) {
 // isTTY reports whether stdin is connected to a real terminal.
 func isTTY() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
-}
-
-// splitLines splits s on newlines, trimming carriage returns.
-func splitLines(s string) []string {
-	return strings.Split(strings.ReplaceAll(strings.TrimSpace(s), "\r\n", "\n"), "\n")
 }

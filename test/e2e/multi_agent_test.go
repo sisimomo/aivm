@@ -48,7 +48,6 @@ func TestMultiAgent_BothAgentsBootstrapped(t *testing.T) {
 		Step("Start VM with claude+opencode enabled", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 8*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
-		Assert("Base image saved", assertions.BaseImageExists()).
 		Assert("Claude binary is installed in VM",
 			assertions.VMRunOutput("claude --version", "")).
 		Assert("OpenCode binary is installed in VM",

@@ -177,7 +177,7 @@ func (c *ColimaVM) Destroy(ctx context.Context) error {
 			return fmt.Errorf("delete VM: %w", err)
 		}
 		aivmlog.Success("VM '%s' destroyed", c.profile)
-		os.Remove(filepath.Join(c.stateDir, "vm-created-at"))
+		os.Remove(filepath.Join(c.stateDir, VMCreatedAtFile))
 	} else {
 		aivmlog.Info("VM '%s' does not exist — nothing to destroy", c.profile)
 	}
@@ -279,38 +279,6 @@ func (c *ColimaVM) WaitReady(ctx context.Context, timeout time.Duration) error {
 	return fmt.Errorf("VM did not become reachable within %s", timeout)
 }
 
-func (c *ColimaVM) CreateSnapshot(ctx context.Context, name string) error {
-	return run.Quiet(ctx, "colima", "snapshot", "create", "--name", name, c.profile)
-}
-
-func (c *ColimaVM) RestoreSnapshot(ctx context.Context, name string) (bool, error) {
-	snapshots, err := c.ListSnapshots(ctx)
-	if err != nil {
-		return false, nil
-	}
-	for _, s := range snapshots {
-		if s.Name == name {
-			return true, run.Quiet(ctx, "colima", "snapshot", "restore", "--name", name, c.profile)
-		}
-	}
-	return false, nil
-}
-
-func (c *ColimaVM) ListSnapshots(ctx context.Context) ([]Snapshot, error) {
-	lines, err := run.OutputLines(ctx, "colima", "snapshot", "list", c.profile)
-	if err != nil {
-		return nil, nil
-	}
-	var snaps []Snapshot
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 1 {
-			snaps = append(snaps, Snapshot{Name: fields[0]})
-		}
-	}
-	return snaps, nil
-}
-
 func (c *ColimaVM) vmTypeFlags(vmType string) []string {
 	effective := vmType
 	if effective == "" {
@@ -331,5 +299,5 @@ func shellescape(s string) string {
 }
 
 func (c *ColimaVM) AgeFile() string {
-	return filepath.Join(c.stateDir, "vm-created-at")
+	return filepath.Join(c.stateDir, VMCreatedAtFile)
 }

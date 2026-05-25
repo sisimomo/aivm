@@ -51,6 +51,7 @@ Examples:
   aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
+  aivm recreate          Destroy and recreate the VM from scratch
   aivm status            Show status
   aivm cp vm:/path ./    Copy a file from the VM to the host (use vm: prefix for VM paths)`,
 		SilenceUsage:  true,
@@ -86,7 +87,7 @@ Examples:
 		StatusCmd(getApp),
 		SSHCmd(getApp),
 		CpCmd(getApp),
-		RebuildImageCmd(getApp),
+		RecreateCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),
 		&cobra.Command{

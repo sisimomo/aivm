@@ -41,7 +41,6 @@ func TestCLIStartStop(t *testing.T) {
 		Step("Run: aivm start", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
-		Assert("Base image saved after start", assertions.BaseImageExists()).
 		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
 		Assert("User saw starting step", assertions.OutputContains("Starting aivm")).
 		Step("Reset output buffer", actions.ResetOutput()).
@@ -58,27 +57,19 @@ func TestCLIStartStop(t *testing.T) {
 		Run()
 }
 
-// TestCLIRebuildImageForceFlag verifies that `aivm rebuild-image --force`
-// completes without prompts, destroys the current VM, and saves a new base
-// image. Tests that the --force flag is correctly parsed by the rebuild-image
-// subcommand.
-func TestCLIRebuildImageForceFlag(t *testing.T) {
+// TestCLIRecreateForceFlag verifies that `aivm recreate --force` completes
+// without prompts, destroys the current VM, and bootstraps a new one.
+// Tests that the --force flag is correctly parsed by the recreate subcommand.
+func TestCLIRecreateForceFlag(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t)
 
-	var v1ID string
-
-	h.Scenario("aivm rebuild-image --force via CLI entry point").
-		Step("Run: aivm start (creates base image v1)", actions.CLI("start")).
+	h.Scenario("aivm recreate --force via CLI entry point").
+		Step("Run: aivm start", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Base image v1 saved", assertions.BaseImageExists()).
-		Step("Capture base image v1 ID", captureBaseImageID(t, &v1ID)).
-		Step("Wait 1s to ensure new image gets a different timestamp",
-			sleepStep(1100*time.Millisecond)).
-		Step("Run: aivm rebuild-image --force", actions.CLI("rebuild-image", "--force")).
-		Wait("VM is running after rebuild", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("New base image saved", assertions.BaseImageExists()).
-		Assert("Base image ID changed after rebuild", assertions.BaseImageIsNot(&v1ID)).
-		Assert("VM image ref is current", assertions.VMImageRefCurrent()).
+		Assert("Bootstrap complete after start", assertions.BootstrapComplete()).
+		Step("Run: aivm recreate --force", actions.CLI("recreate", "--force")).
+		Wait("VM is running after recreate", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+		Assert("Bootstrap complete after recreate", assertions.BootstrapComplete()).
 		Run()
 }

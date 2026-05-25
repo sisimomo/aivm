@@ -113,7 +113,7 @@ func stringSet(items []string) map[string]bool {
 }
 
 func vmCreatedRecently(stateDir string) bool {
-	data, err := os.ReadFile(filepath.Join(stateDir, "vm-created-at"))
+	data, err := os.ReadFile(filepath.Join(stateDir, vm.VMCreatedAtFile))
 	if err != nil {
 		return false
 	}
@@ -218,18 +218,4 @@ sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
 		vm.ShellEscape(encoded),
 	)
 	return v.Run(ctx, script, nil)
-}
-
-// startFreshVM starts v using config-derived options and waits until ready.
-// Use for all VM creation and rebuild operations.
-func startFreshVM(ctx context.Context, v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) error {
-	ensureAgentPersistDirs(cfg, agentDefs)
-	opts := buildStartOptions(v, cfg, agentDefs)
-	if err := v.Start(ctx, opts); err != nil {
-		return fmt.Errorf("starting VM: %w", err)
-	}
-	if err := v.WaitReady(ctx, 60*time.Second); err != nil {
-		return fmt.Errorf("waiting for VM: %w", err)
-	}
-	return nil
 }
