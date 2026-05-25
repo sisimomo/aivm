@@ -7,7 +7,6 @@ vm:
   name: aivm
   backend: colima
   recreate_prompt_after: "7d"
-  base_image_rebuild_prompt_after: "7d"
 
 t3code:
   enable: false

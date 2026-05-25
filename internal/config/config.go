@@ -64,16 +64,11 @@ type VMConfig struct {
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
 	RecreatePromptAfter string `mapstructure:"recreate_prompt_after"`
 
-	// BaseImageRebuildPromptAfter is the staleness threshold after which the
-	// user is prompted to rebuild the base image. Format: "7d", "12h", "-1".
-	BaseImageRebuildPromptAfter string `mapstructure:"base_image_rebuild_prompt_after"`
-
 	// Parsed fields — populated by validateAndParse, never read from YAML.
-	MemoryBytes                         int64         `mapstructure:"-"`
-	DiskBytes                           int64         `mapstructure:"-"`
-	RecreatePromptAfterDuration         time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
-	BaseImageRebuildPromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
-	ParsedMounts                        []Mount       `mapstructure:"-"`
+	MemoryBytes                 int64         `mapstructure:"-"`
+	DiskBytes                   int64         `mapstructure:"-"`
+	RecreatePromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
+	ParsedMounts                []Mount       `mapstructure:"-"`
 }
 
 // Profile returns the VM identity used as the Colima profile name or Docker
@@ -286,13 +281,6 @@ func validateAndParse(cfg *Config, home string) error {
 		return fmt.Errorf("vm.recreate_prompt_after: %w", err)
 	}
 	vm.RecreatePromptAfterDuration = rpa
-
-	// --- base_image_rebuild_prompt_after ---
-	bipa, err := ParsePromptDuration(vm.BaseImageRebuildPromptAfter)
-	if err != nil {
-		return fmt.Errorf("vm.base_image_rebuild_prompt_after: %w", err)
-	}
-	vm.BaseImageRebuildPromptAfterDuration = bipa
 
 	// --- env ---
 	for name := range vm.Env {

@@ -75,11 +75,6 @@ func (svc *LifecycleService) log() *aivmlog.Logger {
 	return aivmlog.Default
 }
 
-// imageManager returns an ImageManager scoped to the service's VM and state dir.
-func (svc *LifecycleService) imageManager() *vm.ImageManager {
-	return vm.NewImageManager(svc.VM, svc.Config.StateDir)
-}
-
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
@@ -110,9 +105,8 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		return fmt.Errorf("starting VM: %w", err)
 	}
 
-	imgMgr := svc.imageManager()
 	if wasCreated {
-		imgMgr.RecordCreation()
+		vm.RecordVMCreation(cfg.StateDir)
 	}
 
 	if needsStart {
@@ -122,7 +116,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		svc.Sessions.ClearVMStoppedAt()
 	}
 
-	if err := svc.ensureBootstrapped(ctx, wasCreated, imgMgr); err != nil {
+	if err := svc.ensureBootstrapped(ctx, wasCreated); err != nil {
 		return err
 	}
 
@@ -148,26 +142,15 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 }
 
 // ensureBootstrapped runs the appropriate bootstrap path depending on whether
-// the VM was just created and whether a base image exists.
-func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated bool, imgMgr *vm.ImageManager) error {
+// the VM was just created.
+func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated bool) error {
 	if !wasCreated {
 		return svc.syncBootstrap(ctx)
 	}
 
-	if imgMgr.TryRestoreBaseImage(ctx) {
-		clearBootstrapState(svc.Config.StateDir)
-		return svc.syncBootstrap(ctx)
-	}
-
-	// Fresh VM, no base image: full bootstrap then save a new base image.
+	// Fresh VM: always run full bootstrap.
 	if err := svc.fullBootstrap(ctx, svc.VM, true); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
-	}
-	img, err := imgMgr.SaveBaseImage(ctx)
-	if err != nil {
-		svc.log().Warn("could not save base image (non-fatal): %v", err)
-	} else {
-		imgMgr.RecordVMImageRef(img.ID)
 	}
 	return nil
 }
@@ -179,7 +162,7 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 	if threshold == config.DisabledDuration || threshold <= 0 {
 		return false
 	}
-	data, err := os.ReadFile(filepath.Join(cfg.StateDir, "vm-created-at"))
+	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
 	if err != nil {
 		return false
 	}
@@ -303,11 +286,8 @@ func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) e
 		return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
 	}
 
-	threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
-	if threshold != config.DisabledDuration && threshold > 0 {
-		if err := svc.checkBaseImageAge(ctx); err != nil {
-			return err
-		}
+	if err := svc.checkVMAge(ctx); err != nil {
+		return err
 	}
 
 	status, err := svc.VM.Status(ctx)
@@ -549,9 +529,10 @@ func rewriteIPsToLocalhost(s string) string {
 	return ipRe.ReplaceAllString(s, "localhost")
 }
 
-// checkBaseImageAge prompts the user when the base image is older than the configured
-// threshold. It may rebuild the current VM after confirming with the user.
-func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
+// checkVMAge prompts the user when the VM is older than the configured
+// recreate_prompt_after threshold. It may recreate the current VM after
+// confirming with the user.
+func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 	cfg := svc.Config
 
 	if !svc.Confirmer.IsInteractive() {
@@ -561,36 +542,39 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		return nil
 	}
 
-	imgMgr := svc.imageManager()
-	img := imgMgr.LoadBaseImage()
-	if img == nil {
+	threshold := cfg.VM.RecreatePromptAfterDuration
+	if threshold == config.DisabledDuration || threshold <= 0 {
 		return nil
 	}
 
-	threshold := cfg.VM.BaseImageRebuildPromptAfterDuration
-	imgAge := time.Since(img.CreatedAt)
-	if imgAge < threshold {
+	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
+	if err != nil {
+		return nil
+	}
+	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return nil
+	}
+	vmAge := time.Since(time.Unix(epoch, 0))
+	if vmAge < threshold {
 		return nil
 	}
 
-	ageDays := int(imgAge.Hours() / 24)
-	thresholdDays := int(threshold.Hours() / 24)
-
-	fmt.Fprintln(svc.log().Out)
-	svc.log().Warn("Base image is %d day(s) old (threshold: %d days)", ageDays, thresholdDays)
-	svc.log().Warn("Created: %s", img.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
-	if !promptYesNo(svc.log().Out, svc.Confirmer, "  → Rebuild base image for a clean environment? [y/N] ") {
+	if promptVMAge(svc.log(), svc.Confirmer, svc.VM.Profile(), vmAge, threshold) != vmAgeRecreate {
 		return nil
 	}
 
-	sessions, _ := svc.Sessions.List()
+	sessions, err := svc.Sessions.List()
+	if err != nil {
+		return fmt.Errorf("listing sessions: %w", err)
+	}
 	if len(sessions) == 0 {
-		return svc.rebuildCurrentVM(ctx)
+		return svc.recreateCurrentVM(ctx)
 	}
 
 	fmt.Fprintf(svc.log().Out, "\n  You have %d active session(s).\n", len(sessions))
-	if !promptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and rebuild now? [y/N] ") {
-		svc.log().Info("Skipping base image rebuild.")
+	if !promptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ") {
+		svc.log().Info("Skipping VM recreation.")
 		return nil
 	}
 
@@ -602,22 +586,22 @@ func (svc *LifecycleService) checkBaseImageAge(ctx context.Context) error {
 		}
 		s.Remove()
 	}
-	return svc.rebuildCurrentVM(ctx)
+	return svc.recreateCurrentVM(ctx)
 }
 
-// rebuildCurrentVM destroys the current VM, recreates it, and runs full bootstrap.
-func (svc *LifecycleService) rebuildCurrentVM(ctx context.Context) error {
+// recreateCurrentVM destroys the current VM and starts a fresh one.
+func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
 	svc.log().Step("Stopping current VM...")
 	if err := svc.Stop(ctx); err != nil {
 		svc.log().Warn("Stop error (continuing): %v", err)
 	}
 
-	svc.log().Step("Destroying VM for fresh rebuild...")
+	svc.log().Step("Destroying VM...")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	svc.log().Step("Creating new VM and rebuilding base image...")
+	svc.log().Step("Starting fresh VM...")
 	return svc.Start(ctx)
 }
 
@@ -643,21 +627,13 @@ func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, f
 	return svc.syncBootstrap(ctx)
 }
 
-// RebuildImage rebuilds the base VM image by re-running bootstrap on a fresh VM.
-func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error {
-	imgMgr := svc.imageManager()
-	current := imgMgr.LoadBaseImage()
-
-	fmt.Fprintln(svc.log().Out)
-	svc.log().Warn("Base image rebuild requested.")
-	if current != nil {
-		svc.log().Warn("Current base image: id=%s, created %s",
-			current.ID, current.CreatedAt.Format("2006-01-02 15:04:05 UTC"))
-	} else {
-		svc.log().Warn("No existing base image found.")
+// Recreate destroys the current VM and starts a fresh one, re-running bootstrap.
+// With force=true, active sessions are killed without prompting.
+func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
+	sessions, err := svc.Sessions.List()
+	if err != nil {
+		return fmt.Errorf("listing sessions: %w", err)
 	}
-
-	sessions, _ := svc.Sessions.List()
 	if len(sessions) > 0 {
 		svc.log().Warn("%d active session(s) detected.", len(sessions))
 	}
@@ -667,45 +643,23 @@ func (svc *LifecycleService) RebuildImage(ctx context.Context, force bool) error
 			killed := svc.Sessions.KillAll()
 			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
 		}
-		return svc.doHardRebuild(ctx, imgMgr)
-	}
-
-	switch promptImageRebuild(svc.log().Out, svc.Confirmer, len(sessions)) {
-	case imageRebuildHard:
+	} else {
+		prompt := "\n  Proceed with VM recreation? [y/N] "
+		if len(sessions) > 0 {
+			prompt = "\n  Kill all sessions and recreate the VM? [y/N] "
+		}
+		if !promptYesNo(svc.log().Out, svc.Confirmer, prompt) {
+			svc.log().Info("VM recreation cancelled.")
+			return nil
+		}
 		if len(sessions) > 0 {
 			killed := svc.Sessions.KillAll()
 			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
 		}
-		return svc.doHardRebuild(ctx, imgMgr)
-	default:
-		return nil
 	}
-}
 
-// bootstrapFreshVM starts targetVM fresh, runs a full bootstrap, and saves the base image.
-// It records the VM creation timestamp and image reference. Returns the saved image.
-func (svc *LifecycleService) bootstrapFreshVM(ctx context.Context, targetVM vm.VM, imgMgr *vm.ImageManager) (*vm.BaseImage, error) {
-	if err := startFreshVM(ctx, targetVM, svc.Config, svc.AgentDefs); err != nil {
-		return nil, err
-	}
-	imgMgr.RecordCreation()
-	if err := svc.fullBootstrap(ctx, targetVM, true); err != nil {
-		return nil, err
-	}
-	img, err := imgMgr.SaveBaseImage(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("saving base image: %w", err)
-	}
-	imgMgr.RecordVMImageRef(img.ID)
-	return img, nil
-}
-
-// doHardRebuild destroys the current VM, recreates it, and runs full bootstrap.
-func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.ImageManager) error {
-	// Stop the idle monitor so it cannot interfere with the fresh container.
-	// The monitor daemon is started by 'aivm start' and keeps running after that
-	// subprocess exits. If not killed here, it will stop the freshly rebuilt
-	// container within its idle timeout (typically 10–30 s of no active sessions).
+	// Stop the idle monitor before destroying the VM. If Destroy fails the
+	// monitor stays stopped; Start will restart it via its normal launch path.
 	svc.Monitor.Stop()
 
 	svc.log().Step("Destroying existing VM")
@@ -713,12 +667,5 @@ func (svc *LifecycleService) doHardRebuild(ctx context.Context, imgMgr *vm.Image
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	img, err := svc.bootstrapFreshVM(ctx, svc.VM, imgMgr)
-	if err != nil {
-		return err
-	}
-
-	svc.log().Success("Base image rebuilt: %s (id=%s)", img.SnapshotName, img.ID)
-	svc.log().Info("Future VMs will start from this image.")
-	return nil
+	return svc.Start(ctx)
 }

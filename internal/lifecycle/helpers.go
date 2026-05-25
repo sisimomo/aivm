@@ -113,7 +113,7 @@ func stringSet(items []string) map[string]bool {
 }
 
 func vmCreatedRecently(stateDir string) bool {
-	data, err := os.ReadFile(filepath.Join(stateDir, "vm-created-at"))
+	data, err := os.ReadFile(filepath.Join(stateDir, vm.VMCreatedAtFile))
 	if err != nil {
 		return false
 	}

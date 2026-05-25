@@ -29,21 +29,6 @@ func (svc *LifecycleService) Status(ctx context.Context) error {
 	}
 	fmt.Fprintf(out, "  │  VM (%s): %s %s\n", svc.VM.Profile(), vmIcon, status)
 
-	imgMgr := svc.imageManager()
-	baseImg := imgMgr.LoadBaseImage()
-	if baseImg != nil {
-		fmt.Fprintf(out, "  │  Base image:        id=%s (%s)\n",
-			baseImg.ID, baseImg.CreatedAt.Local().Format("2006-01-02 15:04 MST"))
-		vmRef := imgMgr.GetVMImageRef()
-		if vmRef == "" {
-			fmt.Fprintf(out, "  │  VM image ref:      (unknown)\n")
-		} else {
-			fmt.Fprintf(out, "  │  VM image ref:      id=%s\n", vmRef)
-		}
-	} else {
-		fmt.Fprintf(out, "  │  Base image:        (none — run 'aivm start' to create)\n")
-	}
-
 	// Compose services section — only shown when compose_file is configured.
 	if cfg.ComposeFile != "" {
 		hm := svc.Compose.HealthMap(ctx)

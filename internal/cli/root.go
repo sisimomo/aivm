@@ -51,6 +51,7 @@ Examples:
   aivm ssh               Open a shell in the VM (starts VM if needed)
   aivm start             Start VM and services
   aivm stop              Stop everything (disk preserved)
+  aivm recreate          Destroy and recreate the VM from scratch
   aivm status            Show status
   aivm cp vm:/path ./    Copy a file from the VM to the host (use vm: prefix for VM paths)`,
 		SilenceUsage:  true,
@@ -86,9 +87,10 @@ Examples:
 		StatusCmd(getApp),
 		SSHCmd(getApp),
 		CpCmd(getApp),
-		RebuildImageCmd(getApp),
+		RecreateCmd(getApp),
 		LogsCmd(getApp),
 		monitorCmd(getApp),
+		rebuildImageDeprecatedCmd(),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print version",
@@ -97,6 +99,19 @@ Examples:
 	)
 
 	return root
+}
+
+// rebuildImageDeprecatedCmd is a hidden no-op that surfaces a helpful message
+// when users try the old `rebuild-image` command that was removed in favour of `recreate`.
+func rebuildImageDeprecatedCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "rebuild-image",
+		Short:  "Deprecated: use 'recreate' instead",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("'rebuild-image' has been removed — use 'aivm recreate' instead")
+		},
+	}
 }
 
 // monitorCmd is the internal daemon command that runs the idle monitor.

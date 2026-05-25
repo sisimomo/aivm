@@ -37,7 +37,6 @@ func TestBareCommandFirstBoot(t *testing.T) {
 		Step("Run: aivm (bare)", actions.CLI()).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap completed during DoStart", assertions.BootstrapComplete()).
-		Assert("Base image saved during DoStart", assertions.BaseImageExists()).
 		Assert("Agent was launched by DoLaunch", assertions.AgentLaunched()).
 		Assert("Agent launched exactly once", assertions.AgentLaunchCount(1)).
 		Assert("User saw bootstrap complete", assertions.OutputContains("Bootstrap complete!")).

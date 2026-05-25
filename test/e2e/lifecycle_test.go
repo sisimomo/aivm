@@ -26,7 +26,6 @@ func TestStopDestroyRestart(t *testing.T) {
 		Step("Start VM (first boot — bootstrap runs)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap complete", assertions.BootstrapComplete()).
-		Assert("Base image saved", assertions.BaseImageExists()).
 		Assert("Bootstrap ran: user saw 'Bootstrapping VM'", assertions.OutputContains("Bootstrapping VM")).
 		Assert("Bootstrap ran: user saw 'Bootstrap complete!'", assertions.OutputContains("Bootstrap complete!")).
 		Assert("Start finished: user saw 'aivm is ready'", assertions.OutputContains("aivm is ready")).
@@ -45,7 +44,6 @@ func TestStopDestroyRestart(t *testing.T) {
 		Step("Recreate VM from scratch via Start", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap ran again on new VM", assertions.BootstrapComplete()).
-		Assert("New base image saved", assertions.BaseImageExists()).
 		Run()
 }
 
@@ -62,7 +60,6 @@ func TestSSHAutoStart(t *testing.T) {
 		Step("Run: aivm ssh (VM not yet running)", actions.CLI("ssh")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap completed automatically", assertions.BootstrapComplete()).
-		Assert("Base image saved", assertions.BaseImageExists()).
 		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
 		Run()
 }
