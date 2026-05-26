@@ -5,3 +5,4 @@ aivm.yaml
 
 # compiled binary
 bin/*
+*.DS_Store

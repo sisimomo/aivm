@@ -65,6 +65,15 @@ cocoindex-code:
     chmod 600 "$HOME/.cocoindex_code/global_settings.yml"
     {{ end }}
 
+skills:
+  description: "Install agent skills via the skills CLI (https://github.com/vercel-labs/skills)"
+  dependencies:
+    - mise-node
+  setup: |
+    {{ range .sources -}}
+    npx skills@latest add "{{ .repo }}" --global{{ if .skills }} --yes --agent '*'{{ range .skills }} --skill "{{ . }}"{{ end }}{{ else }} --all{{ end }}
+    {{ end -}}
+
 t3code:
   description: "T3 Code web GUI for AI coding agents"
   dependencies:
