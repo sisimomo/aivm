@@ -48,6 +48,7 @@ cocoindex-code:
   description: "Cocoindex Code — AST-based semantic code search (MCP server)"
   dependencies:
     - mise-uv
+    - mise-node
   defaults:
     variant: "full"
   skip_if: |
@@ -64,6 +65,7 @@ cocoindex-code:
     printf '%s' '{{ .config | toYAML | b64enc }}' | base64 -d > "$HOME/.cocoindex_code/global_settings.yml"
     chmod 600 "$HOME/.cocoindex_code/global_settings.yml"
     {{ end }}
+    npx skills@latest add cocoindex-io/cocoindex-code --global --all
 
 skills:
   description: "Install agent skills via the skills CLI (https://github.com/vercel-labs/skills)"
