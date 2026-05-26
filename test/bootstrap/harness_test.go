@@ -278,6 +278,60 @@ func (h *BootstrapHarness) AssertSkipIf(pluginName string, cfg map[string]any) {
 	}
 }
 
+// AssertLaunchStartsTUI runs the agent's launch_command inside the container
+// for a short duration and asserts that the process does not exit immediately
+// with an error. A TUI application should stay alive until killed; if the
+// launch_command contains an unrecognised flag the binary will exit non-zero
+// before the timeout, which is the observable symptom of the bug where the
+// opencode TUI never opens.
+//
+// The method kills the process after probeTimeout by cancelling the context.
+// It then checks that the resulting error is a context/signal error and not an
+// early exit error (exit status != 0 before the deadline).
+func (h *BootstrapHarness) AssertLaunchStartsTUI(agentName string, probeTimeout time.Duration) {
+	h.t.Helper()
+
+	defs, err := agent.LoadDefs()
+	if err != nil {
+		h.t.Fatalf("AssertLaunchStartsTUI: load agent defs: %v", err)
+	}
+	def, ok := defs[agentName]
+	if !ok {
+		h.t.Fatalf("AssertLaunchStartsTUI: agent %q not found", agentName)
+	}
+	if def.LaunchCommand == "" {
+		h.t.Fatalf("AssertLaunchStartsTUI: agent %q has empty launch_command", agentName)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+
+	// RunOutput returns an error when the process exits. We distinguish:
+	//   - context.DeadlineExceeded / signal kill → TUI was alive, test passes
+	//   - immediate non-zero exit → launch_command failed, test fails
+	start := time.Now()
+	_, runErr := h.vm.RunOutput(ctx, def.LaunchCommand, nil)
+	elapsed := time.Since(start)
+
+	if runErr == nil {
+		h.t.Errorf("AssertLaunchStartsTUI %q: launch_command %q exited cleanly after %v — expected it to stay alive for ~%v",
+			agentName, def.LaunchCommand, elapsed, probeTimeout)
+		return
+	}
+
+	// If the process was killed because the context expired, that is the
+	// expected "TUI stayed alive" outcome.
+	if ctx.Err() == context.DeadlineExceeded {
+		return
+	}
+
+	// The process exited well before the timeout with an error → the
+	// launch_command is broken (e.g. unrecognised flag).
+	h.t.Errorf("AssertLaunchStartsTUI %q: launch_command %q exited after %v with error %v — "+
+		"the TUI did not start (expected the process to stay alive for ~%v)",
+		agentName, def.LaunchCommand, elapsed, runErr, probeTimeout)
+}
+
 // renderIntegrationScript renders a Go text/template integration script with
 // the given data map, matching the logic used by integration.Executor.
 func renderIntegrationScript(src string, data map[string]any) (string, error) {
