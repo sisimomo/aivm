@@ -31,10 +31,17 @@ opencode:
     - system
   path_entries:
     - "$HOME/.opencode/bin"
-  launch_command: "opencode --dangerously-skip-permissions"
+  launch_command: "opencode"
   persist:
     - .local/state/opencode
   skip_if: |
     opencode --version >/dev/null 2>&1
   setup: |
     curl -fsSL https://opencode.ai/install | bash
+    config_file="$HOME/.config/opencode/opencode.json"
+    mkdir -p "$(dirname "$config_file")"
+    echo '{}' | jq '
+      .permission.bash."*" = "allow" |
+      .permission.edit."*" = "allow" |
+      .permission.read."*" = "allow"
+    ' > "$config_file"
