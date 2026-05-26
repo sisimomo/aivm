@@ -3,7 +3,6 @@
 package bootstraptest
 
 import (
-	"slices"
 	"testing"
 )
 
@@ -27,7 +26,7 @@ func TestPlugin_CocoindexCode(t *testing.T) {
 			h := newBootstrapHarness(t)
 			cfg := map[string]any{"variant": tc.variant}
 
-			// Install cocoindex-code (pulls in system → mise → mise-uv first).
+			// Install cocoindex-code (pulls in system → mise → mise-uv → mise-node).
 			h.Install("cocoindex-code", cfg)
 
 			// ccc must be reachable from a login shell. ~/.local/bin is added to
@@ -83,99 +82,16 @@ func TestPlugin_CocoindexCode_SlimWithConfig(t *testing.T) {
 	h.AssertSkipIf("cocoindex-code", cfg)
 }
 
-// TestIntegration_CocoindexCode_Copilot verifies that when cocoindex-code is
-// installed, the copilot MCP integration writes the correct server entry into
-// ~/.copilot/mcp-config.json and is idempotent on a second call.
-//
-// jq is available as a transitive dependency: cocoindex-code → mise-uv → mise
-// → system (which installs jq). No copilot agent install is required because
-// the configure script only needs jq and basic shell utilities.
-func TestIntegration_CocoindexCode_Copilot(t *testing.T) {
+// TestPlugin_CocoindexCode_SkillInstall verifies that the cocoindex-code plugin
+// installs the ccc skill via `npx skills@latest add cocoindex-io/cocoindex-code
+// --global --all` during setup. At least one SKILL.md must appear under $HOME.
+func TestPlugin_CocoindexCode_SkillInstall(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
 
-	// Installing cocoindex-code also installs system (→jq), mise, and mise-uv.
+	// Install cocoindex-code (pulls in mise-node which provides npx).
 	h.Install("cocoindex-code", nil)
 
-	ran := h.RunIntegrations("copilot", nil)
-	if !slices.Contains(ran, "cocoindex-code:copilot") {
-		t.Fatalf("expected integration %q to run; ran: %v", "cocoindex-code:copilot", ran)
-	}
-
-	// skip_if must now exit 0: the entry is present in the config file.
-	h.AssertIntegrationConfigured("cocoindex-code:copilot", nil)
-
-	// Verify the exact JSON structure written to the config file.
-	h.AssertCommand(`jq -e '.mcpServers."cocoindex-code".type == "local"' "$HOME/.copilot/mcp-config.json"`, "")
-	h.AssertCommand(`jq -e '.mcpServers."cocoindex-code".command == "ccc"' "$HOME/.copilot/mcp-config.json"`, "")
-	h.AssertCommand(`jq -e '.mcpServers."cocoindex-code".args[0] == "mcp"' "$HOME/.copilot/mcp-config.json"`, "")
-	h.AssertCommand(`jq -e '(.mcpServers."cocoindex-code".tools // []) | contains(["*"])' "$HOME/.copilot/mcp-config.json"`, "")
-
-	// Second run must be idempotent: integration must not rewrite the file.
-	ran2 := h.RunIntegrations("copilot", nil)
-	if slices.Contains(ran2, "cocoindex-code:copilot") {
-		t.Fatalf("expected integration %q to be skipped on second run; ran: %v", "cocoindex-code:copilot", ran2)
-	}
-}
-
-// TestIntegration_CocoindexCode_OpenCode verifies that when cocoindex-code is
-// installed, the opencode MCP integration writes the correct server entry into
-// ~/.config/opencode/opencode.json and is idempotent on a second call.
-func TestIntegration_CocoindexCode_OpenCode(t *testing.T) {
-	t.Parallel()
-	h := newBootstrapHarness(t)
-
-	h.Install("cocoindex-code", nil)
-
-	ran := h.RunIntegrations("opencode", nil)
-	if !slices.Contains(ran, "cocoindex-code:opencode") {
-		t.Fatalf("expected integration %q to run; ran: %v", "cocoindex-code:opencode", ran)
-	}
-
-	// skip_if must now exit 0.
-	h.AssertIntegrationConfigured("cocoindex-code:opencode", nil)
-
-	// Verify the exact JSON structure.
-	h.AssertCommand(`jq -e '.mcp."cocoindex-code".type == "local"' "$HOME/.config/opencode/opencode.json"`, "")
-	h.AssertCommand(`jq -e '.mcp."cocoindex-code".command[0] == "ccc"' "$HOME/.config/opencode/opencode.json"`, "")
-	h.AssertCommand(`jq -e '.mcp."cocoindex-code".command[1] == "mcp"' "$HOME/.config/opencode/opencode.json"`, "")
-	h.AssertCommand(`jq -e '.mcp."cocoindex-code".enabled == true' "$HOME/.config/opencode/opencode.json"`, "")
-
-	// Second run must be idempotent.
-	ran2 := h.RunIntegrations("opencode", nil)
-	if slices.Contains(ran2, "cocoindex-code:opencode") {
-		t.Fatalf("expected integration %q to be skipped on second run; ran: %v", "cocoindex-code:opencode", ran2)
-	}
-}
-
-// TestIntegration_CocoindexCode_Claude verifies that when cocoindex-code is
-// installed alongside the Claude Code agent, the claude MCP integration
-// registers ccc as an MCP server via `claude mcp add` and that the integration
-// is idempotent on a second call.
-//
-// The claude agent must be installed so that:
-//   - The `claude` binary is available at ~/.claude/local/bin/claude (in PATH via
-//     /etc/profile.d/aivm-path.sh after Install adds its path_entries).
-//   - `claude mcp add` and `claude mcp get` work without authentication (config only).
-func TestIntegration_CocoindexCode_Claude(t *testing.T) {
-	t.Parallel()
-	h := newBootstrapHarness(t)
-
-	h.Install("cocoindex-code", nil)
-	h.Install("claude", nil)
-
-	ran := h.RunIntegrations("claude", nil)
-	if !slices.Contains(ran, "cocoindex-code:claude") {
-		t.Fatalf("expected integration %q to run; ran: %v", "cocoindex-code:claude", ran)
-	}
-
-	// AssertIntegrationConfigured runs `claude mcp get cocoindex-code` (the skip_if
-	// script) and asserts it exits 0.
-	h.AssertIntegrationConfigured("cocoindex-code:claude", nil)
-
-	// Second run must be idempotent: integration must not re-register the server.
-	ran2 := h.RunIntegrations("claude", nil)
-	if slices.Contains(ran2, "cocoindex-code:claude") {
-		t.Fatalf("expected integration %q to be skipped on second run; ran: %v", "cocoindex-code:claude", ran2)
-	}
+	// skills@latest must have written at least one SKILL.md somewhere under HOME.
+	h.AssertCommand(`find "$HOME" -name "SKILL.md" -maxdepth 6 2>/dev/null | grep -q .`, "")
 }
