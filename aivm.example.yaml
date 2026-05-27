@@ -33,7 +33,6 @@ vm:
   # ~ is expanded to your home directory.
   mounts:
     - "~/dev:rw"
-    - "~/.ssh:ro"
 
   # Arbitrary environment variables injected into every VM session.
   # Values support ${HOST_VAR} expansion from the host shell environment.

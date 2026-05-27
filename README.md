@@ -6,6 +6,12 @@
 [![Go](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](go.mod)
 [![macOS only](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
 
+## Demo
+
+https://github.com/user-attachments/assets/fd87f402-459d-4957-bffa-f786d0eb357b
+
+---
+
 **aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, optionally starts Docker Compose services (e.g. MCP servers) tied to the VM lifecycle, keeps sessions alive while you work, and auto-cleans up when you're idle.
 
 Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)

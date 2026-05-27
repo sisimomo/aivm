@@ -1,0 +1,35 @@
+vm:
+  name: aivm-demo
+  cpus: 4
+  memory: "6GB"
+  disk: "40GB"
+  mounts:
+    - "~/dev:rw"
+
+agents:
+  default: opencode
+  define:
+    claude:
+      enable: true
+    copilot:
+      enable: true
+    opencode:
+      enable: true
+
+t3code:
+  enable: true
+
+plugins:
+  enabled:
+    - mise-node
+    - mise-python
+    - mise-go
+    - mise-java
+    - mise-maven
+    - skills
+  config:
+    mise-java:
+      version: "25"
+    skills:
+      sources:
+        - repo: mattpocock/skills
