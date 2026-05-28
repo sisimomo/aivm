@@ -21,6 +21,8 @@ agents:
 #       enable: true
 #     copilot:
 #       enable: true
+#     cursor:
+#       enable: true
 
 # VM resources — tune to your machine.
 vm:
@@ -154,4 +156,3 @@ idle:
 # and torn down with `docker compose down` (or `down -v` for `aivm destroy`).
 # The project name is set to the VM profile name.
 # compose_file: ./docker-compose.yml
-

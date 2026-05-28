@@ -31,6 +31,7 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 	cases := []struct{ name string }{
 		{"claude"},
 		{"copilot"},
+		{"cursor"},
 		{"opencode"},
 	}
 

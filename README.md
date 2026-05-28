@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/fd87f402-459d-4957-bffa-f786d0eb357b
 
 **aivm** manages the full lifecycle of a disposable Linux runtime dedicated to running AI coding agents. It runs on Colima by default or Docker via the Docker backend, bootstraps the runtime with your choice of toolchain plugins, optionally starts Docker Compose services (e.g. MCP servers) tied to the VM lifecycle, keeps sessions alive while you work, and auto-cleans up when you're idle.
 
-Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **OpenCode** (`opencode`)
+Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) · **Cursor Agent** (`cursor`) · **OpenCode** (`opencode`)
 
 ---
 
@@ -83,7 +83,7 @@ aivm version
    nano ~/.aivm/aivm.yaml
    ```
 
-   Set `agents.enabled` to `claude`, `copilot`, or `opencode`.
+   Set `agents.default` and enable one or more entries under `agents.define`.
    Keep `vm.backend: colima` for the default setup, or set `vm.backend: docker` and `vm.docker_image` to run on Docker directly.
 
 2. **Launch an agent from any directory under your dev root:**
@@ -95,13 +95,6 @@ aivm version
 
    On the first run, aivm starts the VM, bootstraps all plugins, and drops you into an interactive agent session. Subsequent runs skip the bootstrap (idempotent).
 
-3. **Authenticate inside the VM** (first time only):
-
-   ```bash
-   aivm ssh
-   # then: claude auth   OR   gh auth login
-   ```
-
 ---
 
 ## Configuration
@@ -110,9 +103,12 @@ Config file: `~/.aivm/aivm.yaml`
 Use [`aivm.example.yaml`](aivm.example.yaml) as a reference.
 
 ```yaml
-# Which agent to launch (claude | copilot | opencode)
+# Which built-in agent to launch (claude | copilot | cursor | opencode)
 agents:
-  enabled: claude
+  default: claude
+  define:
+    claude:
+      enable: true
 
 vm:
   cpus: 4
@@ -294,7 +290,7 @@ t3code:
   port: 3773   # http://localhost:3773
 ```
 
-> **Note:** `agents.enabled` is still required — T3 Code is a frontend, not an agent. Idle monitoring is disabled in this mode; use `aivm stop` to shut down explicitly.
+> **Note:** `agents.default` plus at least one `agents.define.<name>.enable: true` entry is still required — T3 Code is a frontend, not an agent. Idle monitoring is disabled in this mode; use `aivm stop` to shut down explicitly.
 
 ---
 
@@ -392,13 +388,14 @@ See the full [mise tool catalog](https://mise.jdx.dev/registry.html#tools) for a
 | `version` | string | `"latest"` | Version set as global via `mise use --global` |
 | `extra_versions` | list | `[]` | Additional versions installed via `mise install` (not set as global) |
 
-Agent are registered automatically based on `agents.enabled`:
+Enabled agent plugins are registered automatically based on `agents.define.<name>.enable: true`:
 
-| Agent plugin | Description                                  |
-|--------------|----------------------------------------------|
-| `claude` | Claude Code CLI (depends on `mise-node`)     |
-| `copilot` | GitHub Copilot CLI (depends on `system`, `gh`) |
-| `opencode` | OpenCode CLI (depends on `system`)           |
+| Agent plugin | Description                              |
+|--------------|------------------------------------------|
+| `claude`     | Claude Code CLI (depends on `mise-node`) |
+| `copilot`    | GitHub Copilot CLI                       |
+| `cursor`     | Cursor Agent CLI (depends on `system`)   |
+| `opencode`   | OpenCode CLI (depends on `system`)       |
 
 ---
 
@@ -497,10 +494,13 @@ plugins:
 
 ```yaml
 agents:
-  enabled: claude
+  default: claude
+  define:
+    claude:
+      enable: true
 ```
 
-Runs `claude --dangerously-skip-permissions --mcp-config "$HOME/.claude/mcp-config.json"`. Claude's project history is persisted to `~/.aivm/.claude/projects/` on the host.
+SSH in the VM and runs `claude --dangerously-skip-permissions`. Claude's project history is persisted to `~/.aivm/.claude/projects/` on the host.
 
 Authenticate inside the VM once:
 
@@ -513,10 +513,13 @@ claude auth
 
 ```yaml
 agents:
-  enabled: copilot
+  default: copilot
+  define:
+    copilot:
+      enable: true
 ```
 
-Runs `gh copilot --yolo`. Session state is persisted to `~/.aivm/.copilot/session-state/`.
+SSH in the VM and runs `copilot --yolo`. Session state is persisted to `~/.aivm/.copilot/session-state/`.
 
 Authenticate inside the VM once:
 
@@ -525,14 +528,36 @@ aivm ssh
 gh auth login
 ```
 
+### Cursor Agent
+
+```yaml
+agents:
+  default: cursor
+  define:
+    cursor:
+      enable: true
+```
+
+SSH in the VM and runs `agent`. aivm installs Cursor with the upstream `curl https://cursor.com/install -fsS | bash` flow, keeps `~/.local/bin` on PATH for login shells, and persists Cursor CLI state in `~/.aivm/.cursor/`.
+
+Authenticate inside the VM once:
+
+```bash
+aivm ssh
+agent login
+```
+
 ### OpenCode
 
 ```yaml
 agents:
-  enabled: opencode
+  default: opencode
+  define:
+    opencode:
+      enable: true
 ```
 
-Runs `"$HOME/.opencode/bin/opencode"`. The binary is installed with the upstream `curl -fsSL https://opencode.ai/install | bash` flow, with PATH modification disabled so aivm controls the runtime environment.
+SSH in the VM and runs `opencode`. The binary is installed with the upstream `curl -fsSL https://opencode.ai/install | bash` flow, with PATH modification disabled so aivm controls the runtime environment.
 
 Authenticate inside the VM on first launch if prompted.
 

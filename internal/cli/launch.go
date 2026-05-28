@@ -9,7 +9,7 @@ import (
 func LaunchCmd(getApp func() (*App, error), agentOverride *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "launch [directory]",
-		Short: "Launch Claude Code in the VM (default command)",
+		Short: "Launch the configured AI agent in the VM",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {
