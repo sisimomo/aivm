@@ -215,10 +215,14 @@ func agentLaunchCommand(name string, override string) string {
 	if override != "" {
 		return override
 	}
+	binName := name
+	if name == "cursor" {
+		binName = "agent"
+	}
 	// Write to the marker file first (inside a login subshell so PATH is set),
 	// then exec the real binary. The login shell sources /etc/profile.d/ so
 	// mise shims and agent path entries are available.
-	return "bash -lc 'echo 1 >> /tmp/.aivm_agent_launched; exec " + name + " --version'"
+	return "bash -lc 'echo 1 >> /tmp/.aivm_agent_launched; exec " + binName + " --version'"
 }
 
 // buildTestYAML generates the aivm.yaml content for the test harness subprocess.
@@ -278,7 +282,7 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	fmt.Fprintf(&sb, "agents:\n")
 	fmt.Fprintf(&sb, "  default: %q\n", tc.Provider)
 	fmt.Fprintf(&sb, "  define:\n")
-	for _, name := range []string{"claude", "copilot", "opencode"} {
+	for _, name := range []string{"claude", "copilot", "cursor", "opencode"} {
 		launchCmd := agentLaunchCommand(name, "")
 		if name == tc.Provider && tc.LaunchCommand != "" {
 			launchCmd = tc.LaunchCommand

@@ -24,6 +24,21 @@ copilot:
   setup: |
     curl -fsSL https://gh.io/copilot-install | bash
 
+cursor:
+  enable: false
+  description: "Cursor Agent CLI"
+  dependencies:
+    - system
+  path_entries:
+    - "$HOME/.local/bin"
+  persist:
+    - .cursor
+  launch_command: "agent --yolo"
+  skip_if: |
+    agent --version >/dev/null 2>&1
+  setup: |
+    curl https://cursor.com/install -fsS | bash
+
 opencode:
   enable: false
   description: "OpenCode CLI"

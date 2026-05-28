@@ -43,7 +43,7 @@ func NewRootCmd(version string, buildApp AppFactory) *cobra.Command {
 Launch AI agents in a secure, disposable Colima VM.
 Run from any directory under your dev root.
 
-Supported providers: claude, copilot, opencode
+Built-in providers: claude, copilot, cursor, opencode
 
 Examples:
   aivm                   Launch the configured AI agent in the current directory (starts VM if needed)

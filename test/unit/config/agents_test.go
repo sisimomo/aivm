@@ -68,22 +68,23 @@ func TestActiveAgents_MultipleEnabled_Sorted(t *testing.T) {
 	}
 }
 
-func TestActiveAgents_AllThreeEnabled_Sorted(t *testing.T) {
+func TestActiveAgents_AllFourEnabled_Sorted(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{
 			Define: map[string]agent.Def{
 				"opencode": {Enable: true},
 				"copilot":  {Enable: true},
+				"cursor":   {Enable: true},
 				"claude":   {Enable: true},
 			},
 		},
 	}
 	got := cfg.ActiveAgents()
-	if len(got) != 3 {
-		t.Fatalf("ActiveAgents() = %v, want 3 entries", got)
+	if len(got) != 4 {
+		t.Fatalf("ActiveAgents() = %v, want 4 entries", got)
 	}
-	want := []string{"claude", "copilot", "opencode"}
+	want := []string{"claude", "copilot", "cursor", "opencode"}
 	for i, w := range want {
 		if got[i] != w {
 			t.Errorf("ActiveAgents()[%d] = %q, want %q", i, got[i], w)
