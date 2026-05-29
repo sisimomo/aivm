@@ -44,6 +44,10 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context, targetVM vm.VM, 
 	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
 		return fmt.Errorf("applying vm.env: %w", err)
 	}
+	gitName, gitEmail := readHostGitIdentity(svc.log())
+	if err := applyGitIdentity(ctx, targetVM, gitName, gitEmail, svc.log()); err != nil {
+		return fmt.Errorf("applying git identity: %w", err)
+	}
 	if err := svc.recordBootstrapState(); err != nil {
 		return err
 	}

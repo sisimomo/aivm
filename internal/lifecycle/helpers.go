@@ -3,17 +3,20 @@ package lifecycle
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/plugin"
@@ -216,6 +219,44 @@ func applyVMEnv(ctx context.Context, v vm.VM, env map[string]string) error {
 		`echo %s | base64 -d | sudo tee /etc/profile.d/aivm-user-env.sh > /dev/null
 sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
 		vm.ShellEscape(encoded),
+	)
+	return v.Run(ctx, script, nil)
+}
+
+// readHostGitIdentity reads user.name and user.email from the host's global
+// git config (--global flag; values set only at system or XDG scope without a
+// corresponding global entry may not be visible). Returns empty strings when
+// the values are not set — callers must treat empty as "not available".
+// Unexpected errors (e.g. git not found in PATH) are logged at debug level.
+func readHostGitIdentity(log *aivmlog.Logger) (name, email string) {
+	gitOutput := func(args ...string) string {
+		out, err := exec.Command("git", args...).Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				// Non-exit error (e.g. git not in PATH); surface it at debug level.
+				log.Debug("git config query failed: %v", err)
+			}
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	name = gitOutput("config", "--global", "user.name")
+	email = gitOutput("config", "--global", "user.email")
+	return
+}
+
+// applyGitIdentity writes the given git user.name and user.email into the VM's
+// global git config. If either value is empty the function is a no-op.
+func applyGitIdentity(ctx context.Context, v vm.VM, name, email string, log *aivmlog.Logger) error {
+	if name == "" || email == "" {
+		log.Debug("host git identity not set — skipping git config sync")
+		return nil
+	}
+	script := fmt.Sprintf(
+		"git config --global user.name %s && git config --global user.email %s",
+		vm.ShellEscape(name),
+		vm.ShellEscape(email),
 	)
 	return v.Run(ctx, script, nil)
 }
