@@ -52,7 +52,11 @@ type VMConfig struct {
 	Type   string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
 	Mounts []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
 	Env    map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
-	Name   string            `mapstructure:"name"`   // VM identity (Colima profile name / Docker container name)
+	// SessionEnv maps VM env var names to values for each interactive session
+	// (bare aivm and aivm ssh). Values support ${HOST_VAR} expansion from the host
+	// at session start and are not persisted (unlike vm.env).
+	SessionEnv map[string]string `mapstructure:"session_env"`
+	Name       string            `mapstructure:"name"` // VM identity (Colima profile name / Docker container name)
 
 	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
 	Backend string `mapstructure:"backend"`
@@ -144,6 +148,19 @@ func (vm *VMConfig) ResolvedEnv() map[string]string {
 	}
 	resolved := make(map[string]string, len(vm.Env))
 	for k, v := range vm.Env {
+		resolved[k] = os.ExpandEnv(v)
+	}
+	return resolved
+}
+
+// ResolvedSessionEnv returns vm.session_env with all ${HOST_VAR} and $HOST_VAR
+// references expanded from the host environment at session start.
+func (vm *VMConfig) ResolvedSessionEnv() map[string]string {
+	if len(vm.SessionEnv) == 0 {
+		return nil
+	}
+	resolved := make(map[string]string, len(vm.SessionEnv))
+	for k, v := range vm.SessionEnv {
 		resolved[k] = os.ExpandEnv(v)
 	}
 	return resolved
@@ -288,6 +305,11 @@ func validateAndParse(cfg *Config, home string) error {
 			return fmt.Errorf("vm.env: %w", err)
 		}
 	}
+	for name := range vm.SessionEnv {
+		if err := ValidateEnvVarName(name); err != nil {
+			return fmt.Errorf("vm.session_env: %w", err)
+		}
+	}
 
 	// --- mounts ---
 	parsed := make([]Mount, 0, len(vm.Mounts))
@@ -357,7 +379,8 @@ func preserveRawYAMLFields(v *viper.Viper, cfg *Config) error {
 	}
 	var raw struct {
 		VM struct {
-			Env map[string]string `yaml:"env"`
+			Env        map[string]string `yaml:"env"`
+			SessionEnv map[string]string `yaml:"session_env"`
 		} `yaml:"vm"`
 		Plugins struct {
 			Config map[string]map[string]any `yaml:"config"`
@@ -368,6 +391,9 @@ func preserveRawYAMLFields(v *viper.Viper, cfg *Config) error {
 	}
 	if len(raw.VM.Env) > 0 {
 		cfg.VM.Env = raw.VM.Env
+	}
+	if len(raw.VM.SessionEnv) > 0 {
+		cfg.VM.SessionEnv = raw.VM.SessionEnv
 	}
 	if len(raw.Plugins.Config) > 0 {
 		cfg.Plugins.Config = raw.Plugins.Config

@@ -126,3 +126,73 @@ func TestResolvedEnv_OriginalMapUnmodified(t *testing.T) {
 		t.Errorf("original map was mutated: got %q", original["V"])
 	}
 }
+
+// --- ResolvedSessionEnv ---
+
+func TestResolvedSessionEnv_Nil(t *testing.T) {
+	t.Parallel()
+	vm := &config.VMConfig{}
+	if got := vm.ResolvedSessionEnv(); got != nil {
+		t.Errorf("ResolvedSessionEnv() with nil SessionEnv: got %v, want nil", got)
+	}
+}
+
+func TestResolvedSessionEnv_Empty(t *testing.T) {
+	t.Parallel()
+	vm := &config.VMConfig{SessionEnv: map[string]string{}}
+	if got := vm.ResolvedSessionEnv(); got != nil {
+		t.Errorf("ResolvedSessionEnv() with empty SessionEnv: got %v, want nil", got)
+	}
+}
+
+func TestResolvedSessionEnv_ExpandsHostVar(t *testing.T) {
+	t.Setenv("AIVM_UNIT_TEST_SESSION_HOST", "sess-42")
+	vm := &config.VMConfig{SessionEnv: map[string]string{
+		"MY_TOOL_SESSION_ID": "${AIVM_UNIT_TEST_SESSION_HOST}",
+	}}
+	got := vm.ResolvedSessionEnv()
+	if got["MY_TOOL_SESSION_ID"] != "sess-42" {
+		t.Errorf("MY_TOOL_SESSION_ID: got %q, want %q", got["MY_TOOL_SESSION_ID"], "sess-42")
+	}
+}
+
+func TestResolvedSessionEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
+	const hostVar = "AIVM_UNIT_TEST_SESSION_MISSING"
+	prev, had := os.LookupEnv(hostVar)
+	os.Unsetenv(hostVar)
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(hostVar, prev)
+		} else {
+			_ = os.Unsetenv(hostVar)
+		}
+	})
+	vm := &config.VMConfig{SessionEnv: map[string]string{
+		"CI_JOB_ID": "${" + hostVar + "}",
+	}}
+	got := vm.ResolvedSessionEnv()
+	if got["CI_JOB_ID"] != "" {
+		t.Errorf("CI_JOB_ID with missing host var: got %q, want empty string", got["CI_JOB_ID"])
+	}
+}
+
+func TestResolvedSessionEnv_LiteralValue(t *testing.T) {
+	t.Parallel()
+	vm := &config.VMConfig{SessionEnv: map[string]string{
+		"FIXED_FLAG": "always-on",
+	}}
+	got := vm.ResolvedSessionEnv()
+	if got["FIXED_FLAG"] != "always-on" {
+		t.Errorf("FIXED_FLAG: got %q, want %q", got["FIXED_FLAG"], "always-on")
+	}
+}
+
+func TestResolvedSessionEnv_OriginalMapUnmodified(t *testing.T) {
+	t.Setenv("AIVM_UNIT_TEST_SESSION_ORIG", "resolved")
+	original := map[string]string{"V": "${AIVM_UNIT_TEST_SESSION_ORIG}"}
+	vm := &config.VMConfig{SessionEnv: original}
+	vm.ResolvedSessionEnv()
+	if original["V"] != "${AIVM_UNIT_TEST_SESSION_ORIG}" {
+		t.Errorf("original map was mutated: got %q", original["V"])
+	}
+}

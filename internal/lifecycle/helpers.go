@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/config"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/vm"
 )
@@ -79,8 +79,8 @@ func t3CodeIsAlive(hostPort int) bool {
 	return true
 }
 
-// bootstrapEnabledPlugins returns the deduplicated ordered list of plugins to install.
-func bootstrapEnabledPlugins(reg *plugin.Registry, providers []agent.Provider, configured []string) []string {
+// BootstrapEnabledPlugins returns the deduplicated ordered list of plugins to install.
+func BootstrapEnabledPlugins(reg *plugin.Registry, providers []agent.Provider, configured []string) []string {
 	total := len(configured)
 	for _, p := range providers {
 		total += len(p.RequiredPlugins())

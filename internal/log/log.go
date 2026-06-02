@@ -120,13 +120,13 @@ func (l *Logger) Debug(msg string, args ...any) {
 
 // Package-level functions delegate to Default for backward compatibility.
 
-func Info(msg string, args ...any)    { Default.Info(msg, args...) }
+func Info(msg string, args ...any)     { Default.Info(msg, args...) }
 func Print(format string, args ...any) { Default.Print(format, args...) }
-func Success(msg string, args ...any) { Default.Success(msg, args...) }
-func Warn(msg string, args ...any)    { Default.Warn(msg, args...) }
-func Error(msg string, args ...any)   { Default.Error(msg, args...) }
-func Step(msg string, args ...any)    { Default.Step(msg, args...) }
-func Debug(msg string, args ...any)   { Default.Debug(msg, args...) }
+func Success(msg string, args ...any)  { Default.Success(msg, args...) }
+func Warn(msg string, args ...any)     { Default.Warn(msg, args...) }
+func Error(msg string, args ...any)    { Default.Error(msg, args...) }
+func Step(msg string, args ...any)     { Default.Step(msg, args...) }
+func Debug(msg string, args ...any)    { Default.Debug(msg, args...) }
 
 func Fatal(msg string, args ...any) {
 	Error("FATAL: "+msg, args...)

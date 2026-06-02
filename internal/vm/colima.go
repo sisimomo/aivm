@@ -229,8 +229,11 @@ func (c *ColimaVM) RunOutput(ctx context.Context, script string, env map[string]
 	return buf.String(), nil
 }
 
-func (c *ColimaVM) SSH(ctx context.Context) error {
-	return run.Interactive(ctx, "colima", "ssh", "--profile", c.profile)
+func (c *ColimaVM) SSH(ctx context.Context, env map[string]string) error {
+	if len(env) == 0 {
+		return run.Interactive(ctx, "colima", "ssh", "--profile", c.profile)
+	}
+	return InteractiveSSH(ctx, c.profile, env, "exec bash -l")
 }
 
 func (c *ColimaVM) RunInteractive(ctx context.Context, script string, env map[string]string) error {

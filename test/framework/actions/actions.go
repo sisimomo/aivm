@@ -39,6 +39,14 @@ func CLI(args ...string) fw.StepFunc {
 	}
 }
 
+// CLIWithStdin runs an aivm command with the given stdin script. Use to drive
+// aivm ssh non-interactively (e.g. echo an env var and exit).
+func CLIWithStdin(stdin string, args ...string) fw.StepFunc {
+	return func(ctx context.Context, h *fw.Harness) error {
+		return h.RunCLIWithStdin(ctx, stdin, args...)
+	}
+}
+
 // AsyncCLI runs an aivm command in a background goroutine and returns
 // immediately so the scenario can proceed while the subprocess is live.
 // This is used for session idle tests where aivm (bare) must hold a session
@@ -127,6 +135,14 @@ func AddPlugin(name string) fw.StepFunc {
 func ChangeVMEnv(env map[string]string) fw.StepFunc {
 	return func(_ context.Context, h *fw.Harness) error {
 		h.ChangeVMEnv(env)
+		return nil
+	}
+}
+
+// ChangeSessionEnv replaces vm.session_env in the config.
+func ChangeSessionEnv(env map[string]string) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		h.ChangeSessionEnv(env)
 		return nil
 	}
 }

@@ -18,6 +18,8 @@ type LaunchEnv struct {
 	WorkDir string
 	// Config holds provider-specific configuration from aivm.yaml agent.providers.<name>.
 	Config map[string]any
+	// Env holds resolved vm.session_env variables for this launch.
+	Env map[string]string
 }
 
 // Response is the normalized result of an agent session.

@@ -63,6 +63,8 @@ type testConfig struct {
 	ExtraEnabledAgents []string
 	// VMEnv sets vm.env in the YAML.
 	VMEnv map[string]string
+	// SessionEnv sets vm.session_env in the YAML.
+	SessionEnv map[string]string
 	// ComposeContent, when non-empty, is written to <stateDir>/docker-compose.yml
 	// and referenced as compose_file in aivm.yaml.
 	ComposeContent string
@@ -169,6 +171,12 @@ func WithVMEnv(env map[string]string) Option {
 	return func(c *testConfig) { c.VMEnv = env }
 }
 
+// WithSessionEnv sets vm.session_env for the test Harness. Values are resolved
+// from the host environment of each aivm subprocess (e.g. aivm ssh).
+func WithSessionEnv(env map[string]string) Option {
+	return func(c *testConfig) { c.SessionEnv = env }
+}
+
 // WithComposeContent sets the docker-compose.yml content for the test Harness.
 // The framework writes it to <stateDir>/docker-compose.yml and references it
 // as compose_file in aivm.yaml. Use standard docker compose YAML.
@@ -255,6 +263,17 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  env:\n")
 		for _, k := range keys {
 			fmt.Fprintf(&sb, "    %s: %q\n", k, tc.VMEnv[k])
+		}
+	}
+	if len(tc.SessionEnv) > 0 {
+		keys := make([]string, 0, len(tc.SessionEnv))
+		for k := range tc.SessionEnv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fmt.Fprintf(&sb, "  session_env:\n")
+		for _, k := range keys {
+			fmt.Fprintf(&sb, "    %s: %q\n", k, tc.SessionEnv[k])
 		}
 	}
 
