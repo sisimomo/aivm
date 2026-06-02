@@ -48,7 +48,7 @@ cd %s
 exec %s
 `, vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), launchCmd)
 
-	err := env.VM.RunInteractive(ctx, script, nil)
+	err := env.VM.RunInteractive(ctx, script, env.Env)
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return &agent.Response{ExitCode: exitErr.ExitCode()}, nil

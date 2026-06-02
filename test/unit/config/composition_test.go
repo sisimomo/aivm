@@ -148,6 +148,34 @@ agents:
 	}
 }
 
+func TestCompose_InvalidVMSessionEnvName_Error(t *testing.T) {
+	t.Parallel()
+	path := writeYAML(t, `
+agents:
+  default: claude
+  define:
+    claude:
+      enable: true
+vm:
+  session_env:
+    BAD-NAME: "${HOST}"
+`)
+	_, err := composeEngine().Compose(path, testRegistry("claude"))
+	ce := asCompositionError(err)
+	if ce == nil {
+		t.Fatalf("expected *CompositionError, got: %v", err)
+	}
+	if ce.Stage != "load_config" {
+		t.Errorf("Stage = %q, want %q", ce.Stage, "load_config")
+	}
+	if !strings.Contains(ce.Reason, "failed to load configuration") {
+		t.Errorf("Reason = %q, want it to contain %q", ce.Reason, "failed to load configuration")
+	}
+	if !strings.Contains(err.Error(), "vm.session_env") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "vm.session_env")
+	}
+}
+
 // --- happy path tests ---
 
 func TestCompose_SingleEnabled_NoDefault_AutoInfersDefault(t *testing.T) {

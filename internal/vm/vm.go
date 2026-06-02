@@ -62,7 +62,10 @@ type VM interface {
 	// RunInteractive executes script inside the VM with a PTY attached, suitable
 	// for TUI applications that need an interactive terminal (e.g. agent CLIs).
 	RunInteractive(ctx context.Context, script string, env map[string]string) error
-	SSH(ctx context.Context) error
+	// SSH opens an interactive shell. env injects host session variables when
+	// non-empty; implementations should preserve their native SSH/exec path when
+	// env is nil or empty.
+	SSH(ctx context.Context, env map[string]string) error
 	// CopyTo copies a file or directory from the host at localPath into the VM
 	// at vmPath. When recursive is true, directories are copied recursively.
 	CopyTo(ctx context.Context, localPath, vmPath string, recursive bool) error

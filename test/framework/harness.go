@@ -215,6 +215,19 @@ func (h *Harness) RunCLI(ctx context.Context, args ...string) error {
 	return cmd.Run()
 }
 
+// RunCLIWithStdin runs aivm-test like RunCLI but feeds stdin to the subprocess.
+// Use for non-interactive ssh sessions (e.g. echo a var and exit).
+func (h *Harness) RunCLIWithStdin(ctx context.Context, stdin string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "aivm-test", args...)
+	cmd.Dir = h.workDir
+	cmd.Env = h.buildSubprocessEnv()
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Stdout = h.Output
+	cmd.Stderr = &stderrWriter{h.Output}
+	cmd.WaitDelay = 3 * time.Second
+	return cmd.Run()
+}
+
 // Scenario creates a new Scenario builder attached to this Harness.
 func (h *Harness) Scenario(name string) *Scenario {
 	return newScenario(name, h)
@@ -251,6 +264,12 @@ func (h *Harness) AppendPlugin(name string) {
 // so the next RunCLI picks up the change.
 func (h *Harness) ChangeVMEnv(env map[string]string) {
 	h.tc.VMEnv = env
+	h.WriteConfig()
+}
+
+// ChangeSessionEnv replaces vm.session_env. Updates tc and rewrites aivm.yaml.
+func (h *Harness) ChangeSessionEnv(env map[string]string) {
+	h.tc.SessionEnv = env
 	h.WriteConfig()
 }
 

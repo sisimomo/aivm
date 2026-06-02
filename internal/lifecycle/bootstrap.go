@@ -16,7 +16,7 @@ import (
 func (svc *LifecycleService) newBootstrapEngine(targetVM vm.VM, plugins []string) *bootstrap.Engine {
 	enabled := plugins
 	if enabled == nil {
-		enabled = bootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
+		enabled = BootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
 	}
 	return &bootstrap.Engine{
 		VM: targetVM,
@@ -63,7 +63,7 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 		return nil
 	}
 
-	enabledPlugins := bootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
+	enabledPlugins := BootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
 
 	exec := &integration.Executor{
 		Integrations:     svc.Integrations,

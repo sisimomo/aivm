@@ -94,7 +94,7 @@ func (svc *LifecycleService) currentEnvHash() string {
 
 // currentConfigHash computes the hash covering all execution-relevant config.
 func (svc *LifecycleService) currentConfigHash() string {
-	enabled := bootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
+	enabled := BootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
 	return ComputeConfigHash(
 		svc.PluginDefs,
 		svc.Config.Plugins.Config,

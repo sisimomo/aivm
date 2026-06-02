@@ -334,6 +334,7 @@ func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) e
 		VM:      svc.VM,
 		WorkDir: vmDir,
 		Config:  providerCfg,
+		Env:     cfg.VM.ResolvedSessionEnv(),
 	}
 
 	resp, err := prov.Launch(ctx, env)

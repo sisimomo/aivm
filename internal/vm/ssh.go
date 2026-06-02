@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,18 +23,24 @@ func colimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
 	return
 }
 
+// SSHScriptWithEnv prepends export statements so session variables are visible
+// inside the remote login shell.
+func SSHScriptWithEnv(env map[string]string, script string) string {
+	if len(env) == 0 {
+		return script
+	}
+	var exports strings.Builder
+	for k, v := range env {
+		fmt.Fprintf(&exports, "export %s=%s; ", k, ShellEscape(v))
+	}
+	return exports.String() + script
+}
+
 // InteractiveSSH opens an interactive SSH session into a Colima VM profile,
 // executing script inside the VM. env maps environment variable names to values
 // that are injected into the remote shell environment.
 func InteractiveSSH(ctx context.Context, profile string, env map[string]string, script string) error {
-	envParts := make([]string, 0, len(env))
-	for k, v := range env {
-		envParts = append(envParts, k+"="+ShellEscape(v))
-	}
-	bashCmd := "bash -lc " + ShellEscape(script)
-	if len(envParts) > 0 {
-		bashCmd = strings.Join(envParts, " ") + " " + bashCmd
-	}
+	bashCmd := "bash -lc " + ShellEscape(SSHScriptWithEnv(env, script))
 
 	sshConfig, sshHost := colimaSSHEndpoint(profile)
 

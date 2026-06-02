@@ -128,7 +128,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 		os.Exit(0)
 	}()
 
-	return svc.VM.SSH(ctx)
+	return svc.VM.SSH(ctx, svc.Config.VM.ResolvedSessionEnv())
 }
 
 // Logs streams logs for the given service. Built-in services are

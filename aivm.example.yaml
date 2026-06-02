@@ -35,13 +35,18 @@ vm:
   # ~ is expanded to your home directory.
   mounts:
     - "~/dev:rw"
-
   # Arbitrary environment variables injected into every VM session.
   # Values support ${HOST_VAR} expansion from the host shell environment.
   # Changes are applied in-place the next time you run aivm — no VM recreation needed.
   # env:
   #   MY_API_TOKEN: "${MY_API_TOKEN}"
   #   CUSTOM_SETTING: "some-value"
+  #
+  # Session-scoped env (aivm and aivm ssh). Same ${HOST_VAR} syntax as vm.env above.
+  # Resolved from the host each session; not persisted in the VM.
+  # session_env:
+  #   MY_TOOL_SESSION_ID: "${MY_TOOL_SESSION_ID}"
+  #   CI_JOB_ID: "${CI_JOB_ID}"
 
 # Idle VM management.
 idle:
