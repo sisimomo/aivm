@@ -299,8 +299,8 @@ func (h *BootstrapHarness) AssertLaunchStartsTUI(agentName string, probeTimeout 
 	if !ok {
 		h.t.Fatalf("AssertLaunchStartsTUI: agent %q not found", agentName)
 	}
-	if def.LaunchCommand == "" {
-		h.t.Fatalf("AssertLaunchStartsTUI: agent %q has empty launch_command", agentName)
+	if def.CLICommand == "" {
+		h.t.Fatalf("AssertLaunchStartsTUI: agent %q has empty cli_command", agentName)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
@@ -310,12 +310,14 @@ func (h *BootstrapHarness) AssertLaunchStartsTUI(agentName string, probeTimeout 
 	//   - context.DeadlineExceeded / signal kill → TUI was alive, test passes
 	//   - immediate non-zero exit → launch_command failed, test fails
 	start := time.Now()
-	_, runErr := h.vm.RunOutput(ctx, def.LaunchCommand, nil)
+	workDir := "/tmp"
+	script := vm.BuildLaunchScript(workDir, def.CLICommand, def.LaunchArgs)
+	_, runErr := h.vm.RunOutput(ctx, script, nil)
 	elapsed := time.Since(start)
 
 	if runErr == nil {
-		h.t.Errorf("AssertLaunchStartsTUI %q: launch_command %q exited cleanly after %v — expected it to stay alive for ~%v",
-			agentName, def.LaunchCommand, elapsed, probeTimeout)
+		h.t.Errorf("AssertLaunchStartsTUI %q: launch script exited cleanly after %v — expected it to stay alive for ~%v",
+			agentName, elapsed, probeTimeout)
 		return
 	}
 
@@ -327,9 +329,9 @@ func (h *BootstrapHarness) AssertLaunchStartsTUI(agentName string, probeTimeout 
 
 	// The process exited well before the timeout with an error → the
 	// launch_command is broken (e.g. unrecognised flag).
-	h.t.Errorf("AssertLaunchStartsTUI %q: launch_command %q exited after %v with error %v — "+
+	h.t.Errorf("AssertLaunchStartsTUI %q: launch script exited after %v with error %v — "+
 		"the TUI did not start (expected the process to stay alive for ~%v)",
-		agentName, def.LaunchCommand, elapsed, runErr, probeTimeout)
+		agentName, elapsed, runErr, probeTimeout)
 }
 
 // renderIntegrationScript renders a Go text/template integration script with

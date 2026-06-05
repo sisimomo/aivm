@@ -121,7 +121,7 @@ func (svc *LifecycleService) currentConfigHash() string {
 // The function is insensitive to nil vs empty collections, performing inline
 // normalization of vmMounts, integrations, and pluginConfig parameters.
 //
-// Excluded intentionally: MCP, T3Code, Idle timeouts, debug flag, and VM
+// Excluded intentionally: MCP, T3Code, Idle timeouts, log_level, and VM
 // prompt-threshold fields — none of these affect what runs inside the VM.
 func ComputeConfigHash(
 	pluginDefs map[string]plugin.PluginDef,

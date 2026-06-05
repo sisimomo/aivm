@@ -263,15 +263,15 @@ agents:
   define:
     copilot:
       enable: true
-      launch_command: "my-custom-copilot-cmd"
+      cli_command: "my-custom-copilot-cmd"
 `)
 	result, err := composeEngine().Compose(path, testRegistry("copilot"))
 	if err != nil {
 		t.Fatalf("Compose: unexpected error: %v", err)
 	}
-	if result.ActiveAgentDef.LaunchCommand != "my-custom-copilot-cmd" {
-		t.Errorf("ActiveAgentDef.LaunchCommand = %q, want %q",
-			result.ActiveAgentDef.LaunchCommand, "my-custom-copilot-cmd")
+	if result.ActiveAgentDef.CLICommand != "my-custom-copilot-cmd" {
+		t.Errorf("ActiveAgentDef.CLICommand = %q, want %q",
+			result.ActiveAgentDef.CLICommand, "my-custom-copilot-cmd")
 	}
 }
 
@@ -283,16 +283,21 @@ agents:
   define:
     claude:
       enable: true
-      launch_command: "claude-override --version"
+      cli_command: claude-override
+      launch_args: --version
 `)
 	result, err := composeEngine().Compose(path, testRegistry("claude"))
 	if err != nil {
 		t.Fatalf("Compose: unexpected error: %v", err)
 	}
 	def := result.EnabledAgentDefs["claude"]
-	if def.LaunchCommand != "claude-override --version" {
-		t.Errorf("EnabledAgentDefs[claude].LaunchCommand = %q, want %q",
-			def.LaunchCommand, "claude-override --version")
+	if def.CLICommand != "claude-override" {
+		t.Errorf("EnabledAgentDefs[claude].CLICommand = %q, want %q",
+			def.CLICommand, "claude-override")
+	}
+	if def.LaunchArgs != "--version" {
+		t.Errorf("EnabledAgentDefs[claude].LaunchArgs = %q, want %q",
+			def.LaunchArgs, "--version")
 	}
 }
 

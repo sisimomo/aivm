@@ -145,6 +145,21 @@ func (d *DockerVM) RunOutput(ctx context.Context, script string, env map[string]
 	)
 }
 
+// RunStream executes script without a PTY, streaming stdout/stderr to the host.
+func (d *DockerVM) RunStream(ctx context.Context, script string, env map[string]string) (int, error) {
+	args := []string{
+		"exec", "-i",
+		"-u", dockerContainerUser,
+		d.containerName,
+		"bash", "-lc", buildBashCmd(script, env),
+	}
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return ExitCodeFromError(cmd.Run())
+}
+
 // RunInteractive executes script with a PTY attached when available, suitable
 // for TUI applications (e.g. agent CLIs). stdin/stdout/stderr are connected to
 // the calling process. The -t flag is only passed when stdin is a TTY so that
@@ -286,7 +301,9 @@ func dockerOutput(ctx context.Context, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-// isTTY reports whether stdin is connected to a real terminal.
-func isTTY() bool {
+// IsTTY reports whether stdin is connected to a real terminal.
+func IsTTY() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
+
+func isTTY() bool { return IsTTY() }

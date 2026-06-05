@@ -40,10 +40,9 @@ type testConfig struct {
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
 
-	// LaunchCommand, when non-empty, overrides the launch_command for the
-	// active provider. Tests that need a long-lived agent process (e.g. session
-	// idle tests) set this to "sleep 30" to hold a session lock open without
-	// requiring interactive TUI auth.
+	// LaunchCommand, when non-empty, overrides cli_command and launch_args for the
+	// active provider. Use "sleep 30" for session idle tests. Space-separated
+	// values split into cli_command and launch_args (e.g. "sleep 30").
 	LaunchCommand string
 
 	// Interactive, when true, sets AIVM_FORCE_INTERACTIVE=1 in subprocess env.
@@ -61,6 +60,9 @@ type testConfig struct {
 	// ExtraEnabledAgents contains additional agent names to mark as enabled
 	// alongside Provider. All named agents are installed during bootstrap.
 	ExtraEnabledAgents []string
+	// PreserveCLIAgents lists enabled agents that keep built-in cli_command and
+	// launch_args (no non-interactive test wrapper). Use for aivm agent -- passthrough.
+	PreserveCLIAgents []string
 	// VMEnv sets vm.env in the YAML.
 	VMEnv map[string]string
 	// SessionEnv sets vm.session_env in the YAML.
@@ -143,6 +145,15 @@ func WithExtraAgents(names ...string) Option {
 	}
 }
 
+// WithPreserveAgentCLI keeps named enabled agents on their built-in cli_command
+// instead of the non-interactive test launch wrapper. Use when a test invokes
+// aivm agent -- and must hit the real agent binary.
+func WithPreserveAgentCLI(names ...string) Option {
+	return func(c *testConfig) {
+		c.PreserveCLIAgents = append(c.PreserveCLIAgents, names...)
+	}
+}
+
 // WithInteractive simulates running in an interactive terminal.
 // The provided answers are fed to stdin prompts in order (one per prompt).
 // Without this option the CLI behaves non-interactively (all prompt code paths
@@ -184,11 +195,8 @@ func WithComposeContent(content string) Option {
 	return func(c *testConfig) { c.ComposeContent = content }
 }
 
-// WithLaunchCommand overrides the launch_command for the active provider in
-// the generated aivm.yaml. Use this when a test needs a long-lived agent
-// process (e.g. "sleep 30" for session idle tests) rather than the default
-// version-check override. The real agent binary is still installed during
-// bootstrap — only the launch command is overridden.
+// WithLaunchCommand overrides cli_command and launch_args for the active provider
+// in the generated aivm.yaml. Use "sleep 30" for session idle tests.
 func WithLaunchCommand(cmd string) Option {
 	return func(c *testConfig) { c.LaunchCommand = cmd }
 }
@@ -208,29 +216,23 @@ func effectivePlugins(tc testConfig) []string {
 	return plugins
 }
 
-// agentLaunchCommand returns the launch_command to use in the test config for
-// the given agent name. By default it runs the real binary version check and
-// appends a line to the agent-launched marker file so tests can count launches
-// without requiring interactive TUI auth. WithLaunchCommand overrides this.
-//
-// The wrapper uses `bash -lc` because the generic provider runs `exec %s`,
-// which replaces the shell process. Any compound command after `exec` (e.g.
-// `exec claude --version && echo 1 >> marker`) would never reach the `echo`
-// because exec discards the remaining shell commands. Wrapping in a login
-// subshell ensures the marker write happens first, then the binary is exec'd
-// inside the subshell where it CAN run to completion.
-func agentLaunchCommand(name string, override string) string {
+// agentLaunchFields returns optional cli_command override and launch_args for tests.
+// By default only launch_args is set (bash -lc wrapper) so cli_command stays on the
+// built-in binary — aivm agent -- can invoke the real CLI. WithLaunchCommand
+// overrides the active provider (e.g. "sleep 30" sets cli_command sleep, launch_args 30).
+func agentLaunchFields(name, override string) (cliCommand, launchArgs string) {
 	if override != "" {
-		return override
+		parts := strings.SplitN(strings.TrimSpace(override), " ", 2)
+		if len(parts) == 2 {
+			return parts[0], parts[1]
+		}
+		return override, ""
 	}
 	binName := name
 	if name == "cursor" {
 		binName = "agent"
 	}
-	// Write to the marker file first (inside a login subshell so PATH is set),
-	// then exec the real binary. The login shell sources /etc/profile.d/ so
-	// mise shims and agent path entries are available.
-	return "bash -lc 'echo 1 >> /tmp/.aivm_agent_launched; exec " + binName + " --version'"
+	return "bash", fmt.Sprintf("-lc 'echo 1 >> /tmp/.aivm_agent_launched; exec %s --version'", binName)
 }
 
 // buildTestYAML generates the aivm.yaml content for the test harness subprocess.
@@ -289,28 +291,40 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	fmt.Fprintf(&sb, "  poll_interval: %q\n", tc.PollInterval.String())
 
 	// ── agents ────────────────────────────────────────────────────────────
-	// Only launch_command is overridden — setup and skip_if come from
-	// defaults.yaml (real curl-based install scripts). This proves the real
-	// binary is installed and callable without requiring interactive TUI auth.
+	// cli_command and launch_args are overridden for tests — setup and skip_if
+	// come from defaults.yaml (real curl-based install scripts).
 	// Provider and any ExtraEnabledAgents are marked enable: true so all
 	// configured agents are bootstrapped in the VM.
 	extraEnabled := make(map[string]bool, len(tc.ExtraEnabledAgents))
 	for _, name := range tc.ExtraEnabledAgents {
 		extraEnabled[name] = true
 	}
+	preserveCLI := make(map[string]bool, len(tc.PreserveCLIAgents))
+	for _, name := range tc.PreserveCLIAgents {
+		preserveCLI[name] = true
+	}
 	fmt.Fprintf(&sb, "agents:\n")
 	fmt.Fprintf(&sb, "  default: %q\n", tc.Provider)
 	fmt.Fprintf(&sb, "  define:\n")
 	for _, name := range []string{"claude", "copilot", "cursor", "opencode"} {
-		launchCmd := agentLaunchCommand(name, "")
-		if name == tc.Provider && tc.LaunchCommand != "" {
-			launchCmd = tc.LaunchCommand
-		}
 		fmt.Fprintf(&sb, "    %s:\n", name)
-		if name == tc.Provider || extraEnabled[name] {
+		enabled := name == tc.Provider || extraEnabled[name]
+		if enabled {
 			fmt.Fprintf(&sb, "      enable: true\n")
 		}
-		fmt.Fprintf(&sb, "      launch_command: %q\n", launchCmd)
+		if !enabled || preserveCLI[name] {
+			continue
+		}
+		cliCmd, launchArgs := agentLaunchFields(name, "")
+		if tc.LaunchCommand != "" && name == tc.Provider {
+			cliCmd, launchArgs = agentLaunchFields(name, tc.LaunchCommand)
+		}
+		if cliCmd != "" {
+			fmt.Fprintf(&sb, "      cli_command: %q\n", cliCmd)
+		}
+		if launchArgs != "" {
+			fmt.Fprintf(&sb, "      launch_args: %q\n", launchArgs)
+		}
 	}
 
 	// ── plugins ───────────────────────────────────────────────────────────

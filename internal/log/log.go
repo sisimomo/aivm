@@ -3,7 +3,6 @@ package log
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"time"
 )
@@ -18,66 +17,50 @@ var (
 	colorBold   = "\033[1m"
 )
 
-// logMode controls how log messages are rendered.
-type logMode int
-
-const (
-	// ModeFull is verbose mode: all levels print, plugin output streams.
-	// Used by test harnesses and when --debug / debug:true is set.
-	ModeFull logMode = iota
-	// ModeClean suppresses Info/Debug and discards plugin output.
-	// Steps are printed as a simple numbered sequence.
-	ModeClean
-)
-
-var debug bool
-
-// SetDebug enables debug output. It also switches Default to ModeFull so that
-// all Info/Step/Debug messages are printed (current verbose behaviour).
-func SetDebug(v bool) {
-	debug = v
-	if v {
-		Default.mode = ModeFull
-	}
-}
-
 func ts() string     { return time.Now().Format("15:04:05") }
 func prefix() string { return colorBold + colorBlue + "[aivm]" + colorReset }
 
 // Logger is a named writer pair for stdout and stderr.
-// Construct with New (verbose, for tests) or use Default (clean mode).
+// Construct with New (verbose, for tests) or use Default (info level).
 type Logger struct {
 	Out io.Writer // receives Info, Success, Step, Debug messages
 	Err io.Writer // receives Warn, Error messages
 
-	mode  logMode
+	level Level
 	stepN int
 }
 
-// New returns a ModeFull (verbose) Logger. Use in tests so all messages are
-// captured and assertions continue to work without change.
+// New returns a debug-level Logger. Use in tests so all messages are captured.
 func New(out, err io.Writer) *Logger {
-	return &Logger{Out: out, Err: err, mode: ModeFull}
+	return NewWithLevel(out, err, LevelDebug)
+}
+
+// NewWithLevel returns a Logger at the given level.
+func NewWithLevel(out, err io.Writer, level Level) *Logger {
+	return &Logger{Out: out, Err: err, level: level}
 }
 
 // Default is the logger used by the package-level functions.
-var Default = &Logger{Out: os.Stdout, Err: os.Stderr, mode: ModeClean}
+var Default = &Logger{Out: os.Stdout, Err: os.Stderr, level: LevelInfo}
 
 func (l *Logger) Info(msg string, args ...any) {
-	if l.mode == ModeFull {
-		fmt.Fprintf(l.Out, "%s %s %sINFO%s  %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))
+	if !l.level.allows(LevelDebug) {
+		return
 	}
+	fmt.Fprintf(l.Out, "%s %s %sINFO%s  %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))
 }
 
-// Print writes to Out unconditionally in both ModeClean and ModeFull.
-// Use for user-facing messages that must always be visible regardless of log mode.
+// Print writes to Out unconditionally regardless of log level.
 func (l *Logger) Print(format string, args ...any) {
 	fmt.Fprintln(l.Out, fmt.Sprintf(format, args...))
 }
 
 func (l *Logger) Success(msg string, args ...any) {
+	if !l.level.allows(LevelInfo) {
+		return
+	}
 	text := fmt.Sprintf(msg, args...)
-	if l.mode == ModeFull {
+	if l.level.verbose() {
 		fmt.Fprintf(l.Out, "%s %s %s✓%s     %s\n", prefix(), ts(), colorGreen, colorReset, text)
 	} else {
 		fmt.Fprintf(l.Out, "%s✓%s  %s\n", colorGreen, colorReset, text)
@@ -85,8 +68,11 @@ func (l *Logger) Success(msg string, args ...any) {
 }
 
 func (l *Logger) Warn(msg string, args ...any) {
+	if !l.level.allows(LevelWarn) {
+		return
+	}
 	text := fmt.Sprintf(msg, args...)
-	if l.mode == ModeFull {
+	if l.level.verbose() {
 		fmt.Fprintf(l.Err, "%s %s %sWARN%s  %s\n", prefix(), ts(), colorYellow, colorReset, text)
 	} else {
 		fmt.Fprintf(l.Err, "%s⚠%s  %s\n", colorYellow, colorReset, text)
@@ -94,8 +80,11 @@ func (l *Logger) Warn(msg string, args ...any) {
 }
 
 func (l *Logger) Error(msg string, args ...any) {
+	if !l.level.allows(LevelError) {
+		return
+	}
 	text := fmt.Sprintf(msg, args...)
-	if l.mode == ModeFull {
+	if l.level.verbose() {
 		fmt.Fprintf(l.Err, "%s %s %sERROR%s %s\n", prefix(), ts(), colorRed, colorReset, text)
 	} else {
 		fmt.Fprintf(l.Err, "%s✗%s  %s\n", colorRed, colorReset, text)
@@ -103,8 +92,11 @@ func (l *Logger) Error(msg string, args ...any) {
 }
 
 func (l *Logger) Step(msg string, args ...any) {
+	if !l.level.allows(LevelInfo) {
+		return
+	}
 	text := fmt.Sprintf(msg, args...)
-	if l.mode == ModeFull {
+	if l.level.verbose() {
 		fmt.Fprintf(l.Out, "\n%s %s %s────%s %s %s────%s\n", prefix(), ts(), colorCyan, colorReset, text, colorCyan, colorReset)
 	} else {
 		l.stepN++
@@ -113,9 +105,10 @@ func (l *Logger) Step(msg string, args ...any) {
 }
 
 func (l *Logger) Debug(msg string, args ...any) {
-	if debug {
-		fmt.Fprintf(l.Out, "%s %s %sDEBUG%s %s\n", prefix(), ts(), colorCyan, colorReset, fmt.Sprintf(msg, args...))
+	if !l.level.allows(LevelDebug) {
+		return
 	}
+	fmt.Fprintf(l.Out, "%s %s %sDEBUG%s %s\n", prefix(), ts(), colorCyan, colorReset, fmt.Sprintf(msg, args...))
 }
 
 // Package-level functions delegate to Default for backward compatibility.
@@ -134,9 +127,9 @@ func Fatal(msg string, args ...any) {
 }
 
 // Writer returns an io.Writer that prefixes lines with the plugin name,
-// writing to l.Out. In ModeClean, plugin output is discarded.
+// writing to l.Out. Below debug level, plugin output is discarded.
 func (l *Logger) Writer(pluginName string) io.Writer {
-	if l.mode == ModeClean {
+	if !l.level.allows(LevelDebug) {
 		return io.Discard
 	}
 	return &prefixWriter{out: l.Out, prefix: "[" + pluginName + "] "}
@@ -183,5 +176,5 @@ func init() {
 		colorCyan = ""
 		colorBold = ""
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	SetLevel(LevelInfo)
 }

@@ -1,9 +1,11 @@
-package config
+package config_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sisimomo/aivm/internal/config"
 )
 
 // TestPreservePluginsConfigCase verifies that uppercase keys nested inside
@@ -28,7 +30,7 @@ plugins:
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(cfgFile, Defaults{StateDir: dir})
+	cfg, err := config.Load(cfgFile, config.Defaults{StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +54,10 @@ plugins:
 		t.Fatalf("expected map[string]any for 'envs', got %T: %v", nested["envs"], nested["envs"])
 	}
 
-	// Uppercase key must be preserved (not lowercased by Viper).
 	if _, ok := envs["VOYAGE_API_KEY"]; !ok {
 		t.Errorf("VOYAGE_API_KEY was lowercased to %q; case must be preserved", "voyage_api_key")
 	}
 
-	// Non-string values (int) must be preserved.
 	count, ok := envs["count"].(int)
 	if !ok {
 		t.Errorf("expected int for 'count', got %T: %v", envs["count"], envs["count"])

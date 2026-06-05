@@ -50,8 +50,8 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 		if def.Setup == "" {
 			t.Errorf("agent %q: empty setup", tc.name)
 		}
-		if def.LaunchCommand == "" {
-			t.Errorf("agent %q: empty launch_command", tc.name)
+		if def.CLICommand == "" {
+			t.Errorf("agent %q: empty cli_command", tc.name)
 		}
 	}
 }

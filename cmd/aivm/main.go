@@ -64,10 +64,8 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	cfg := compResult.Config
 
-	// Wire config-level debug flag so `debug: true` in aivm.yaml behaves
-	// identically to the --debug CLI flag.
-	if cfg.Debug {
-		aivmlog.SetDebug(true)
+	if err := cli.ApplyLogLevel(cfg.LogLevel); err != nil {
+		return nil, err
 	}
 
 	vmInst, err := vm.NewFromConfig(&cfg.VM, cfg.StateDir)
