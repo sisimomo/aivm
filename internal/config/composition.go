@@ -151,13 +151,19 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 
 	// Merge user agent overrides.
 	for name, override := range cfg.Agents.Define {
-		base := agentDefs[name]
-		agentDefs[name] = agent.MergeDef(base, override)
+		agentDefs[name] = override.ApplyTo(agentDefs[name])
 	}
 
 	enabledAgentDefs := make(map[string]agent.Def, len(enabledAgentNames))
 	for _, name := range enabledAgentNames {
-		enabledAgentDefs[name] = agentDefs[name]
+		def := agentDefs[name]
+		if def.CLICommand == "" {
+			return nil, &CompositionError{
+				Stage:  "merge_agents",
+				Reason: fmt.Sprintf("agent %q: cli_command must be set in agents.define or built-in defaults", name),
+			}
+		}
+		enabledAgentDefs[name] = def
 	}
 
 	activeAgentDef := agentDefs[defaultAgentName]

@@ -1,6 +1,9 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/agent"
@@ -22,7 +25,7 @@ func TestActiveAgents_NoneEnabledInDefine(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{
-			Define: map[string]agent.Def{
+			Define: map[string]config.AgentDefine{
 				"claude": {Enable: false},
 			},
 		},
@@ -37,7 +40,7 @@ func TestActiveAgents_SingleEnabled(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{
-			Define: map[string]agent.Def{
+			Define: map[string]config.AgentDefine{
 				"claude": {Enable: true},
 			},
 		},
@@ -52,7 +55,7 @@ func TestActiveAgents_MultipleEnabled_Sorted(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{
-			Define: map[string]agent.Def{
+			Define: map[string]config.AgentDefine{
 				"copilot":  {Enable: true},
 				"claude":   {Enable: true},
 				"opencode": {Enable: false},
@@ -72,7 +75,7 @@ func TestActiveAgents_AllFourEnabled_Sorted(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{
-			Define: map[string]agent.Def{
+			Define: map[string]config.AgentDefine{
 				"opencode": {Enable: true},
 				"copilot":  {Enable: true},
 				"cursor":   {Enable: true},
@@ -89,6 +92,48 @@ func TestActiveAgents_AllFourEnabled_Sorted(t *testing.T) {
 		if got[i] != w {
 			t.Errorf("ActiveAgents()[%d] = %q, want %q", i, got[i], w)
 		}
+	}
+}
+
+func TestLoad_RejectsUnknownAgentDefineField(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "aivm.yaml")
+	const content = `
+agents:
+  define:
+    claude:
+      enable: true
+      launch_command: "nope"
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := config.Load(path, config.Defaults{StateDir: dir})
+	if err == nil {
+		t.Fatal("expected error for unknown field, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error = %q, want unknown field", err.Error())
+	}
+	if !strings.Contains(err.Error(), "launch_command") {
+		t.Fatalf("error = %q, want launch_command mentioned", err.Error())
+	}
+}
+
+func TestAgentDefine_ApplyTo_MergesNonZeroFields(t *testing.T) {
+	t.Parallel()
+	base := agent.Def{CLICommand: "claude", Description: "built-in"}
+	override := config.AgentDefine{CLICommand: "claude-cli", Enable: true}
+	got := override.ApplyTo(base)
+	if got.CLICommand != "claude-cli" {
+		t.Errorf("CLICommand = %q, want claude-cli", got.CLICommand)
+	}
+	if !got.Enable {
+		t.Error("Enable = false, want true")
+	}
+	if got.Description != "built-in" {
+		t.Errorf("Description = %q, want built-in", got.Description)
 	}
 }
 

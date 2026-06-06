@@ -53,12 +53,14 @@ idle:
   stop_timeout: 5m      # stop VM after this much idle time
   delete_timeout: 5m    # delete stopped VM after this long
 
-# Override an agent's launch command or install steps.
+# Override an agent's CLI (cli_command), interactive flags (launch_args), or install steps.
+# launch_args apply only to `aivm`; use `aivm agent -- <args>` to pass flags verbatim.
 # (These can be added under agents.define alongside enable: true.)
 # agents:
 #   define:
 #     copilot:
-#       launch_command: "gh copilot suggest"
+#       cli_command: copilot
+#       launch_args: "suggest"
 
 # T3 Code web GUI (optional).
 # When enabled, `aivm launch` starts t3 serve inside the VM and port-forwards

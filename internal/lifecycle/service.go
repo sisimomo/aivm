@@ -6,10 +6,8 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -242,109 +240,52 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) error {
 	cfg := svc.Config
 
-	// Resolve which provider+def to use for this launch.
-	prov := svc.Provider
-	provDef := svc.AgentDefs[svc.Provider.Name()]
-	if agentOverride != "" {
-		found := false
-		for _, p := range svc.EnabledProviders {
-			if p.Name() == agentOverride {
-				prov = p
-				provDef = svc.AgentDefs[agentOverride]
-				found = true
-				break
-			}
-		}
-		if !found {
-			names := make([]string, 0, len(svc.EnabledProviders))
-			for _, p := range svc.EnabledProviders {
-				names = append(names, p.Name())
-			}
-			sort.Strings(names)
-			return fmt.Errorf("agent %q is not enabled — enabled agents: %v", agentOverride, names)
-		}
-	}
-
-	getCWD := svc.GetWorkDir
-	if getCWD == nil {
-		getCWD = os.Getwd
-	}
-	hostCWD, err := getCWD()
+	s, err := svc.prepareAgentSession(ctx, agentOverride)
 	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
-	}
-	realCWD, _ := filepath.EvalSymlinks(hostCWD)
-	underMount := false
-	for _, m := range cfg.VM.ParsedMounts {
-		realMount, _ := filepath.EvalSymlinks(m.HostPath)
-		if strings.HasPrefix(realCWD, realMount) {
-			underMount = true
-			break
-		}
-	}
-	if !underMount {
-		return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
-	}
-
-	if err := svc.checkVMAge(ctx); err != nil {
 		return err
 	}
+	defer s.cleanup()
 
-	status, err := svc.VM.Status(ctx)
-	if err != nil || status != vm.StatusRunning {
-		return fmt.Errorf("VM is not running — run 'aivm start' first")
-	}
+	svc.log().Info("Host: %s", s.hostCWD)
+	svc.log().Info("VM:   %s", s.vmDir)
+	svc.log().Step("Launching %s in VM", s.prov.Description())
 
-	sess, err := svc.Sessions.Create(hostCWD)
-	if err != nil {
-		svc.log().Warn("could not create session lock: %v", err)
-	} else {
-		defer sess.Remove()
-	}
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-	done := make(chan struct{})
-	defer func() {
-		close(done)
-		signal.Stop(sigCh)
-	}()
-	go func() {
-		select {
-		case <-sigCh:
-			if sess != nil {
-				sess.Remove()
-			}
-			os.Exit(0)
-		case <-done:
-		}
-	}()
-
-	vmDir := realCWD
-
-	svc.log().Info("Host: %s", hostCWD)
-	svc.log().Info("VM:   %s", vmDir)
-	svc.log().Step("Launching %s in VM", prov.Description())
-
-	providerCfg := make(map[string]any)
-	if provDef.LaunchCommand != "" {
-		providerCfg["launch_command"] = provDef.LaunchCommand
-	}
 	env := agent.LaunchEnv{
-		VM:      svc.VM,
-		WorkDir: vmDir,
-		Config:  providerCfg,
-		Env:     cfg.VM.ResolvedSessionEnv(),
+		VM:         svc.VM,
+		WorkDir:    s.vmDir,
+		CLICommand: s.provDef.CLICommand,
+		LaunchArgs: s.provDef.LaunchArgs,
+		Env:        cfg.VM.ResolvedSessionEnv(),
 	}
 
-	resp, err := prov.Launch(ctx, env)
+	resp, err := s.prov.Launch(s.ctx, env)
+	return agentExitError(resp, err)
+}
+
+// AgentRun executes the agent CLI in the VM with user-supplied arguments (aivm agent -- …).
+func (svc *LifecycleService) AgentRun(ctx context.Context, agentOverride string, args []string) error {
+	cfg := svc.Config
+
+	s, err := svc.prepareAgentSession(ctx, agentOverride)
 	if err != nil {
 		return err
 	}
-	if resp != nil && resp.ExitCode != 0 {
-		return fmt.Errorf("agent exited with code %d", resp.ExitCode)
+	defer s.cleanup()
+
+	svc.log().Info("Host: %s", s.hostCWD)
+	svc.log().Info("VM:   %s", s.vmDir)
+	svc.log().Step("Running %s in VM", s.prov.Description())
+
+	env := agent.RunEnv{
+		VM:         svc.VM,
+		WorkDir:    s.vmDir,
+		CLICommand: s.provDef.CLICommand,
+		Args:       args,
+		Env:        cfg.VM.ResolvedSessionEnv(),
 	}
-	return nil
+
+	resp, err := s.prov.Run(s.ctx, env)
+	return agentExitError(resp, err)
 }
 
 // launchT3Code starts t3 serve inside the VM and port-forwards the configured
@@ -574,7 +515,7 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 	}
 
 	svc.log().Print("\n  You have %d active session(s).", len(sessions))
-	if !promptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ") {
+	if !PromptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ", false) {
 		svc.log().Print("\n  VM recreation cancelled.")
 		return nil
 	}
@@ -651,7 +592,7 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
 		if len(sessions) > 0 {
 			prompt = "\n  Kill all sessions and recreate the VM? [y/N] "
 		}
-		if !promptYesNo(svc.log().Out, svc.Confirmer, prompt) {
+		if !PromptYesNo(svc.log().Out, svc.Confirmer, prompt, false) {
 			svc.log().Print("\n  VM recreation cancelled.")
 			return nil
 		}

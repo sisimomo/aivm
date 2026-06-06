@@ -236,6 +236,31 @@ func (c *ColimaVM) SSH(ctx context.Context, env map[string]string) error {
 	return InteractiveSSH(ctx, c.profile, env, "exec bash -l")
 }
 
+func (c *ColimaVM) RunStream(ctx context.Context, script string, env map[string]string) (int, error) {
+	full := script
+	if len(env) > 0 {
+		var sb strings.Builder
+		for k, v := range env {
+			fmt.Fprintf(&sb, "export %s=%s\n", k, shellescape(v))
+		}
+		full = sb.String() + script
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(full))
+	bashScript := "echo " + encoded + " | base64 -d | bash -l"
+
+	sshConfig, sshHost := colimaSSHEndpoint(c.profile)
+	args := []string{"-F", sshConfig}
+	args = append(args, OpenSSHOptions()...)
+	args = append(args, sshHost, "bash", "-lc", bashScript)
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	flush := attachProcessStderr(cmd)
+	defer flush()
+	code, err := ExitCodeFromError(cmd.Run())
+	return code, err
+}
+
 func (c *ColimaVM) RunInteractive(ctx context.Context, script string, env map[string]string) error {
 	return InteractiveSSH(ctx, c.profile, env, script)
 }

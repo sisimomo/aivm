@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -34,8 +35,15 @@ func main() {
 	root := cli.NewRootCmd(version, buildApp)
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		aivmlog.Error("%v", err)
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+func exitCode(err error) int {
+	if errors.Is(err, context.Canceled) {
+		return 130
+	}
+	return 1
 }
 
 func buildApp(cfgPath string) (*cli.App, error) {
@@ -64,10 +72,8 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	cfg := compResult.Config
 
-	// Wire config-level debug flag so `debug: true` in aivm.yaml behaves
-	// identically to the --debug CLI flag.
-	if cfg.Debug {
-		aivmlog.SetDebug(true)
+	if err := cli.ApplyLogLevel(cfg.LogLevel); err != nil {
+		return nil, err
 	}
 
 	vmInst, err := vm.NewFromConfig(&cfg.VM, cfg.StateDir)

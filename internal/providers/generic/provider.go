@@ -31,29 +31,45 @@ func (p *Provider) Description() string { return p.def.Description }
 func (p *Provider) RequiredPlugins() []string { return []string{p.name} }
 
 func (p *Provider) Launch(ctx context.Context, env agent.LaunchEnv) (*agent.Response, error) {
-	launchCmd, ok := env.Config["launch_command"].(string)
-	if !ok || launchCmd == "" {
-		return nil, fmt.Errorf("%s: launch_command is not configured", p.name)
+	if env.CLICommand == "" {
+		return nil, fmt.Errorf("%s: cli_command is not configured", p.name)
 	}
 
-	// The session runs as `bash -l` (login shell), so the PATH configured
-	// by the agent's setup script is already available here.
-	script := fmt.Sprintf(`
-set -e
-if [[ ! -d %s ]]; then
-  echo "[aivm] ERROR: VM directory %s does not exist"
-  exit 1
-fi
-cd %s
-exec %s
-`, vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), vm.ShellEscape(env.WorkDir), launchCmd)
-
+	script := vm.BuildLaunchScript(env.WorkDir, env.CLICommand, env.LaunchArgs)
 	err := env.VM.RunInteractive(ctx, script, env.Env)
+	return exitResponse(err)
+}
+
+func (p *Provider) Run(ctx context.Context, env agent.RunEnv) (*agent.Response, error) {
+	cli := env.CLICommand
+	if cli == "" {
+		return nil, fmt.Errorf("%s: cli_command is not configured", p.name)
+	}
+	if len(env.Args) == 0 {
+		return nil, fmt.Errorf("%s: no agent arguments", p.name)
+	}
+
+	script := vm.BuildRunScript(env.WorkDir, cli, env.Args)
+	// Agent CLIs (e.g. Cursor) often require a PTY for normal stdout; use the same
+	// interactive SSH path as Launch when the host has a terminal. Headless/CI keeps
+	// RunStream so output is not conflated with a controlling TTY.
+	if vm.IsTTY() {
+		err := env.VM.RunInteractive(ctx, script, env.Env)
+		return exitResponse(err)
+	}
+	code, err := env.VM.RunStream(ctx, script, env.Env)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return &agent.Response{ExitCode: exitErr.ExitCode()}, nil
-		}
 		return nil, err
 	}
-	return &agent.Response{ExitCode: 0}, nil
+	return &agent.Response{ExitCode: code}, nil
+}
+
+func exitResponse(err error) (*agent.Response, error) {
+	if err == nil {
+		return &agent.Response{ExitCode: 0}, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return &agent.Response{ExitCode: exitErr.ExitCode()}, nil
+	}
+	return nil, err
 }

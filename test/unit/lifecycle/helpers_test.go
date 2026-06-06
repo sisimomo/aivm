@@ -20,6 +20,9 @@ func (f *fakeProvider) RequiredPlugins() []string { return f.required }
 func (f *fakeProvider) Launch(_ context.Context, _ agent.LaunchEnv) (*agent.Response, error) {
 	return nil, nil
 }
+func (f *fakeProvider) Run(_ context.Context, _ agent.RunEnv) (*agent.Response, error) {
+	return nil, nil
+}
 
 func TestBootstrapEnabledPlugins_EmptyInputs(t *testing.T) {
 	t.Parallel()

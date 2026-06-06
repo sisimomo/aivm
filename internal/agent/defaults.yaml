@@ -7,7 +7,8 @@ claude:
     - "$HOME/.claude/local/bin"
   persist:
     - .claude/projects
-  launch_command: 'claude --dangerously-skip-permissions'
+  cli_command: claude
+  launch_args: --dangerously-skip-permissions
   skip_if: |
     claude --version >/dev/null 2>&1
   setup: |
@@ -18,7 +19,8 @@ copilot:
   description: "GitHub Copilot CLI (copilot cli)"
   persist:
     - .copilot/session-state
-  launch_command: "copilot --yolo"
+  cli_command: copilot
+  launch_args: --yolo
   skip_if: |
     copilot --version >/dev/null 2>&1
   setup: |
@@ -33,7 +35,8 @@ cursor:
     - "$HOME/.local/bin"
   persist:
     - .cursor
-  launch_command: "agent --yolo"
+  cli_command: agent
+  launch_args: --yolo
   skip_if: |
     agent --version >/dev/null 2>&1
   setup: |
@@ -46,9 +49,7 @@ opencode:
     - system
   path_entries:
     - "$HOME/.opencode/bin"
-  launch_command: "opencode"
-  persist:
-    - .local/state/opencode
+  cli_command: opencode
   skip_if: |
     opencode --version >/dev/null 2>&1
   setup: |

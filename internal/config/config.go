@@ -31,7 +31,7 @@ type Config struct {
 	Agents       AgentsConfig                 `mapstructure:"agents"`
 	Plugins      PluginsConfig                `mapstructure:"plugins"`
 	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
-	Debug        bool                         `mapstructure:"debug"`
+	LogLevel     string                       `mapstructure:"log_level"`
 
 	StateDir string `mapstructure:"-"`
 }
@@ -103,10 +103,28 @@ type IdleConfig struct {
 type AgentsConfig struct {
 	// Default is the name of the agent launched when aivm is run without --agent.
 	Default string `mapstructure:"default"`
-	// Define holds per-agent definition entries keyed by agent name.
-	// Set enable: true on any agent to have it bootstrapped in the VM.
-	// Other fields (launch_command, setup, etc.) may also be overridden here.
-	Define map[string]agent.Def `mapstructure:"define"`
+	// Define holds per-agent overrides keyed by agent name.
+	Define map[string]AgentDefine `mapstructure:"define"`
+}
+
+// AgentDefine is the allowed shape of each entry under agents.define.<name> in aivm.yaml.
+// It mirrors agent.Def; unknown YAML keys are rejected at load time (see ValidateAgentsDefine).
+type AgentDefine agent.Def
+
+// ApplyTo merges this override into base using the same precedence rules as agent.MergeDef.
+func (d AgentDefine) ApplyTo(base agent.Def) agent.Def {
+	return agent.MergeDef(base, agent.Def(d))
+}
+
+func (c AgentsConfig) activeNames() []string {
+	var names []string
+	for name, def := range c.Define {
+		if def.Enable {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 type PluginsConfig struct {
@@ -125,14 +143,7 @@ type Defaults struct {
 
 // ActiveAgents returns the names of all agents with enable: true in agents.define.
 func (c *Config) ActiveAgents() []string {
-	var names []string
-	for name, def := range c.Agents.Define {
-		if def.Enable {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	return names
+	return c.Agents.activeNames()
 }
 
 func (c *Config) DefaultAgent() string {
@@ -217,7 +228,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 
 	cfg.StateDir = stateDir
 
-	if err := validateAndParse(&cfg, home); err != nil {
+	if err := validateAndParse(&cfg, home, v.ConfigFileUsed()); err != nil {
 		return nil, err
 	}
 
@@ -249,7 +260,11 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 
 // validateAndParse validates raw config values and populates all Parsed* fields
 // on VMConfig. Hard errors are returned immediately — no silent coercion.
-func validateAndParse(cfg *Config, home string) error {
+func validateAndParse(cfg *Config, home, cfgPath string) error {
+	if err := ValidateAgentsDefine(cfgPath); err != nil {
+		return err
+	}
+
 	vm := &cfg.VM
 
 	// --- memory ---

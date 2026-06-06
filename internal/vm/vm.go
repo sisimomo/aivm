@@ -62,6 +62,9 @@ type VM interface {
 	// RunInteractive executes script inside the VM with a PTY attached, suitable
 	// for TUI applications that need an interactive terminal (e.g. agent CLIs).
 	RunInteractive(ctx context.Context, script string, env map[string]string) error
+	// RunStream executes script without a PTY, streaming stdout/stderr to the
+	// host process. Returns the remote exit code.
+	RunStream(ctx context.Context, script string, env map[string]string) (int, error)
 	// SSH opens an interactive shell. env injects host session variables when
 	// non-empty; implementations should preserve their native SSH/exec path when
 	// env is nil or empty.

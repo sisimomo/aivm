@@ -113,11 +113,7 @@ func (s *upToDateStep) run(_ context.Context, _ *syncState, svc *LifecycleServic
 func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
 	svc.log().Warn("VM '%s' config has changed", svc.VM.Profile())
 
-	if !svc.Confirmer.IsInteractive() {
-		return fmt.Errorf("VM %q config has changed; rerun interactively to recreate the VM or continue without applying changes", svc.VM.Profile())
-	}
-
-	if !promptConfigChanged(svc.log().Out, svc.Confirmer) {
+	if !PromptConfigChanged(svc.log().Out, svc.Confirmer) {
 		svc.log().Success("Continuing without applying config changes")
 		return nil
 	}

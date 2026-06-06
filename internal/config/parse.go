@@ -2,9 +2,14 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // DisabledDuration is the sentinel value meaning "this prompt is disabled".
@@ -99,6 +104,67 @@ func ValidateEnvVarName(name string) error {
 	return nil
 }
 
+// ValidateAgentsDefine rejects unknown keys under agents.define.<name> in the
+// config file. Field names are derived from AgentDefine (agent.Def) struct tags.
+func ValidateAgentsDefine(cfgPath string) error {
+	if cfgPath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil
+	}
+	var raw struct {
+		Agents struct {
+			Define map[string]map[string]any `yaml:"define"`
+		} `yaml:"agents"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("agents.define: %w", err)
+	}
+	allowed := agentDefineYAMLKeys()
+	var problems []string
+	for agentName, fields := range raw.Agents.Define {
+		for key := range fields {
+			if _, ok := allowed[key]; !ok {
+				problems = append(problems, fmt.Sprintf("%s: unknown field %q", agentName, key))
+			}
+		}
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	sort.Strings(problems)
+	keys := make([]string, 0, len(allowed))
+	for k := range allowed {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return fmt.Errorf(
+		"agents.define: %s\nallowed fields: %s",
+		strings.Join(problems, "; "),
+		strings.Join(keys, ", "),
+	)
+}
+
+func agentDefineYAMLKeys() map[string]struct{} {
+	var d AgentDefine
+	t := reflect.TypeOf(d)
+	allowed := make(map[string]struct{}, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		tag := t.Field(i).Tag.Get("yaml")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(tag, ",")
+		if name != "" {
+			allowed[name] = struct{}{}
+		}
+	}
+	return allowed
+}
+
+// ParseMount parses a mount specification of the form "<host_path>:<mode>"
 // or "<host_path>" (defaults to rw). The host path is expanded (~ → home).
 // Valid modes: "ro" (read-only), "rw" (read-write). Any other mode is an error.
 func ParseMount(spec, home string) (Mount, error) {
