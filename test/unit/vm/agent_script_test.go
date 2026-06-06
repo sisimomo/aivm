@@ -25,3 +25,11 @@ func TestBuildLaunchScript_IncludesLaunchArgs(t *testing.T) {
 		t.Fatalf("script missing launch args: %s", script)
 	}
 }
+
+func TestBuildLaunchScript_BashLoginWrapper(t *testing.T) {
+	t.Parallel()
+	script := vm.BuildLaunchScript("/work", "claude", "-lc 'echo marker; exec claude --version'")
+	if !strings.Contains(script, "exec bash -lc 'echo marker; exec claude --version'") {
+		t.Fatalf("script missing bash login wrapper: %s", script)
+	}
+}

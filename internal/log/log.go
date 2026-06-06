@@ -44,7 +44,7 @@ func NewWithLevel(out, err io.Writer, level Level) *Logger {
 var Default = &Logger{Out: os.Stdout, Err: os.Stderr, level: LevelInfo}
 
 func (l *Logger) Info(msg string, args ...any) {
-	if !l.level.allows(LevelDebug) {
+	if !l.level.allows(LevelInfo) {
 		return
 	}
 	fmt.Fprintf(l.Out, "%s %s %sINFO%s  %s\n", prefix(), ts(), colorGreen, colorReset, fmt.Sprintf(msg, args...))

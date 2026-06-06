@@ -258,7 +258,7 @@ func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) e
 		Env:        cfg.VM.ResolvedSessionEnv(),
 	}
 
-	resp, err := s.prov.Launch(ctx, env)
+	resp, err := s.prov.Launch(s.ctx, env)
 	return agentExitError(resp, err)
 }
 
@@ -284,7 +284,7 @@ func (svc *LifecycleService) AgentRun(ctx context.Context, agentOverride string,
 		Env:        cfg.VM.ResolvedSessionEnv(),
 	}
 
-	resp, err := s.prov.Run(ctx, env)
+	resp, err := s.prov.Run(s.ctx, env)
 	return agentExitError(resp, err)
 }
 

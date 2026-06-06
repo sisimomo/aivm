@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/spf13/cobra"
 )
@@ -56,7 +56,7 @@ func agentArgsAfterDash(cmd *cobra.Command, args []string) ([]string, error) {
 	if idx := cmd.ArgsLenAtDash(); idx >= 0 {
 		agentArgs := args[idx:]
 		if len(agentArgs) == 0 {
-			return nil, fmt.Errorf("no agent arguments after '--'")
+			return nil, errors.New("no agent arguments after '--'")
 		}
 		return agentArgs, nil
 	}
@@ -64,10 +64,10 @@ func agentArgsAfterDash(cmd *cobra.Command, args []string) ([]string, error) {
 		if a == "--" {
 			agentArgs := args[i+1:]
 			if len(agentArgs) == 0 {
-				return nil, fmt.Errorf("no agent arguments after '--'")
+				return nil, errors.New("no agent arguments after '--'")
 			}
 			return agentArgs, nil
 		}
 	}
-	return nil, fmt.Errorf(msgMissing)
+	return nil, errors.New(msgMissing)
 }

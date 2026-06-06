@@ -19,6 +19,7 @@ type agentSession struct {
 	provDef agent.Def
 	vmDir   string
 	hostCWD string
+	ctx     context.Context
 	cleanup func()
 }
 
@@ -59,7 +60,10 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 	if err != nil {
 		return nil, fmt.Errorf("getting working directory: %w", err)
 	}
-	realCWD, _ := filepath.EvalSymlinks(hostCWD)
+	realCWD, err := filepath.EvalSymlinks(hostCWD)
+	if err != nil {
+		realCWD = filepath.Clean(hostCWD)
+	}
 	if err := assertUnderMount(realCWD, cfg); err != nil {
 		return nil, err
 	}
@@ -78,24 +82,10 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		svc.log().Warn("could not create session lock: %v", err)
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
-	done := make(chan struct{})
-
-	go func() {
-		select {
-		case <-sigCh:
-			if sess != nil {
-				sess.Remove()
-			}
-			os.Exit(0)
-		case <-done:
-		}
-	}()
+	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
 
 	cleanup := func() {
-		close(done)
-		signal.Stop(sigCh)
+		stop()
 		if sess != nil {
 			sess.Remove()
 		}
@@ -106,18 +96,37 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		provDef: provDef,
 		vmDir:   realCWD,
 		hostCWD: hostCWD,
+		ctx:     runCtx,
 		cleanup: cleanup,
 	}, nil
 }
 
 func assertUnderMount(realCWD string, cfg *config.Config) error {
+	realCWD = filepath.Clean(realCWD)
 	for _, m := range cfg.VM.ParsedMounts {
-		realMount, _ := filepath.EvalSymlinks(m.HostPath)
-		if strings.HasPrefix(realCWD, realMount) {
+		realMount, err := filepath.EvalSymlinks(m.HostPath)
+		if err != nil {
+			realMount = filepath.Clean(m.HostPath)
+		}
+		if realMount == "" {
+			continue
+		}
+		if pathUnderMount(realCWD, realMount) {
 			return nil
 		}
 	}
 	return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
+}
+
+func pathUnderMount(path, mount string) bool {
+	sep := string(os.PathSeparator)
+	if mount == sep {
+		return true
+	}
+	if path == mount {
+		return true
+	}
+	return strings.HasPrefix(path, mount+sep)
 }
 
 func agentExitError(resp *agent.Response, err error) error {

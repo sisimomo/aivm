@@ -255,7 +255,8 @@ func (c *ColimaVM) RunStream(ctx context.Context, script string, env map[string]
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
-	attachProcessStderr(cmd)
+	flush := attachProcessStderr(cmd)
+	defer flush()
 	code, err := ExitCodeFromError(cmd.Run())
 	return code, err
 }

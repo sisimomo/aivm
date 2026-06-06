@@ -69,6 +69,15 @@ func TestResolveLevelPrecedence(t *testing.T) {
 	}
 }
 
+func TestLevelInfoShowsInfo(t *testing.T) {
+	var buf bytes.Buffer
+	l := aivmlog.NewWithLevel(&buf, &buf, aivmlog.LevelInfo)
+	l.Info("shown")
+	if !strings.Contains(buf.String(), "shown") {
+		t.Fatalf("want info line, got %q", buf.String())
+	}
+}
+
 func TestLevelErrorSuppressesProgress(t *testing.T) {
 	var buf bytes.Buffer
 	l := aivmlog.NewWithLevel(&buf, &buf, aivmlog.LevelError)

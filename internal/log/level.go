@@ -45,6 +45,11 @@ func ToolMode() bool {
 	return Default.level == LevelError
 }
 
+// GetLevel returns the current default logger level.
+func GetLevel() Level {
+	return Default.level
+}
+
 // SetLevel configures the default logger level and syncs slog.
 func SetLevel(l Level) {
 	Default.level = l

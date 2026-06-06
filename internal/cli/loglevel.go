@@ -40,7 +40,10 @@ func LogLevelFromArgs(args []string) (string, bool) {
 		if v, ok := parseLogLevelArg(args[i]); ok {
 			return v, true
 		}
-		if args[i] == "--log-level" && i+1 < len(args) && args[i+1] != "--" {
+		if args[i] == "--log-level" &&
+			i+1 < len(args) &&
+			args[i+1] != "--" &&
+			!strings.HasPrefix(args[i+1], "-") {
 			return args[i+1], true
 		}
 	}

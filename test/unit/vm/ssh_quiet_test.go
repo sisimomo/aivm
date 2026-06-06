@@ -9,7 +9,9 @@ import (
 )
 
 func TestOpenSSHOptionsToolMode(t *testing.T) {
-	t.Parallel()
+	orig := aivmlog.GetLevel()
+	t.Cleanup(func() { aivmlog.SetLevel(orig) })
+
 	aivmlog.SetLevel(aivmlog.LevelInfo)
 	if got := vm.OpenSSHOptions(); got != nil {
 		t.Fatalf("info level: want nil options, got %v", got)
@@ -20,7 +22,6 @@ func TestOpenSSHOptionsToolMode(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("error level: want ssh -o flags")
 	}
-	t.Cleanup(func() { aivmlog.SetLevel(aivmlog.LevelInfo) })
 }
 
 func TestQuietSSHLine(t *testing.T) {
@@ -42,5 +43,21 @@ func TestQuietStderrFiltersSharedConnection(t *testing.T) {
 	}
 	if got := out.String(); got != "agent output\n" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestQuietStderrFlushTail(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	w := vm.NewQuietStderr(&out)
+	if _, err := w.Write([]byte("connection refused")); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("before flush: got %q", got)
+	}
+	w.Flush()
+	if got := out.String(); got != "connection refused" {
+		t.Fatalf("after flush: got %q", got)
 	}
 }

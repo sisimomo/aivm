@@ -232,7 +232,7 @@ func agentLaunchFields(name, override string) (cliCommand, launchArgs string) {
 	if name == "cursor" {
 		binName = "agent"
 	}
-	return "bash", fmt.Sprintf("-lc 'echo 1 >> /tmp/.aivm_agent_launched; exec %s --version'", binName)
+	return "", fmt.Sprintf("-lc 'echo 1 >> /tmp/.aivm_agent_launched; exec %s --version'", binName)
 }
 
 // buildTestYAML generates the aivm.yaml content for the test harness subprocess.

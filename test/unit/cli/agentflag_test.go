@@ -38,6 +38,11 @@ func TestAgentFromArgs(t *testing.T) {
 			ok:   false,
 		},
 		{
+			name: "missing value before another flag",
+			args: []string{"agent", "--agent", "--log-level", "error", "--", "--version"},
+			ok:   false,
+		},
+		{
 			name: "missing",
 			args: []string{"agent", "--", "--version"},
 			ok:   false,

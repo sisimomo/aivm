@@ -30,12 +30,18 @@ cd %s
 }
 
 func agentExecLine(cliCommand, launchArgs string, args []string) string {
-	parts := []string{"exec", ShellEscape(cliCommand)}
 	if len(args) > 0 {
+		parts := []string{"exec", ShellEscape(cliCommand)}
 		for _, a := range args {
 			parts = append(parts, ShellEscape(a))
 		}
-	} else if launchArgs != "" {
+		return strings.Join(parts, " ")
+	}
+	if launchArgs != "" && strings.HasPrefix(launchArgs, "-lc ") {
+		return "exec bash " + launchArgs
+	}
+	parts := []string{"exec", ShellEscape(cliCommand)}
+	if launchArgs != "" {
 		parts = append(parts, launchArgs)
 	}
 	return strings.Join(parts, " ")

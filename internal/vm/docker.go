@@ -130,7 +130,7 @@ func (d *DockerVM) Run(ctx context.Context, script string, env map[string]string
 		"exec",
 		"-u", dockerContainerUser,
 		d.containerName,
-		"bash", "-lc", buildBashCmd(script, env),
+		"bash", "-lc", buildBashCmd(script, env, true),
 	)
 }
 
@@ -141,7 +141,7 @@ func (d *DockerVM) RunOutput(ctx context.Context, script string, env map[string]
 		"exec",
 		"-u", dockerContainerUser,
 		d.containerName,
-		"bash", "-lc", buildBashCmd(script, env),
+		"bash", "-lc", buildBashCmd(script, env, true),
 	)
 }
 
@@ -151,7 +151,7 @@ func (d *DockerVM) RunStream(ctx context.Context, script string, env map[string]
 		"exec", "-i",
 		"-u", dockerContainerUser,
 		d.containerName,
-		"bash", "-lc", buildBashCmd(script, env),
+		"bash", "-lc", buildBashCmd(script, env, false),
 	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdin = os.Stdin
@@ -169,7 +169,7 @@ func (d *DockerVM) RunInteractive(ctx context.Context, script string, env map[st
 	if isTTY() {
 		args = append(args, "-t")
 	}
-	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-lc", buildBashCmd(script, env))
+	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-lc", buildBashCmd(script, env, false))
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -268,8 +268,8 @@ func BuildDockerSSHCmd(env map[string]string) string {
 // buildBashCmd returns a bash -lc command string that executes script inside
 // the container. The script is base64-encoded and written to a temp file before
 // execution to avoid stdin consumption by package managers (dpkg, apt) during
-// bootstrap runs. Stderr is redirected to stdout so both streams are captured.
-func buildBashCmd(script string, env map[string]string) string {
+// bootstrap runs. When combineStderr is true, stderr is merged into stdout for capture.
+func buildBashCmd(script string, env map[string]string, combineStderr bool) string {
 	full := script
 	if len(env) > 0 {
 		var sb strings.Builder
@@ -279,7 +279,11 @@ func buildBashCmd(script string, env map[string]string) string {
 		full = sb.String() + script
 	}
 	encoded := base64.StdEncoding.EncodeToString([]byte(full))
-	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\" 2>&1; ec=$?; rm -f \"$t\"; exit $ec"
+	stderrPart := ""
+	if combineStderr {
+		stderrPart = " 2>&1"
+	}
+	return "t=$(mktemp) && echo " + encoded + " | base64 -d > \"$t\" && bash -l \"$t\"" + stderrPart + "; ec=$?; rm -f \"$t\"; exit $ec"
 }
 
 // dockerCmd runs a docker command, discarding stdout.

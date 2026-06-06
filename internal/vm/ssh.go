@@ -54,16 +54,18 @@ func OpenSSHOptions() []string {
 }
 
 // NewQuietStderr wraps dst and drops benign OpenSSH teardown lines.
-func NewQuietStderr(dst io.Writer) io.Writer {
+func NewQuietStderr(dst io.Writer) *quietStderr {
 	return &quietStderr{dst: dst}
 }
 
-func attachProcessStderr(cmd *exec.Cmd) {
+func attachProcessStderr(cmd *exec.Cmd) func() {
 	if aivmlog.ToolMode() {
-		cmd.Stderr = NewQuietStderr(os.Stderr)
-		return
+		q := NewQuietStderr(os.Stderr)
+		cmd.Stderr = q
+		return q.Flush
 	}
 	cmd.Stderr = os.Stderr
+	return func() {}
 }
 
 // IsBenignSSHStderrLine reports whether line is non-failure SSH noise (e.g. ControlMaster teardown).
@@ -96,6 +98,19 @@ func (q *quietStderr) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Flush writes any buffered stderr bytes that were not newline-terminated.
+func (q *quietStderr) Flush() {
+	if len(q.buf) == 0 {
+		return
+	}
+	line := q.buf
+	q.buf = nil
+	if quietSSHLine(line) {
+		return
+	}
+	_, _ = q.dst.Write(line)
+}
+
 func quietSSHLine(line []byte) bool {
 	s := strings.TrimSpace(string(line))
 	if s == "" {
@@ -120,7 +135,8 @@ func InteractiveSSH(ctx context.Context, profile string, env map[string]string, 
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
-	attachProcessStderr(cmd)
+	flush := attachProcessStderr(cmd)
+	defer flush()
 	return cmd.Run()
 }
 
