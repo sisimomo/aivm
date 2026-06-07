@@ -16,8 +16,4 @@ type ComposeManager interface {
 	// HealthMap returns a map of service name → healthy for all services
 	// defined in the compose file. Used by `aivm status`.
 	HealthMap(ctx context.Context) map[string]bool
-
-	// Logs streams docker compose logs for all services to stdout until
-	// interrupted.
-	Logs() error
 }

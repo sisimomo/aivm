@@ -53,7 +53,9 @@ opencode:
   skip_if: |
     opencode --version >/dev/null 2>&1
   setup: |
+    set -euo pipefail
     curl -fsSL https://opencode.ai/install | bash
+    opencode --version >/dev/null
     config_file="$HOME/.config/opencode/opencode.json"
     mkdir -p "$(dirname "$config_file")"
     echo '{}' | jq '

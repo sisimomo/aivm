@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -19,16 +21,6 @@ type Executor struct {
 	StateDir     string
 	// VMInst is passed as InstallEnv.VM so plugins can run commands in the VM.
 	VMInst VMRunner
-	// Log receives all user-visible output. When nil, aivmlog.Default is used.
-	// Inject a custom logger in tests to capture output.
-	Log *aivmlog.Logger
-}
-
-func (e *Executor) log() *aivmlog.Logger {
-	if e.Log != nil {
-		return e.Log
-	}
-	return aivmlog.Default
 }
 
 // Ordered returns the enabled plugins in topological order.
@@ -36,15 +28,8 @@ func (e *Executor) Ordered() ([]Plugin, error) {
 	return e.Registry.Resolve(e.Enabled)
 }
 
-// maxSetupRetries is the number of times a plugin Setup is retried on failure
-// before giving up. Transient errors (network blips, apt-get lock contention,
-// OOM-killed processes) are common when multiple VMs bootstrap in parallel, so
-// a small retry budget with backoff makes the bootstrap loop resilient without
-// hiding real failures.
 const maxSetupRetries = 3
 
-// setupRetryDelay returns the backoff duration before attempt n (1-indexed).
-// Attempt 1 is immediate; subsequent attempts wait 10 s, 20 s, …
 func setupRetryDelay(attempt int) time.Duration {
 	if attempt <= 1 {
 		return 0
@@ -53,14 +38,6 @@ func setupRetryDelay(attempt int) time.Duration {
 }
 
 // Run executes all enabled plugins in DAG order.
-//
-// When force is true every plugin's Install+Configure steps run unconditionally
-// (Check is skipped). Use force=true on a fresh blank VM; force=false on an
-// existing VM so already-installed plugins are skipped.
-//
-// Dependencies that are not in the Enabled list but are required by an enabled
-// plugin are installed automatically. A log message is emitted to make this
-// transparent to the user.
 func (e *Executor) Run(ctx context.Context, force bool) error {
 	ordered, err := e.Ordered()
 	if err != nil {
@@ -71,14 +48,11 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		return fmt.Errorf("writing path file: %w", err)
 	}
 
-	// Build a set of explicitly enabled plugins so we can identify auto-pulled deps.
 	explicitlyEnabled := make(map[string]bool, len(e.Enabled))
 	for _, name := range e.Enabled {
 		explicitlyEnabled[name] = true
 	}
 
-	// Build a reverse-dependency map so we can report which plugin(s) required a dep.
-	// dependents[dep] = list of explicitly-enabled plugins that (transitively) need it.
 	dependents := make(map[string][]string)
 	var collectDeps func(root, name string)
 	collectDeps = func(root, name string) {
@@ -88,7 +62,6 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		}
 		for _, dep := range p.Dependencies() {
 			if !explicitlyEnabled[dep] {
-				// dep is implicit — record root as the reason.
 				already := false
 				for _, r := range dependents[dep] {
 					if r == root {
@@ -111,11 +84,18 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if err := e.installPlugin(ctx, p, force, explicitlyEnabled, dependents); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-		// If this plugin was not explicitly requested, log why it is being installed.
+func (e *Executor) installPlugin(ctx context.Context, p Plugin, force bool, explicitlyEnabled map[string]bool, dependents map[string][]string) error {
+	return aivmlog.WithWriter(p.Name(), func(logW io.Writer) error {
 		if !explicitlyEnabled[p.Name()] {
 			if roots := dependents[p.Name()]; len(roots) > 0 {
-				e.log().Info("auto-installing %s (required by: %s)", p.Name(), joinNames(roots))
+				slog.Info(fmt.Sprintf("auto-installing %s (required by: %s)", p.Name(), joinNames(roots)))
 			}
 		}
 
@@ -126,22 +106,22 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		env := InstallEnv{
 			Config:   cfg,
 			StateDir: e.StateDir,
-			Log:      e.log().Writer(p.Name()),
+			Log:      logW,
 			VM:       e.VMInst,
 		}
 
 		if !force {
 			skip, err := p.SkipIf(ctx, env)
 			if err != nil {
-				e.log().Warn("skip_if failed for plugin %s: %v", p.Name(), err)
+				slog.Warn(fmt.Sprintf("skip_if failed for plugin %s: %v", p.Name(), err))
 			}
 			if skip {
-				e.log().Info("skip %s (already set up)", p.Name())
-				continue
+				slog.Debug(fmt.Sprintf("skip %s (already set up)", p.Name()))
+				return nil
 			}
 		}
 
-		e.log().Step("Plugin: %s", p.Name())
+		slog.Info(fmt.Sprintf("Plugin: %s", p.Name()))
 		start := time.Now()
 
 		var setupErr error
@@ -150,21 +130,15 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 				return err
 			}
 
-			// Before each retry (not the first attempt), wait for the backoff
-			// duration and then re-check SkipIf — the previous attempt may have
-			// partially succeeded even though it returned an error.
 			if attempt > 1 {
 				delay := setupRetryDelay(attempt)
-				e.log().Warn("setup %s failed (attempt %d/%d): %v — retrying in %s...",
-					p.Name(), attempt-1, maxSetupRetries, setupErr, delay)
+				slog.Warn(fmt.Sprintf("setup %s failed (attempt %d/%d): %v — retrying in %s...",
+					p.Name(), attempt-1, maxSetupRetries, setupErr, delay))
 				select {
 				case <-time.After(delay):
 				case <-ctx.Done():
 					return ctx.Err()
 				}
-				// Re-run SkipIf: if the tool is already installed despite the
-				// error (e.g. the install script exited non-zero but the binary
-				// is present), treat Setup as succeeded.
 				if installed, _ := p.SkipIf(ctx, env); installed {
 					setupErr = nil
 					break
@@ -178,21 +152,17 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		}
 
 		if setupErr != nil {
-			// Final check: if the plugin is now skippable (installed despite error),
-			// treat the setup as successful.
-			if installed, _ := p.SkipIf(ctx, env); installed {
-				setupErr = nil
-			} else {
+			installed, _ := p.SkipIf(ctx, env)
+			if !installed {
 				return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
 			}
 		}
 
-		e.log().Success("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second))
-	}
-	return nil
+		slog.Info(fmt.Sprintf("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second)))
+		return nil
+	})
 }
 
-// joinNames joins a slice of plugin names into a human-readable string.
 func joinNames(names []string) string {
 	switch len(names) {
 	case 0:
@@ -213,11 +183,6 @@ func joinNames(names []string) string {
 	}
 }
 
-// writePathFile collects path_entries from all enabled plugins (in DAG order,
-// deduped) and writes /etc/profile.d/aivm-path.sh so every login shell
-// picks them up. It is called once at the start of Run, before any plugin
-// setup executes, so the PATH is ready for any subsequent setup scripts that
-// rely on it.
 func (e *Executor) writePathFile(ctx context.Context, ordered []Plugin) error {
 	seen := make(map[string]bool)
 	var entries []string
@@ -244,5 +209,7 @@ func (e *Executor) writePathFile(ctx context.Context, ordered []Plugin) error {
 	if e.VMInst != nil {
 		return e.VMInst.Run(ctx, script, nil)
 	}
-	return run.Run(ctx, e.log().Writer("path"), "bash", "-c", script)
+	return aivmlog.WithWriter("path", func(w io.Writer) error {
+		return run.Run(ctx, w, "bash", "-c", script)
+	})
 }

@@ -129,11 +129,13 @@ idle:
   stop_timeout: 5m
   delete_timeout: 5m
 
-# aivm CLI verbosity (debug | info | warn | error)
-log_level: info
+# aivm CLI terminal verbosity (trace | debug | info | warn | error)
+log_level: info   # all levels are always written to logs/aivm.log
 ```
 
 Override at runtime with `--log-level` or `AIVM_LOG_LEVEL` (see [Commands](#commands)).
+
+At the default `info` level the terminal shows milestones and warnings; use `debug` for operational detail or `trace` for subprocess output. The log file at `~/.aivm/logs/aivm.log` always records `trace` and above.
 
 ### VM Resources
 
@@ -305,7 +307,7 @@ Use your compose file's native `.env` file or `environment:` keys for variable s
 
 **Status display:** `aivm status` reports each service's running state.
 
-**Log access:** `aivm logs` (no arguments) streams logs for all compose services via `docker compose logs -f`.
+**Log access:** `aivm logs` tails `logs/aivm.log` (orchestration and subprocess output at trace). `aivm logs monitor` tails the idle monitor daemon.
 
 ### T3 Code GUI
 
@@ -338,7 +340,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm status` | Show VM and service status |
 | `aivm ssh` | Open an interactive shell in the VM |
 | `aivm cp <src> <dst>` | Copy files or directories between host and VM (use `vm:` prefix for VM paths) |
-| `aivm logs [service]` | Show logs for a service (`monitor` · `bootstrap` · `vm`) or all compose services (no arg) |
+| `aivm logs [component]` | Tail log files (`aivm` · `monitor`; default `aivm`) |
 | `aivm rebuild-image` | Rebuild the base VM image by re-running full bootstrap from scratch |
 | `aivm version` | Print version |
 
@@ -348,7 +350,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 |------|-------------|
 | `--config <path>` | Path to `aivm.yaml` (default: `~/.aivm/aivm.yaml`) |
 | `--agent <name>` | Agent to use (overrides `agents.default`) |
-| `--log-level` | Log level: `debug`, `info`, `warn`, or `error` (default `info`; overrides `AIVM_LOG_LEVEL` and `log_level` in config) |
+| `--log-level` | Log level: `trace`, `debug`, `info`, `warn`, or `error` (default `info`; overrides `AIVM_LOG_LEVEL` and `log_level` in config) |
 
 Environment variable `AIVM_LOG_LEVEL` and config key `log_level:` use the same values. Precedence: flag → env → config.
 

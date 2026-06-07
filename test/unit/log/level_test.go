@@ -2,6 +2,8 @@ package log_test
 
 import (
 	"bytes"
+	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -16,12 +18,13 @@ func TestParseLevel(t *testing.T) {
 		want    aivmlog.Level
 		wantErr bool
 	}{
+		{"trace", aivmlog.LevelTrace, false},
 		{"debug", aivmlog.LevelDebug, false},
 		{"INFO", aivmlog.LevelInfo, false},
 		{"warn", aivmlog.LevelWarn, false},
 		{"error", aivmlog.LevelError, false},
 		{"", aivmlog.LevelInfo, false},
-		{"verbose", aivmlog.LevelInfo, true},
+		{"verbose", aivmlog.LevelInvalid, true},
 	}
 	for _, tc := range tests {
 		got, err := aivmlog.ParseLevel(tc.in)
@@ -71,25 +74,64 @@ func TestResolveLevelPrecedence(t *testing.T) {
 
 func TestLevelInfoShowsInfo(t *testing.T) {
 	var buf bytes.Buffer
-	l := aivmlog.NewWithLevel(&buf, &buf, aivmlog.LevelInfo)
-	l.Info("shown")
+	configure(&buf, &buf, aivmlog.LevelInfo)
+	slog.Info("shown")
 	if !strings.Contains(buf.String(), "shown") {
 		t.Fatalf("want info line, got %q", buf.String())
 	}
 }
 
+func TestLevelInfoHidesDebug(t *testing.T) {
+	var buf bytes.Buffer
+	configure(&buf, &buf, aivmlog.LevelInfo)
+	slog.Debug("hidden")
+	if strings.Contains(buf.String(), "hidden") {
+		t.Fatalf("unexpected debug output: %q", buf.String())
+	}
+}
+
+func TestLevelDebugShowsDebug(t *testing.T) {
+	var buf bytes.Buffer
+	configure(&buf, &buf, aivmlog.LevelDebug)
+	slog.Debug("shown")
+	if !strings.Contains(buf.String(), "shown") {
+		t.Fatalf("want debug line, got %q", buf.String())
+	}
+}
+
+func TestLevelTraceShowsTrace(t *testing.T) {
+	var buf bytes.Buffer
+	configure(&buf, &buf, aivmlog.LevelTrace)
+	slog.Log(context.Background(), aivmlog.SlogTrace, "shown")
+	if !strings.Contains(buf.String(), "shown") {
+		t.Fatalf("want trace line, got %q", buf.String())
+	}
+}
+
 func TestLevelErrorSuppressesProgress(t *testing.T) {
 	var buf bytes.Buffer
-	l := aivmlog.NewWithLevel(&buf, &buf, aivmlog.LevelError)
-	l.Step("hidden")
-	l.Success("hidden")
-	l.Warn("hidden")
-	l.Error("shown")
+	configure(&buf, &buf, aivmlog.LevelError)
+	slog.Info("hidden milestone")
+	slog.Warn("hidden warn")
+	slog.Error("shown")
 	out := buf.String()
 	if strings.Contains(out, "hidden") {
 		t.Fatalf("unexpected progress output: %q", out)
 	}
 	if !strings.Contains(out, "shown") {
 		t.Fatalf("want error line, got %q", out)
+	}
+}
+
+func TestUnifiedFormat(t *testing.T) {
+	var buf bytes.Buffer
+	configure(&buf, &buf, aivmlog.LevelInfo)
+	slog.Info("hello")
+	out := buf.String()
+	if !strings.Contains(out, "[aivm]") {
+		t.Fatalf("want [aivm] prefix, got %q", out)
+	}
+	if !strings.Contains(out, "INFO") {
+		t.Fatalf("want INFO label, got %q", out)
 	}
 }

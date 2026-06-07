@@ -141,6 +141,16 @@ type Defaults struct {
 	StateDir string
 }
 
+// ResolveStateDir returns the expanded state directory using the same rules as Load.
+func ResolveStateDir(d Defaults) string {
+	home, _ := os.UserHomeDir()
+	stateDir := expandPath(d.StateDir, home)
+	if override := os.Getenv("AIVM_STATE_DIR"); override != "" {
+		stateDir = expandPath(override, home)
+	}
+	return stateDir
+}
+
 // ActiveAgents returns the names of all agents with enable: true in agents.define.
 func (c *Config) ActiveAgents() []string {
 	return c.Agents.activeNames()
@@ -190,11 +200,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	home, _ := os.UserHomeDir()
-	stateDir := expandPath(d.StateDir, home)
-	if override := os.Getenv("AIVM_STATE_DIR"); override != "" {
-		stateDir = expandPath(override, home)
-	}
+	stateDir := ResolveStateDir(d)
 
 	if cfgPath != "" {
 		v.SetConfigFile(expandHome(cfgPath))
@@ -228,6 +234,7 @@ func Load(cfgPath string, d Defaults) (*Config, error) {
 
 	cfg.StateDir = stateDir
 
+	home, _ := os.UserHomeDir()
 	if err := validateAndParse(&cfg, home, v.ConfigFileUsed()); err != nil {
 		return nil, err
 	}

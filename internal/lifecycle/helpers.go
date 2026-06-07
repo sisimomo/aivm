@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -227,15 +228,15 @@ sudo chmod 0644 /etc/profile.d/aivm-user-env.sh`,
 // git config (--global flag; values set only at system or XDG scope without a
 // corresponding global entry may not be visible). Returns empty strings when
 // the values are not set — callers must treat empty as "not available".
-// Unexpected errors (e.g. git not found in PATH) are logged at debug level.
-func readHostGitIdentity(log *aivmlog.Logger) (name, email string) {
+// Unexpected errors (e.g. git not found in PATH) are logged at trace level.
+func readHostGitIdentity() (name, email string) {
 	gitOutput := func(args ...string) string {
 		out, err := exec.Command("git", args...).Output()
 		if err != nil {
 			var exitErr *exec.ExitError
 			if !errors.As(err, &exitErr) {
-				// Non-exit error (e.g. git not in PATH); surface it at debug level.
-				log.Debug("git config query failed: %v", err)
+				// Non-exit error (e.g. git not in PATH); surface it at trace level.
+				slog.Log(context.Background(), aivmlog.SlogTrace, fmt.Sprintf("git config query failed: %v", err))
 			}
 			return ""
 		}
@@ -248,9 +249,9 @@ func readHostGitIdentity(log *aivmlog.Logger) (name, email string) {
 
 // applyGitIdentity writes the given git user.name and user.email into the VM's
 // global git config. If either value is empty the function is a no-op.
-func applyGitIdentity(ctx context.Context, v vm.VM, name, email string, log *aivmlog.Logger) error {
+func applyGitIdentity(ctx context.Context, v vm.VM, name, email string) error {
 	if name == "" || email == "" {
-		log.Debug("host git identity not set — skipping git config sync")
+		slog.Log(context.Background(), aivmlog.SlogTrace, "host git identity not set — skipping git config sync")
 		return nil
 	}
 	script := fmt.Sprintf(

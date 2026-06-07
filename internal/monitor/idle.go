@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -47,7 +48,7 @@ func (m *IdleMonitor) EnsureRunning() error {
 		return nil
 	}
 	if m.isRunning() {
-		aivmlog.Debug("idle monitor already running")
+		slog.Debug("idle monitor already running")
 		return nil
 	}
 
@@ -65,18 +66,22 @@ func (m *IdleMonitor) EnsureRunning() error {
 		return err
 	}
 	_ = proc.Release()
-	aivmlog.Info("idle monitor started (pid=%d)", proc.Pid)
+	slog.Debug(fmt.Sprintf("idle monitor started (pid=%d)", proc.Pid))
 	return nil
 }
 
 func (m *IdleMonitor) Run(ctx context.Context) error {
+	if err := aivmlog.UseDedicatedLog(m.StateDir, "idle-monitor"); err != nil {
+		slog.Warn(fmt.Sprintf("idle monitor: dedicated log file: %v", err))
+	}
+
 	if err := os.WriteFile(m.PIDFile, []byte(strconv.Itoa(os.Getpid())), 0644); err != nil {
-		aivmlog.Warn("idle monitor: write pid file: %v", err)
+		slog.Warn(fmt.Sprintf("idle monitor: write pid file: %v", err))
 	}
 	defer os.Remove(m.PIDFile)
 
-	aivmlog.Info("idle monitor started (pid=%d, stop_timeout=%s, delete_timeout=%s)",
-		os.Getpid(), m.Timeout, m.DeleteTimeout)
+	slog.Debug(fmt.Sprintf("idle monitor started (pid=%d, stop_timeout=%s, delete_timeout=%s)",
+		os.Getpid(), m.Timeout, m.DeleteTimeout))
 
 	ticker := time.NewTicker(m.PollInterval)
 	defer ticker.Stop()
@@ -90,7 +95,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 		case <-ticker.C:
 			status, err := m.VM.Status(ctx)
 			if err != nil {
-				aivmlog.Warn("VM status error: %v", err)
+				slog.Warn(fmt.Sprintf("VM status error: %v", err))
 				continue
 			}
 
@@ -101,13 +106,13 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 
 				active, err := m.Sessions.CountActive()
 				if err != nil {
-					aivmlog.Warn("session count error: %v", err)
+					slog.Warn(fmt.Sprintf("session count error: %v", err))
 					continue
 				}
 
 				if active > 0 {
 					idleSince = time.Time{}
-					aivmlog.Debug("active sessions: %d", active)
+					slog.Log(context.Background(), aivmlog.SlogTrace, fmt.Sprintf("active sessions: %d", active))
 					continue
 				}
 
@@ -118,20 +123,20 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 
 				idle := time.Since(idleSince)
 				remaining := m.Timeout - idle
-				aivmlog.Debug("idle for %s, stop in %s", idle.Round(time.Second), remaining.Round(time.Second))
+				slog.Log(context.Background(), aivmlog.SlogTrace, fmt.Sprintf("idle for %s, stop in %s", idle.Round(time.Second), remaining.Round(time.Second)))
 
 				if idle >= m.Timeout {
-					aivmlog.Step("Idle timeout reached — stopping VM and compose services (Phase 1)")
+					slog.Info("Idle timeout reached — stopping VM and compose services (Phase 1)")
 					if err := m.VM.Stop(ctx); err != nil {
-						aivmlog.Warn("VM stop error: %v", err)
+						slog.Warn(fmt.Sprintf("VM stop error: %v", err))
 						continue
 					}
 					if err := m.Compose.Down(ctx); err != nil {
-						aivmlog.Warn("compose stop error: %v", err)
+						slog.Warn(fmt.Sprintf("compose stop error: %v", err))
 					}
 					m.Sessions.WriteVMStoppedAt()
 					idleSince = time.Time{}
-					aivmlog.Success("VM and compose services stopped — will delete VM after %s if not resumed", m.DeleteTimeout)
+					slog.Info(fmt.Sprintf("VM and compose services stopped — will delete VM after %s if not resumed", m.DeleteTimeout))
 				}
 
 			case vm.StatusStopped:
@@ -141,13 +146,13 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 				stoppedAt := m.Sessions.ReadVMStoppedAt()
 				if stoppedAt.IsZero() {
 					// VM was stopped manually (not by Phase 1); do not auto-delete.
-					aivmlog.Debug("VM stopped externally — skipping Phase 2 deletion")
+					slog.Debug("VM stopped externally — skipping Phase 2 deletion")
 					continue
 				}
 
 				elapsed := time.Since(stoppedAt)
 				remaining := m.DeleteTimeout - elapsed
-				aivmlog.Debug("VM suspended for %s, deletion in %s", elapsed.Round(time.Second), remaining.Round(time.Second))
+				slog.Log(context.Background(), aivmlog.SlogTrace, fmt.Sprintf("VM suspended for %s, deletion in %s", elapsed.Round(time.Second), remaining.Round(time.Second)))
 
 				if elapsed >= m.DeleteTimeout {
 					return m.destroy(ctx)
@@ -155,7 +160,7 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 
 			case vm.StatusNotFound:
 				// VM already gone — nothing left to monitor.
-				aivmlog.Info("VM no longer exists — idle monitor exiting")
+				slog.Debug("VM no longer exists — idle monitor exiting")
 				if err := m.Compose.Down(ctx); err != nil {
 					return fmt.Errorf("tearing down orphaned compose services: %w", err)
 				}
@@ -166,15 +171,15 @@ func (m *IdleMonitor) Run(ctx context.Context) error {
 }
 
 func (m *IdleMonitor) destroy(ctx context.Context) error {
-	aivmlog.Step("VM suspension timeout reached — deleting VM (Phase 2)")
+	slog.Info("VM suspension timeout reached — deleting VM (Phase 2)")
 	if err := m.VM.Destroy(ctx); err != nil {
-		aivmlog.Warn("VM destroy error: %v", err)
+		slog.Warn(fmt.Sprintf("VM destroy error: %v", err))
 	}
 	m.Sessions.ClearVMStoppedAt()
 	if err := m.Compose.Down(ctx); err != nil {
-		aivmlog.Warn("compose destroy error: %v", err)
+		slog.Warn(fmt.Sprintf("compose destroy error: %v", err))
 	}
-	aivmlog.Success("VM deleted — resources reclaimed")
+	slog.Info("VM deleted — resources reclaimed")
 	return nil
 }
 

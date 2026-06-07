@@ -3,6 +3,7 @@ package compose
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -42,15 +43,12 @@ func (m *Manager) Up(ctx context.Context) error {
 	if m.ComposeFile == "" {
 		return nil
 	}
-	aivmlog.Step("Starting compose services")
-	w := aivmlog.Writer("compose")
+	slog.Debug("Starting compose services")
 	cmd := m.composeCmd(ctx, "up", "-d")
-	cmd.Stdout = w
-	cmd.Stderr = w
-	if err := cmd.Run(); err != nil {
+	if err := aivmlog.RunCmd(cmd, "compose"); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}
-	aivmlog.Success("Compose services started")
+	slog.Debug("Compose services started")
 	return nil
 }
 
@@ -60,11 +58,8 @@ func (m *Manager) Down(ctx context.Context) error {
 	if m.ComposeFile == "" {
 		return nil
 	}
-	w := aivmlog.Writer("compose")
 	cmd := m.composeCmd(ctx, "down")
-	cmd.Stdout = w
-	cmd.Stderr = w
-	if err := cmd.Run(); err != nil {
+	if err := aivmlog.RunCmd(cmd, "compose"); err != nil {
 		return fmt.Errorf("docker compose down: %w", err)
 	}
 	return nil
@@ -103,19 +98,6 @@ func (m *Manager) HealthMap(ctx context.Context) map[string]bool {
 		result[name] = running[name]
 	}
 	return result
-}
-
-// Logs implements ComposeManager. It streams `docker compose logs -f` for all
-// services to stdout until interrupted.
-func (m *Manager) Logs() error {
-	if m.ComposeFile == "" {
-		return fmt.Errorf("no compose_file configured — add compose_file: to aivm.yaml")
-	}
-	aivmlog.Info("Compose service logs (Ctrl-C to stop):")
-	cmd := m.composeCmd(context.Background(), "logs", "-f") //nolint:contextcheck
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 // parseLines splits s on newlines and returns trimmed, non-empty lines.

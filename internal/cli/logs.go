@@ -8,8 +8,8 @@ import (
 
 func LogsCmd(getApp func() (*App, error)) *cobra.Command {
 	return &cobra.Command{
-		Use:   "logs [service]",
-		Short: "Show logs (compose services by default | monitor | bootstrap | vm)",
+		Use:   "logs [component]",
+		Short: "Tail log files (aivm | monitor)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()

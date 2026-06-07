@@ -6,19 +6,28 @@ import (
 	"strings"
 )
 
-// Level controls which messages are emitted. More verbose levels include quieter ones.
+// Level controls terminal verbosity. The log file always records trace and above.
 type Level int
 
+// LevelInvalid is returned by ParseLevel on unknown input.
+const LevelInvalid Level = -1
+
 const (
-	LevelDebug Level = iota
+	LevelTrace Level = iota
+	LevelDebug
 	LevelInfo
 	LevelWarn
 	LevelError
 )
 
-// ParseLevel parses a log level name (debug, info, warn, error).
+// SlogTrace is the slog representation of trace (below debug).
+const SlogTrace = slog.Level(-8)
+
+// ParseLevel parses a log level name (trace, debug, info, warn, error).
 func ParseLevel(s string) (Level, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "trace":
+		return LevelTrace, nil
 	case "debug":
 		return LevelDebug, nil
 	case "info", "":
@@ -28,43 +37,55 @@ func ParseLevel(s string) (Level, error) {
 	case "error":
 		return LevelError, nil
 	default:
-		return LevelInfo, fmt.Errorf("unknown log level %q (use debug, info, warn, or error)", s)
+		return LevelInvalid, fmt.Errorf("unknown log level %q (use trace, debug, info, warn, or error)", s)
 	}
 }
 
-func (l Level) allows(msg Level) bool {
-	return l <= msg
-}
-
-func (l Level) verbose() bool {
-	return l == LevelDebug
-}
-
-// ToolMode is true at log level error — suppress non-failure noise from aivm and subprocesses.
-func ToolMode() bool {
-	return Default.level == LevelError
-}
-
-// GetLevel returns the current default logger level.
-func GetLevel() Level {
-	return Default.level
-}
-
-// SetLevel configures the default logger level and syncs slog.
-func SetLevel(l Level) {
-	Default.level = l
-	var slogLevel slog.Level
+func (l Level) String() string {
 	switch l {
+	case LevelTrace:
+		return "TRACE"
 	case LevelDebug:
-		slogLevel = slog.LevelDebug
+		return "DEBUG"
 	case LevelInfo:
-		slogLevel = slog.LevelInfo
+		return "INFO"
 	case LevelWarn:
-		slogLevel = slog.LevelWarn
+		return "WARN"
 	case LevelError:
-		slogLevel = slog.LevelError
+		return "ERROR"
 	default:
-		slogLevel = slog.LevelInfo
+		return "INFO"
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(Default.Err, &slog.HandlerOptions{Level: slogLevel})))
+}
+
+func (l Level) toSlog() slog.Level {
+	switch l {
+	case LevelTrace:
+		return SlogTrace
+	case LevelDebug:
+		return slog.LevelDebug
+	case LevelInfo:
+		return slog.LevelInfo
+	case LevelWarn:
+		return slog.LevelWarn
+	case LevelError:
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+func slogToLevel(l slog.Level) Level {
+	switch {
+	case l < slog.LevelDebug:
+		return LevelTrace
+	case l < slog.LevelInfo:
+		return LevelDebug
+	case l < slog.LevelWarn:
+		return LevelInfo
+	case l < slog.LevelError:
+		return LevelWarn
+	default:
+		return LevelError
+	}
 }

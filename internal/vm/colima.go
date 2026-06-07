@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,30 +70,20 @@ func (c *ColimaVM) Start(ctx context.Context, opts StartOptions) error {
 		return err
 	}
 
-	logDir := filepath.Join(c.stateDir, "logs")
-	_ = os.MkdirAll(logDir, 0755)
-	logFile, _ := os.OpenFile(filepath.Join(logDir, "colima.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if logFile != nil {
-		defer logFile.Close()
-	}
-	w := aivmlog.Writer("colima")
-
 	switch status {
 	case StatusRunning:
-		aivmlog.Info("VM '%s' is already running", c.profile)
+		slog.Debug(fmt.Sprintf("VM '%s' is already running", c.profile))
 		return nil
 
 	case StatusStopped:
-		aivmlog.Step("Resuming stopped VM '%s'", c.profile)
+		slog.Info(fmt.Sprintf("Resuming stopped VM '%s'", c.profile))
 		cmd := exec.CommandContext(ctx, "colima", "start", c.profile)
-		cmd.Stdout = w
-		cmd.Stderr = w
-		return cmd.Run()
+		return aivmlog.RunCmd(cmd, "colima")
 
 	default:
-		aivmlog.Step("Creating Colima VM '%s'", c.profile)
-		aivmlog.Info("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
-			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType)
+		slog.Info(fmt.Sprintf("Creating Colima VM '%s'", c.profile))
+		slog.Debug(fmt.Sprintf("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
+			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType))
 
 		vmTypeFlags := c.vmTypeFlags(opts.VMType)
 
@@ -116,9 +107,7 @@ func (c *ColimaVM) Start(ctx context.Context, opts StartOptions) error {
 		}
 
 		cmd := exec.CommandContext(ctx, "colima", args...)
-		cmd.Stdout = w
-		cmd.Stderr = w
-		return cmd.Run()
+		return aivmlog.RunCmd(cmd, "colima")
 	}
 }
 
@@ -131,23 +120,22 @@ func (c *ColimaVM) Stop(ctx context.Context) error {
 
 	status, err := c.Status(ctx)
 	if err != nil || status != StatusRunning {
-		aivmlog.Info("VM '%s' is not running — nothing to stop", c.profile)
+		slog.Debug(fmt.Sprintf("VM '%s' is not running — nothing to stop", c.profile))
 		return nil
 	}
 
-	aivmlog.Info("Stopping Docker containers inside VM...")
+	slog.Debug("Stopping Docker containers inside VM...")
 	_ = c.Run(ctx, "docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true", nil)
 
-	aivmlog.Step("Stopping Colima VM '%s'", c.profile)
-	w := aivmlog.Writer("colima")
+	slog.Info(fmt.Sprintf("Stopping Colima VM '%s'", c.profile))
 	cmd := exec.CommandContext(ctx, "colima", "stop", c.profile)
-	cmd.Stdout = w
-	cmd.Stderr = w
-	if err := cmd.Run(); err != nil {
-		aivmlog.Warn("graceful stop failed, forcing...")
-		_ = run.Quiet(ctx, "colima", "stop", c.profile, "--force")
+	if err := aivmlog.RunCmd(cmd, "colima"); err != nil {
+		slog.Warn("graceful stop failed, forcing...")
+		if forceErr := run.Quiet(ctx, "colima", "stop", c.profile, "--force"); forceErr != nil {
+			return fmt.Errorf("stop VM %q: graceful stop failed: %v; force stop failed: %w", c.profile, err, forceErr)
+		}
 	}
-	aivmlog.Success("VM '%s' stopped (disk preserved)", c.profile)
+	slog.Info(fmt.Sprintf("VM '%s' stopped (disk preserved)", c.profile))
 	return nil
 }
 
@@ -168,18 +156,15 @@ func (c *ColimaVM) Destroy(ctx context.Context) error {
 	}
 
 	if status != StatusNotFound {
-		aivmlog.Step("Deleting VM profile '%s'", c.profile)
-		w := aivmlog.Writer("colima")
+		slog.Info(fmt.Sprintf("Deleting VM profile '%s'", c.profile))
 		cmd := exec.CommandContext(ctx, "colima", "delete", c.profile, "--force", "--data")
-		cmd.Stdout = w
-		cmd.Stderr = w
-		if err := cmd.Run(); err != nil {
+		if err := aivmlog.RunCmd(cmd, "colima"); err != nil {
 			return fmt.Errorf("delete VM: %w", err)
 		}
-		aivmlog.Success("VM '%s' destroyed", c.profile)
+		slog.Info(fmt.Sprintf("VM '%s' destroyed", c.profile))
 		os.Remove(filepath.Join(c.stateDir, VMCreatedAtFile))
 	} else {
-		aivmlog.Info("VM '%s' does not exist — nothing to destroy", c.profile)
+		slog.Debug(fmt.Sprintf("VM '%s' does not exist — nothing to destroy", c.profile))
 	}
 	return nil
 }
@@ -199,11 +184,8 @@ func (c *ColimaVM) Run(ctx context.Context, script string, env map[string]string
 	// interpretation (pipes become literal arguments to the first command).
 	bashScript := "echo " + encoded + " | base64 -d | bash -l"
 
-	w := aivmlog.Writer("vm")
 	cmd := exec.CommandContext(ctx, "colima", "ssh", "--profile", c.profile, "--", "bash", "-lc", bashScript)
-	cmd.Stdout = w
-	cmd.Stderr = w
-	return cmd.Run()
+	return aivmlog.RunCmd(cmd, "vm")
 }
 
 // RunOutput executes a script inside the VM and returns its combined stdout+stderr.

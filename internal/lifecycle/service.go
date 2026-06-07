@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -60,24 +61,22 @@ type LifecycleService struct {
 	Confirmer Confirmer
 	// GetWorkDir returns the working directory for Launch. When nil, os.Getwd is used.
 	GetWorkDir func() (string, error)
-	// Log is the logger used for all user-visible output. When nil, aivmlog.Default is used.
-	// Inject a custom logger in tests to capture console output.
-	Log *aivmlog.Logger
+	// Log overrides slog.Default() in tests. When nil, slog.Default() is used.
+	Log *slog.Logger
 }
 
-// log returns the active logger, falling back to the global default.
-func (svc *LifecycleService) log() *aivmlog.Logger {
+func (svc *LifecycleService) logger() *slog.Logger {
 	if svc.Log != nil {
 		return svc.Log
 	}
-	return aivmlog.Default
+	return slog.Default()
 }
 
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
 	cfg := svc.Config
 
-	svc.log().Step("Starting aivm")
+	svc.logger().Info("Starting aivm")
 
 	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 
@@ -87,7 +86,7 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		svc.log().Step("Deleting aged VM profile '%s'", svc.VM.Profile())
+		svc.logger().Info(fmt.Sprintf("Deleting aged VM profile '%s'", svc.VM.Profile()))
 		if err := svc.VM.Destroy(ctx); err != nil {
 			return err
 		}
@@ -125,17 +124,17 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 	}
 
 	if cfg.T3Code.Enable {
-		svc.log().Success("T3 Code mode — idle monitoring disabled")
+		svc.logger().Info("T3 Code mode — idle monitoring disabled")
 		if err := svc.launchT3Code(ctx); err != nil {
 			return err
 		}
 	} else {
 		if err := svc.Monitor.EnsureRunning(); err != nil {
-			svc.log().Warn("could not start idle monitor: %v", err)
+			svc.logger().Warn(fmt.Sprintf("could not start idle monitor: %v", err))
 		}
 	}
 
-	svc.log().Success("aivm is ready")
+	svc.logger().Info("aivm is ready")
 	return nil
 }
 
@@ -172,24 +171,24 @@ func (svc *LifecycleService) shouldRecreateVM() bool {
 	if age < threshold {
 		return false
 	}
-	return promptVMAge(svc.log(), svc.Confirmer, svc.VM.Profile(), age, threshold) == vmAgeRecreate
+	return promptVMAge(svc.Confirmer, svc.VM.Profile(), age, threshold) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
 func (svc *LifecycleService) Stop(ctx context.Context) error {
-	svc.log().Step("Stopping aivm")
+	svc.logger().Info("Stopping aivm")
 	svc.Monitor.Stop()
 	if err := svc.T3Code.Stop(); err != nil {
-		svc.log().Warn("T3 Code tunnel stop error: %v", err)
+		svc.logger().Warn(fmt.Sprintf("T3 Code tunnel stop error: %v", err))
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
 	if err := svc.VM.Stop(ctx); err != nil {
-		svc.log().Warn("VM stop error: %v", err)
+		svc.logger().Warn(fmt.Sprintf("VM stop error: %v", err))
 		vmErr = err
 	}
 	if err := svc.Compose.Down(ctx); err != nil {
-		svc.log().Warn("compose stop error: %v", err)
+		svc.logger().Warn(fmt.Sprintf("compose stop error: %v", err))
 		composeErr = err
 	}
 	if vmErr != nil || composeErr != nil {
@@ -201,7 +200,7 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 		}
 		return fmt.Errorf("compose stop: %w", composeErr)
 	}
-	svc.log().Success("aivm stopped")
+	svc.logger().Info("aivm stopped")
 	return nil
 }
 
@@ -209,7 +208,7 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	svc.Monitor.Stop()
 	if err := svc.T3Code.Stop(); err != nil {
-		svc.log().Warn("T3 Code tunnel stop error: %v", err)
+		svc.logger().Warn(fmt.Sprintf("T3 Code tunnel stop error: %v", err))
 	}
 	_ = os.Remove(filepath.Join(svc.Config.StateDir, t3codeURLFile))
 	var vmErr, composeErr error
@@ -217,7 +216,7 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		vmErr = err
 	}
 	if err := svc.Compose.Down(ctx); err != nil {
-		svc.log().Warn("compose destroy error: %v", err)
+		svc.logger().Warn(fmt.Sprintf("compose destroy error: %v", err))
 		composeErr = err
 	}
 	if vmErr != nil || composeErr != nil {
@@ -229,7 +228,7 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 		}
 		return fmt.Errorf("compose destroy: %w", composeErr)
 	}
-	svc.log().Success("VM destroyed")
+	svc.logger().Info("VM destroyed")
 	return nil
 }
 
@@ -246,9 +245,9 @@ func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) e
 	}
 	defer s.cleanup()
 
-	svc.log().Info("Host: %s", s.hostCWD)
-	svc.log().Info("VM:   %s", s.vmDir)
-	svc.log().Step("Launching %s in VM", s.prov.Description())
+	svc.logger().Debug(fmt.Sprintf("Host: %s", s.hostCWD))
+	svc.logger().Debug(fmt.Sprintf("VM:   %s", s.vmDir))
+	svc.logger().Info(fmt.Sprintf("Launching %s in VM", s.prov.Description()))
 
 	env := agent.LaunchEnv{
 		VM:         svc.VM,
@@ -272,9 +271,9 @@ func (svc *LifecycleService) AgentRun(ctx context.Context, agentOverride string,
 	}
 	defer s.cleanup()
 
-	svc.log().Info("Host: %s", s.hostCWD)
-	svc.log().Info("VM:   %s", s.vmDir)
-	svc.log().Step("Running %s in VM", s.prov.Description())
+	svc.logger().Debug(fmt.Sprintf("Host: %s", s.hostCWD))
+	svc.logger().Debug(fmt.Sprintf("VM:   %s", s.vmDir))
+	svc.logger().Info(fmt.Sprintf("Running %s in VM", s.prov.Description()))
 
 	env := agent.RunEnv{
 		VM:         svc.VM,
@@ -320,7 +319,7 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 		// auto-assigned ports) and probe from the host to confirm reachability.
 		state := readT3CodeState(cfg.StateDir, containerPort)
 		if t3CodeIsAlive(state.HostPort) {
-			svc.log().Success("T3 Code is already running at http://localhost:%d", state.HostPort)
+			svc.logger().Info(fmt.Sprintf("T3 Code is already running at http://localhost:%d", state.HostPort))
 			return nil
 		}
 		// No longer reachable from the host — stale file. Remove it and re-launch.
@@ -330,7 +329,7 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 	if svc.T3Code.IsRunning() {
 		// Same-process double-call: in-memory flag is set but state file may not
 		// exist yet (race). Display port from config.
-		svc.log().Success("T3 Code is already running at http://localhost:%d", containerPort)
+		svc.logger().Info(fmt.Sprintf("T3 Code is already running at http://localhost:%d", containerPort))
 		return nil
 	}
 
@@ -358,18 +357,18 @@ else
 fi
 `, bindHost, containerPort)
 
-	svc.log().Info("Starting T3 Code server in VM...")
+	svc.logger().Debug("Starting T3 Code server in VM...")
 	startOut, startErr := svc.VM.RunOutput(ctx, startScript, nil)
 	if startErr != nil {
 		return fmt.Errorf("starting t3 serve in VM: %w", startErr)
 	}
-	svc.log().Warn("t3 diag: %s", strings.TrimSpace(startOut))
+	svc.logger().Warn(fmt.Sprintf("t3 diag: %s", strings.TrimSpace(startOut)))
 	// Fail fast if t3 binary is missing
 	if strings.Contains(startOut, "t3_diag: path=NOT_FOUND") {
 		return fmt.Errorf("t3 binary not found in VM — bootstrap may have failed")
 	}
 
-	svc.log().Info("Starting T3 Code tunnel...")
+	svc.logger().Debug("Starting T3 Code tunnel...")
 	if err := svc.T3Code.Launch(ctx, containerPort); err != nil {
 		return fmt.Errorf("starting T3 Code tunnel: %w", err)
 	}
@@ -392,9 +391,9 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 
 	pairingInfo, err := svc.VM.RunOutput(ctx, pairingScript, nil)
 	if err != nil {
-		svc.log().Warn("Could not read T3 Code pairing info: %v", err)
+		svc.logger().Warn(fmt.Sprintf("Could not read T3 Code pairing info: %v", err))
 		if logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || true", nil); strings.TrimSpace(logContents) != "" {
-			svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
+			svc.logger().Warn(fmt.Sprintf("t3 serve log:\n%s", strings.TrimSpace(logContents)))
 		}
 		return fmt.Errorf("failed to retrieve T3 Code pairing info: %w", err)
 	}
@@ -404,7 +403,7 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 		// HTTP poll timed out or t3 serve hasn't printed pairing info yet.
 		// Fail fast instead of writing a fallback URL.
 		logContents, _ := svc.VM.RunOutput(ctx, "cat /tmp/t3code.log 2>/dev/null || echo '(t3code.log not found)'", nil)
-		svc.log().Warn("t3 serve log:\n%s", strings.TrimSpace(logContents))
+		svc.logger().Warn(fmt.Sprintf("t3 serve log:\n%s", strings.TrimSpace(logContents)))
 		return fmt.Errorf("T3 Code server did not respond or print pairing info within timeout")
 	}
 
@@ -427,7 +426,7 @@ sed -n '/T3 Code server is ready/,$p' /tmp/t3code.log 2>/dev/null || true
 	pairingURL := parsePairingURL(pairingInfo, hostPort)
 	_ = os.WriteFile(filepath.Join(cfg.StateDir, t3codeURLFile), []byte(pairingURL), 0600)
 
-	fmt.Fprintln(svc.log().Out, displayInfo)
+	fmt.Fprintln(aivmlog.TerminalOut(), displayInfo)
 	return nil
 }
 
@@ -502,7 +501,7 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 		return nil
 	}
 
-	if promptVMAge(svc.log(), svc.Confirmer, svc.VM.Profile(), vmAge, threshold) != vmAgeRecreate {
+	if promptVMAge(svc.Confirmer, svc.VM.Profile(), vmAge, threshold) != vmAgeRecreate {
 		return nil
 	}
 
@@ -514,13 +513,13 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 		return svc.recreateCurrentVM(ctx)
 	}
 
-	svc.log().Print("\n  You have %d active session(s).", len(sessions))
-	if !PromptYesNo(svc.log().Out, svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ", false) {
-		svc.log().Print("\n  VM recreation cancelled.")
+	fmt.Fprintf(aivmlog.TerminalOut(), "\n  You have %d active session(s).\n", len(sessions))
+	if !PromptYesNo(aivmlog.TerminalOut(), svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ", false) {
+		fmt.Fprintln(aivmlog.TerminalOut(), "\n  VM recreation cancelled.")
 		return nil
 	}
 
-	svc.log().Step("Killing %d active session(s)...", len(sessions))
+	svc.logger().Info(fmt.Sprintf("Killing %d active session(s)...", len(sessions)))
 	for _, s := range sessions {
 		proc, err := os.FindProcess(s.PID)
 		if err == nil {
@@ -533,19 +532,19 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 
 // recreateCurrentVM destroys the current VM and starts a fresh one.
 func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
-	svc.log().Step("Stopping current VM...")
+	svc.logger().Info("Stopping current VM...")
 	if err := svc.Stop(ctx); err != nil {
-		svc.log().Warn("Stop error (continuing): %v", err)
+		svc.logger().Warn(fmt.Sprintf("Stop error (continuing): %v", err))
 	}
 
 	clearBootstrapState(svc.Config.StateDir)
 
-	svc.log().Step("Destroying VM...")
+	svc.logger().Info("Destroying VM...")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
 
-	svc.log().Step("Starting fresh VM...")
+	svc.logger().Info("Starting fresh VM...")
 	return svc.Start(ctx)
 }
 
@@ -579,26 +578,26 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 	if len(sessions) > 0 {
-		svc.log().Warn("%d active session(s) detected.", len(sessions))
+		svc.logger().Warn(fmt.Sprintf("%d active session(s) detected.", len(sessions)))
 	}
 
 	if force {
 		if len(sessions) > 0 {
 			killed := svc.Sessions.KillAll()
-			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
+			svc.logger().Info(fmt.Sprintf("Sent SIGTERM to %d session(s).", len(killed)))
 		}
 	} else {
 		prompt := "\n  Proceed with VM recreation? [y/N] "
 		if len(sessions) > 0 {
 			prompt = "\n  Kill all sessions and recreate the VM? [y/N] "
 		}
-		if !PromptYesNo(svc.log().Out, svc.Confirmer, prompt, false) {
-			svc.log().Print("\n  VM recreation cancelled.")
+		if !PromptYesNo(aivmlog.TerminalOut(), svc.Confirmer, prompt, false) {
+			fmt.Fprintln(aivmlog.TerminalOut(), "\n  VM recreation cancelled.")
 			return nil
 		}
 		if len(sessions) > 0 {
 			killed := svc.Sessions.KillAll()
-			svc.log().Info("Sent SIGTERM to %d session(s).", len(killed))
+			svc.logger().Info(fmt.Sprintf("Sent SIGTERM to %d session(s).", len(killed)))
 		}
 	}
 
@@ -608,7 +607,7 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
 
 	clearBootstrapState(svc.Config.StateDir)
 
-	svc.log().Step("Destroying existing VM")
+	svc.logger().Info("Destroying existing VM")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}

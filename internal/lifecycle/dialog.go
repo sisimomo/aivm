@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	aivmlog "github.com/sisimomo/aivm/internal/log"
@@ -18,14 +19,14 @@ const (
 
 // promptVMAge shows the VM age warning and asks whether to recreate.
 // Non-interactive: returns vmAgeKeep (default No).
-func promptVMAge(l *aivmlog.Logger, c Confirmer, profile string, age, threshold time.Duration) vmAgeDecision {
+func promptVMAge(c Confirmer, profile string, age, threshold time.Duration) vmAgeDecision {
 	if !c.IsInteractive() {
 		return vmAgeKeep
 	}
 	ageDays := int(age.Hours() / 24)
 	thresholdDays := int(threshold.Hours() / 24)
-	l.Warn("VM '%s' is %d day(s) old (threshold: %d days)", profile, ageDays, thresholdDays)
-	if PromptYesNo(l.Out, c, "  → Delete and recreate for a clean slate? [y/N] ", false) {
+	slog.Warn(fmt.Sprintf("VM '%s' is %d day(s) old (threshold: %d days)", profile, ageDays, thresholdDays))
+	if PromptYesNo(aivmlog.TerminalOut(), c, "  → Delete and recreate for a clean slate? [y/N] ", false) {
 		return vmAgeRecreate
 	}
 	return vmAgeKeep

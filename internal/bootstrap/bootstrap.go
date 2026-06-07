@@ -3,10 +3,8 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"log/slog"
 
-	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/vm"
 )
@@ -25,15 +23,6 @@ type Engine struct {
 	VM       vm.VM
 	Executor *plugin.Executor
 	StateDir string
-	// Log receives all user-visible output. When nil, aivmlog.Default is used.
-	Log *aivmlog.Logger
-}
-
-func (e *Engine) log() *aivmlog.Logger {
-	if e.Log != nil {
-		return e.Log
-	}
-	return aivmlog.Default
 }
 
 // Run executes all configured plugins then writes the in-VM bootstrap marker.
@@ -41,9 +30,9 @@ func (e *Engine) log() *aivmlog.Logger {
 // a fresh blank VM. When false, already-installed plugins are skipped.
 func (e *Engine) Run(ctx context.Context, force bool) error {
 	if force {
-		e.log().Step("Bootstrapping VM")
+		slog.Info("Bootstrapping VM")
 	} else {
-		e.log().Step("Reconciling VM bootstrap")
+		slog.Info("Reconciling VM bootstrap")
 	}
 
 	if err := e.Executor.Run(ctx, force); err != nil {
@@ -55,15 +44,6 @@ func (e *Engine) Run(ctx context.Context, force bool) error {
 		return fmt.Errorf("writing bootstrap marker: %w", err)
 	}
 
-	e.log().Success("Bootstrap complete!")
+	slog.Info("Bootstrap complete!")
 	return nil
-}
-
-func (e *Engine) LogPath() string {
-	return filepath.Join(e.StateDir, "logs", "bootstrap.log")
-}
-
-func init() {
-	home, _ := os.UserHomeDir()
-	_ = os.MkdirAll(filepath.Join(home, ".aivm", "logs"), 0755)
 }
