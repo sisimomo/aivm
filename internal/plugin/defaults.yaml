@@ -67,6 +67,17 @@ cocoindex-code:
     {{ end }}
     npx skills@latest add cocoindex-io/cocoindex-code --global --all
 
+context7:
+  description: "Context7 — up-to-date library documentation via find-docs skill"
+  dependencies:
+    - mise-node
+  skip_if: |
+    command -v ctx7 >/dev/null 2>&1 && \
+    find "$HOME" -path "*/skills/find-docs/SKILL.md" 2>/dev/null | grep -q .
+  setup: |
+    npm install -g ctx7@latest
+    npx skills@latest add upstash/context7 --global --yes --agent '*' --skill find-docs
+
 skills:
   description: "Install agent skills via the skills CLI (https://github.com/vercel-labs/skills)"
   dependencies:
@@ -80,12 +91,10 @@ t3code:
   description: "T3 Code web GUI for AI coding agents"
   dependencies:
     - mise-node
-    - mise-npm
   skip_if: |
     command -v t3 >/dev/null 2>&1
   setup: |
     npm install -g t3
-    mise reshim
 
     {{ if .state_dir }}
     T3_DIR="{{ .state_dir }}/.t3"

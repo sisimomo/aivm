@@ -18,17 +18,13 @@ import (
 // is a native module that requires compilation tools (make, g++). Without
 // build-essential installed, node-gyp cannot compile node-pty and npm exits 1 — but
 // the setup script had no error checking so bootstrap reported success anyway.
-//
-// Additionally, the default npm prefix points into the mise node install directory
-// (e.g. ~/.local/share/mise/installs/node/X.Y.Z/bin), which is NOT in PATH (only
-// the mise shims dir is). The fix ensures `t3` is available via mise shims by
-// calling `mise reshim` after installation, making it accessible in login shells.
 func TestPlugin_T3Code(t *testing.T) {
 	h := newBootstrapHarness(t)
 
-	// Install the full t3code plugin (pulls in system → mise → mise-node first).
-	// This also creates a mise shim for `t3` in the mise shims directory, which
-	// is already in PATH — no custom path_entries needed.
+	// Install the full t3code plugin (pulls in system → mise → mise-node).
+	// With mise-node only, `npm install -g t3` auto-reshims into
+	// ~/.local/share/mise/shims (on PATH). A separate mise-npm tool bypasses that
+	// hook and would require an explicit `mise reshim`.
 	h.Install("t3code", nil)
 
 	// Verify `t3` shim is accessible in a login shell — the same shell context
