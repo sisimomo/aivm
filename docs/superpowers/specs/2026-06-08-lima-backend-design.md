@@ -3,19 +3,21 @@
 ## Summary
 
 Replace the Colima VM backend with a native Lima backend. aivm gets a Linux VM
-on macOS via `limactl`, with rootful Docker installed inside the VM but no
-Docker socket exposed to the host. The existing `VM` interface, SSH-first
-execution model, and host-side `compose_file` feature are preserved.
+on macOS via `limactl`, with no Docker socket exposed to the host. In-VM
+Docker is available as an opt-in built-in plugin (same model as `awscli`,
+`mise`, etc.). The existing `VM` interface, SSH-first execution model, and
+host-side `compose_file` feature are preserved.
 
 This is a breaking change with no migration path — acceptable in alpha.
 
 ## Goals
 
 - Replace `vm.backend: colima` with `vm.backend: lima` (new default)
-- Provision rootful Docker inside the VM for agent/container workloads
+- Add an opt-in `docker` built-in plugin that installs rootful Docker inside
+  the VM at bootstrap time
 - Do **not** forward the Docker socket to the host (no `sock/docker.sock`)
 - Preserve VM → host connectivity (`host.lima.internal`, `host.docker.internal`
-  inside containers)
+  inside containers when the docker plugin is enabled)
 - Preserve host → VM connectivity (mounts, SSH port forwards for T3 Code)
 - Keep host-side `compose_file` unchanged (separate host Docker runtime)
 - Keep `docker` backend for CI/tests
@@ -23,6 +25,8 @@ This is a breaking change with no migration path — acceptable in alpha.
 ## Non-Goals
 
 - Colima deprecation period, migration tooling, or upgrade warnings
+- Installing Docker by default (not in `plugins.enabled` defaults)
+- Agent-level automatic docker plugin dependency (users opt in explicitly)
 - Moving `compose_file` services inside the aivm VM
 - Rootless Docker inside the VM
 - Host-side `docker` CLI access to the aivm VM daemon
@@ -38,6 +42,7 @@ Host (macOS)
 │   │                         ├── SSH ──► Run, RunStream, bootstrap
 │   │                         ├── scp ──► CopyTo, CopyFrom
 │   │                         └── ssh -L ──► T3 Code tunnel
+│   ├── Bootstrap ──plugins──► docker (opt-in), system, mise, …
 │   └── ComposeManager ──docker compose──► Host Docker (separate runtime)
 │
 └── No docker.sock for aivm VM on host
@@ -53,7 +58,8 @@ Host (macOS)
 ### Added
 
 - `internal/vm/lima.go` — `LimaVM` implementing `vm.VM`
-- `config/lima.yaml` — bundled Lima instance template
+- `config/lima.yaml` — bundled Lima instance template (VM only, no Docker)
+- `docker` entry in `internal/plugin/defaults.yaml`
 - Shared SSH helper (`limaSSHEndpoint`) used by `vm`, `t3code`
 
 ### Unchanged
@@ -61,13 +67,17 @@ Host (macOS)
 - `vm.VM` interface
 - `DockerVM` backend (`vm.backend: docker`) for CI/tests
 - Host-side `compose_file` lifecycle (`internal/compose/`)
-- Bootstrap, plugins, agents, idle monitor, session management
+- Bootstrap, plugin executor, agents, idle monitor, session management
+- Default `plugins.enabled`: `system` only (docker is **not** added)
 
 ## Lima Template (`config/lima.yaml`)
 
 Bundled base template shipped with aivm. Lima merges this with CLI flags at
 instance creation; the combined config is stored at
 `$LIMA_HOME/<name>/lima.yaml`.
+
+The template provisions a plain Ubuntu VM. No Docker `provision` blocks and no
+socket forwarding.
 
 ### Base settings
 
@@ -78,31 +88,14 @@ instance creation; the combined config is stored at
 | SSH agent forwarding | `false` |
 | Mount type | Lima default (`virtiofs` on vz, `reverse-sshfs` on qemu) |
 
-### Docker provisioning (rootful, in-VM only)
-
-Provision scripts install Docker via `get.docker.com` and enable the systemd
-unit. Modeled on Lima's `docker-rootful` template **without** the socket
-forward block:
-
-```yaml
-provision:
-  - mode: system
-    script: |
-      #!/bin/bash
-      set -eux -o pipefail
-      command -v docker >/dev/null 2>&1 && exit 0
-      curl -fsSL https://get.docker.com | sh
-      systemctl enable --now docker
-```
-
 No `portForwards` entry mapping `guestSocket: /var/run/docker.sock` to a
-host socket. Docker is reachable only from inside the VM (via SSH/shell).
+host socket.
 
 ### Host connectivity
 
 VM processes reach the macOS host at `host.lima.internal` (Lima default
 user-mode network, gateway `192.168.5.2`). For Docker containers spawned
-inside the VM:
+inside the VM (when the docker plugin is enabled):
 
 ```yaml
 hostResolver:
@@ -110,8 +103,9 @@ hostResolver:
     host.docker.internal: host.lima.internal
 ```
 
-This ensures `host.docker.internal:PORT` works from containers (e.g. an agent
-running `docker run` that needs a host API on `localhost:3000`).
+This mapping is always present in the Lima template. It is harmless when
+Docker is not installed and ensures `host.docker.internal:PORT` works from
+containers when the docker plugin is enabled.
 
 ### Runtime flags (passed by `LimaVM.Start` at create)
 
@@ -130,6 +124,53 @@ Mirrors current Colima `Start` behavior:
 On resume of a stopped instance: `limactl start <name>` only. Mounts and
 resources are baked in at creation (same constraint as Colima today).
 
+## Docker Plugin (opt-in)
+
+Docker is a built-in plugin like any other — enabled only when listed in
+`plugins.enabled`. It is **not** in the default enabled list.
+
+### Plugin definition
+
+Add to `internal/plugin/defaults.yaml`:
+
+```yaml
+docker:
+  description: "Docker Engine (rootful) inside the VM"
+  dependencies:
+    - system
+  skip_if: |
+    command -v docker >/dev/null 2>&1 && \
+    systemctl is-active --quiet docker
+  setup: |
+    curl -fsSL https://get.docker.com | sh
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker "$USER"
+```
+
+Rootful Docker runs as a systemd service. The socket stays at
+`/var/run/docker.sock` inside the VM only — never forwarded to the host.
+
+`usermod -aG docker` takes effect on the next login shell. The bootstrap
+session may require `sudo docker`; subsequent `aivm ssh` sessions run
+`docker` without sudo.
+
+### Configuration
+
+```yaml
+plugins:
+  enabled:
+    - system
+    - docker   # opt-in: in-VM container runtime
+```
+
+No plugin-level config keys. No agent declares `docker` as a required plugin.
+
+### Enabling after initial bootstrap
+
+Adding `docker` to `plugins.enabled` triggers bootstrap reconcile on the next
+`aivm` run (existing `syncBootstrap` path). The plugin's `skip_if` makes
+re-runs idempotent.
+
 ## `LimaVM` Implementation
 
 New file `internal/vm/lima.go`, structurally parallel to the removed
@@ -140,8 +181,8 @@ New file `internal/vm/lima.go`, structurally parallel to the removed
 | `Status` | `limactl list` (parse name + status) |
 | `Start` (new) | `limactl create <template> --name … --mount … --cpus …` |
 | `Start` (stopped) | `limactl start <name>` |
-| `Stop` | `docker stop` inside VM, then `limactl stop <name>` |
-| `Destroy` | `limactl delete <name>` |
+| `Stop` | conditional `docker stop` inside VM, then `limactl stop <name>` |
+| `Destroy` | conditional `docker stop`, then `limactl delete <name>` |
 | `Run` / `RunOutput` | `limactl shell <name> -- bash -lc …` (base64 script, same as Colima) |
 | `RunStream` | `ssh -F <ssh.config> lima-<name> bash -lc …` |
 | `RunInteractive` / `SSH` | `ssh -t -F <ssh.config> lima-<name> …` (PTY for TUIs) |
@@ -149,6 +190,16 @@ New file `internal/vm/lima.go`, structurally parallel to the removed
 | `WaitReady` | SSH probe: `echo ready` |
 | `NeedsPortBindingAtBoot` | `false` |
 | `GetPublishedPort` | Return `containerPort` unchanged (SSH tunnel model) |
+
+### Conditional Docker cleanup on stop/destroy
+
+Stop and destroy run container cleanup only when Docker is present (no error
+when the docker plugin is not enabled):
+
+```bash
+command -v docker >/dev/null 2>&1 && \
+  docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true
+```
 
 ### SSH coordinates
 
@@ -182,6 +233,10 @@ calls. Update unit tests in `test/unit/log/file_test.go` accordingly.
 ```yaml
 vm:
   backend: lima
+
+plugins:
+  enabled:
+    - system    # docker is NOT included by default
 ```
 
 ### Validation
@@ -203,9 +258,14 @@ vm:
   disk: "60GB"
   mounts:
     - "~/dev:rw"
+
+plugins:
+  enabled:
+    - system
+    - docker   # optional
 ```
 
-No new config keys. `vm.type` continues to control vz/qemu selection.
+No new VM config keys. `vm.type` continues to control vz/qemu selection.
 
 ## Compose (unchanged)
 
@@ -232,13 +292,16 @@ case "docker":
 
 - README: replace Colima prerequisite with Lima (`brew install lima`)
 - README: update VM backend table (`lima` default, remove `colima`)
+- README: add `docker` to the available plugins table (opt-in, in-VM runtime)
 - CLI help text: "secure Lima VM" instead of "secure Colima VM"
 - Remove `config/colima.yaml`, add `config/lima.yaml` with comments
-- `aivm.example.yaml`: `backend: lima`
+- `aivm.example.yaml`: `backend: lima`, commented `docker` plugin example
 
 ## Breaking Changes (alpha)
 
 - `vm.backend: colima` is removed; configs must use `lima`
+- Docker is no longer installed automatically (Colima included it by default);
+  users who need in-VM containers must add `docker` to `plugins.enabled`
 - Existing Colima VMs (`~/.colima/<name>/`) are not migrated or cleaned up
 - Users recreate via `aivm destroy` + `aivm start`, or manually delete the
   old Colima profile
@@ -252,18 +315,28 @@ case "docker":
 - `limaSSHEndpoint` path construction (`LIMA_HOME`, default `~/.lima`)
 - Factory routes `lima` and rejects `colima`
 - Log writer tag tests updated to `[lima]`
+- Docker plugin `skip_if` / setup script renders without error
+
+### Bootstrap tests (Docker backend, `//go:build bootstrap`)
+
+When `docker` is in `plugins.enabled`:
+
+- `docker ps` succeeds inside VM after bootstrap
+- `skip_if` passes on re-run
 
 ### E2E / integration
 
 - Existing e2e tests use `docker` backend — no change required
 - Manual macOS verification checklist:
-  - `aivm start` creates Lima instance
-  - `aivm ssh` → `docker ps` works inside VM
+  - `aivm start` creates Lima instance (no Docker by default)
+  - `aivm ssh` → `docker` command not found (without plugin)
+  - Add `docker` to `plugins.enabled`, re-run → `docker ps` works
   - `curl host.lima.internal:<port>` reaches a host service
   - `docker run` with `host.docker.internal` reaches host from container
   - No `~/.lima/<name>/sock/docker.sock` created
   - T3 Code SSH tunnel works when enabled
   - `compose_file` still works with a separate host Docker
+  - `aivm stop` succeeds cleanly with and without docker plugin
 
 ## File Change Summary
 
@@ -274,6 +347,7 @@ case "docker":
 | Add | `docs/superpowers/specs/2026-06-08-lima-backend-design.md` |
 | Remove | `internal/vm/colima.go` |
 | Remove | `config/colima.yaml` |
+| Modify | `internal/plugin/defaults.yaml` (add `docker` plugin) |
 | Modify | `internal/vm/factory.go` |
 | Modify | `internal/vm/ssh.go` (rename helper, Lima paths) |
 | Modify | `internal/t3code/tunnel.go` |
