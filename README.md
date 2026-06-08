@@ -1,6 +1,6 @@
 # aivm
 
-> Launch AI agents in a secure, disposable Linux runtime (Colima or Docker) —
+> Launch AI agents in a secure, disposable Linux runtime (Lima or Docker) —
 > with one command.
 
 [![CI](https://github.com/sisimomo/aivm/actions/workflows/ci.yml/badge.svg)](https://github.com/sisimomo/aivm/actions/workflows/ci.yml)
@@ -14,7 +14,7 @@
 ---
 
 **aivm** manages the full lifecycle of a disposable Linux runtime dedicated to
-running AI coding agents. It runs on Colima by default or Docker via the Docker
+running AI coding agents. It runs on Lima by default or Docker via the Docker
 backend, bootstraps the runtime with your choice of toolchain plugins,
 optionally starts Docker Compose services (e.g. MCP servers) tied to the VM
 lifecycle, keeps sessions alive while you work, and auto-cleans up when you're
@@ -55,9 +55,8 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
 ## Requirements
 
 - **macOS** (Intel or Apple Silicon) — Linux/Windows is not supported
-- [Colima](https://github.com/abiosoft/colima) with
-  [Docker](https://docs.docker.com/desktop/install/mac-install/) for the default
-  `colima` backend, or Docker Engine/Desktop for the `docker` backend
+- [Lima](https://github.com/lima-vm/lima) for the default `lima` backend
+  (`brew install lima`), or Docker Engine/Desktop for the `docker` backend
 - Authentication for your chosen agent is handled **inside** the VM after first
   launch
 
@@ -100,7 +99,7 @@ aivm version
    ```
 
    Set `agents.enabled` and optionally `agents.default`.
-   Keep `vm.backend: colima` for the default setup, or set `vm.backend: docker`
+   Keep `vm.backend: lima` for the default setup, or set `vm.backend: docker`
    and `vm.docker_image` to run on Docker directly.
 
 2. **Launch an agent from any directory under your dev root:**
@@ -131,7 +130,7 @@ vm:
   cpus: 4
   memory: "8GB"
   disk: "60GB"
-  backend: colima
+  backend: lima
   name: aivm
   mounts:
     - "~/dev:rw"
@@ -167,8 +166,8 @@ At the default `info` level the terminal shows milestones and warnings; use
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `vm.backend` | `colima` | VM runtime: `colima` or `docker` |
-| `vm.name` | `aivm` | VM identity (Colima profile / Docker container name) |
+| `vm.backend` | `lima` | VM runtime: `lima` or `docker` |
+| `vm.name` | `aivm` | VM identity (Lima instance / Docker container name) |
 | `vm.docker_image` | for `docker` | Base image for docker backend |
 
 ### Mounts
@@ -231,7 +230,7 @@ recreation required.
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `vm.type` | _(auto)_ | Colima hypervisor: `vz`, `qemu`, or omit for auto |
+| `vm.type` | _(auto)_ | Lima hypervisor: `vz`, `qemu`, or omit for auto |
 | `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this age |
 
 ### Idle Management
@@ -277,6 +276,10 @@ Point aivm at a standard `docker-compose.yml` to run services alongside the VM.
 All services are brought up with `docker compose up -d` when the VM starts, and
 torn down with `docker compose down` on stop. Named volumes are **never**
 deleted by aivm — they persist across VM recreations and `aivm destroy`.
+
+> **Note:** `compose_file` runs on **host** Docker (Docker Desktop, OrbStack,
+> etc.) — not inside the Lima VM. To use Docker inside the VM instead, enable
+> the opt-in `docker` plugin (see [Plugins](#plugins)).
 
 ```yaml
 compose_file: ./docker-compose.yml
@@ -472,6 +475,7 @@ Only `system` is enabled by default. Everything else is opt-in under
 | Plugin | Installs | How to enable |
 | --- | --- | --- |
 | `system` | apt: `git`, `curl`, `jq`, compilers, … | Default |
+| `docker` | Docker Engine inside the VM (opt-in) | `plugins.enabled` |
 | `mise` | [mise](https://mise.jdx.dev/) version manager | Auto (via `mise-*`) |
 | `mise-<tool>` | Any [mise registry](https://mise.jdx.dev/registry.html) tool | `plugins.enabled` |
 | `awscli` | AWS CLI v2 | `plugins.enabled` |
@@ -483,6 +487,20 @@ Only `system` is enabled by default. Everything else is opt-in under
 #### `system`
 
 Base VM packages via `apt-get`. Required by nearly every other plugin.
+
+#### `docker`
+
+Installs rootful Docker Engine inside the Lima VM via the official convenience
+script. Not enabled by default — add `docker` to `plugins.enabled`:
+
+```yaml
+plugins:
+  enabled:
+    - system
+    - docker
+```
+
+This is separate from `compose_file`, which still requires host Docker.
 
 #### `mise` and `mise-<tool>`
 
