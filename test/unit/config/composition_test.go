@@ -70,13 +70,11 @@ func TestCompose_NoAgentsSection_Error(t *testing.T) {
 	}
 }
 
-func TestCompose_AllDefinedAgentsDisabled_Error(t *testing.T) {
+func TestCompose_EmptyEnabledList_Error(t *testing.T) {
 	t.Parallel()
 	path := writeYAML(t, `
 agents:
-  define:
-    claude:
-      enable: false
+  enabled: []
 `)
 	_, err := composeEngine().Compose(path, testRegistry("claude"))
 	ce := asCompositionError(err)
@@ -93,10 +91,8 @@ func TestCompose_UnknownAgentInEnabledSet_Error(t *testing.T) {
 	// "mystery" is enabled in YAML but not registered in the agent registry.
 	path := writeYAML(t, `
 agents:
-  default: mystery
-  define:
-    mystery:
-      enable: true
+  enabled:
+    - mystery
 `)
 	_, err := composeEngine().Compose(path, testRegistry("claude"))
 	ce := asCompositionError(err)
@@ -112,11 +108,9 @@ func TestCompose_MultipleEnabled_NoDefault_Error(t *testing.T) {
 	t.Parallel()
 	path := writeYAML(t, `
 agents:
-  define:
-    claude:
-      enable: true
-    copilot:
-      enable: true
+  enabled:
+    - claude
+    - copilot
 `)
 	_, err := composeEngine().Compose(path, testRegistry("claude", "copilot"))
 	ce := asCompositionError(err)
@@ -134,17 +128,16 @@ func TestCompose_DefaultNotInEnabledSet_Error(t *testing.T) {
 	path := writeYAML(t, `
 agents:
   default: copilot
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 `)
 	_, err := composeEngine().Compose(path, testRegistry("claude", "copilot"))
 	ce := asCompositionError(err)
 	if ce == nil {
 		t.Fatalf("expected *CompositionError, got: %v", err)
 	}
-	if !strings.Contains(ce.Reason, "is not enabled") {
-		t.Errorf("Reason = %q, want it to contain %q", ce.Reason, "is not enabled")
+	if !strings.Contains(ce.Reason, "is not in agents.enabled") {
+		t.Errorf("Reason = %q, want it to contain %q", ce.Reason, "is not in agents.enabled")
 	}
 }
 
@@ -152,10 +145,8 @@ func TestCompose_InvalidVMSessionEnvName_Error(t *testing.T) {
 	t.Parallel()
 	path := writeYAML(t, `
 agents:
-  default: claude
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 vm:
   session_env:
     BAD-NAME: "${HOST}"
@@ -182,9 +173,8 @@ func TestCompose_SingleEnabled_NoDefault_AutoInfersDefault(t *testing.T) {
 	t.Parallel()
 	path := writeYAML(t, `
 agents:
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 `)
 	result, err := composeEngine().Compose(path, testRegistry("claude"))
 	if err != nil {
@@ -206,11 +196,9 @@ func TestCompose_MultipleEnabled_WithDefault_HappyPath(t *testing.T) {
 	path := writeYAML(t, `
 agents:
   default: claude
-  define:
-    claude:
-      enable: true
-    copilot:
-      enable: true
+  enabled:
+    - claude
+    - copilot
 `)
 	result, err := composeEngine().Compose(path, testRegistry("claude", "copilot"))
 	if err != nil {
@@ -230,17 +218,17 @@ agents:
 	}
 }
 
-func TestCompose_DisabledAgentExcludedFromEnabledDefs(t *testing.T) {
+func TestCompose_DefineWithoutEnabled_Excluded(t *testing.T) {
 	t.Parallel()
-	// opencode is defined but NOT enabled — it must not appear in EnabledAgentDefs.
+	// opencode is defined but NOT in agents.enabled — it must not appear in EnabledAgentDefs.
 	path := writeYAML(t, `
 agents:
   default: claude
+  enabled:
+    - claude
   define:
-    claude:
-      enable: true
     opencode:
-      enable: false
+      cli_command: opencode
 `)
 	result, err := composeEngine().Compose(path, testRegistry("claude", "opencode"))
 	if err != nil {
@@ -250,7 +238,7 @@ agents:
 		t.Errorf("EnabledAgentDefs = %v, want only claude", result.EnabledAgentDefs)
 	}
 	if _, ok := result.EnabledAgentDefs["opencode"]; ok {
-		t.Errorf("EnabledAgentDefs contains disabled agent \"opencode\"")
+		t.Errorf("EnabledAgentDefs contains agent \"opencode\" not in agents.enabled")
 	}
 }
 
@@ -260,9 +248,10 @@ func TestCompose_ActiveAgentDefMatchesDefault(t *testing.T) {
 	path := writeYAML(t, `
 agents:
   default: copilot
+  enabled:
+    - copilot
   define:
     copilot:
-      enable: true
       cli_command: "my-custom-copilot-cmd"
 `)
 	result, err := composeEngine().Compose(path, testRegistry("copilot"))
@@ -280,9 +269,10 @@ func TestCompose_UserAgentOverrideMerged(t *testing.T) {
 	// User can override built-in agent fields via agents.define.
 	path := writeYAML(t, `
 agents:
+  enabled:
+    - claude
   define:
     claude:
-      enable: true
       cli_command: claude-override
       launch_args: --version
 `)
@@ -310,7 +300,7 @@ func TestCompose_ErrorMessage_IncludesExample(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "agents:") {
-		t.Errorf("error message should include YAML example, got: %s", msg)
+	if !strings.Contains(msg, "enabled:") {
+		t.Errorf("error message should include YAML example with enabled:, got: %s", msg)
 	}
 }

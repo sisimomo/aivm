@@ -59,7 +59,7 @@ type CompositionResult struct {
 	ActiveAgentDef agent.Def
 
 	// EnabledAgentDefs is the effective set of agent definitions for ALL enabled
-	// agents (those with enable: true in agents.define). Used by bootstrap and
+	// agents (those listed in agents.enabled). Used by bootstrap and
 	// persist-dir mounting to set up every enabled agent in the VM.
 	EnabledAgentDefs map[string]agent.Def
 
@@ -89,13 +89,11 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	if len(enabledAgentNames) == 0 {
 		return nil, &CompositionError{
 			Stage: "load_config",
-			Reason: "no agents enabled — add at least one agent to agents.define with enable: true in aivm.yaml\n" +
+			Reason: "no agents enabled — add at least one agent to agents.enabled in aivm.yaml\n" +
 				"  Example:\n" +
 				"    agents:\n" +
-				"      default: claude\n" +
-				"      define:\n" +
-				"        claude:\n" +
-				"          enable: true",
+				"      enabled:\n" +
+				"        - claude",
 		}
 	}
 
@@ -104,7 +102,7 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		if _, ok := agents.Get(name); !ok {
 			return nil, &CompositionError{
 				Stage:  "load_config",
-				Reason: fmt.Sprintf("unknown agent %q in agents.define — check your aivm.yaml", name),
+				Reason: fmt.Sprintf("unknown agent %q in agents.enabled — check your aivm.yaml", name),
 			}
 		}
 	}
@@ -133,7 +131,7 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	if !defaultEnabled {
 		return nil, &CompositionError{
 			Stage:  "load_config",
-			Reason: fmt.Sprintf("agents.default %q is not enabled — add it to agents.define with enable: true in aivm.yaml", defaultAgentName),
+			Reason: fmt.Sprintf("agents.default %q is not in agents.enabled", defaultAgentName),
 		}
 	}
 
