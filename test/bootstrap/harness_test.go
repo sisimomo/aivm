@@ -3,7 +3,6 @@
 package bootstraptest
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -12,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"text/template"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
@@ -154,7 +152,7 @@ func (h *BootstrapHarness) Install(pluginName string, cfg map[string]any) {
 		h.t.Fatalf("Install %q: resolve order: %v", pluginName, err)
 	}
 
-	if err := exec.Run(context.Background(), true); err != nil {
+	if err := exec.Run(context.Background()); err != nil {
 		h.t.Fatalf("Install %q: %v", pluginName, err)
 	}
 
@@ -165,13 +163,10 @@ func (h *BootstrapHarness) Install(pluginName string, cfg map[string]any) {
 
 // RunIntegrations executes all integrations from the embedded defaults whose
 // From/To conditions match the plugins installed so far and the given active
-// agent. templateVars are substituted into configure and skip_if scripts
+// agent. templateVars are substituted into configure scripts
 // (e.g. map[string]any{"mcp_port": "8472"}).
 //
-// It returns the keys of integrations that were actually executed (i.e. whose
-// skip_if guard did not prevent them from running). Callers can assert on this
-// to verify idempotency: a second call with the same args should return an
-// empty slice because every integration's skip_if now exits 0.
+// It returns the keys of integrations that were executed.
 func (h *BootstrapHarness) RunIntegrations(agentName string, templateVars map[string]any) []string {
 	h.t.Helper()
 
@@ -191,42 +186,6 @@ func (h *BootstrapHarness) RunIntegrations(agentName string, templateVars map[st
 	return ran
 }
 
-// AssertIntegrationConfigured runs the skip_if script of the named integration
-// (matched by key) and asserts that it exits 0, confirming the integration has
-// been applied. templateVars must match those passed to RunIntegrations.
-//
-// The integration must declare a non-empty skip_if script; if it does not,
-// the test fails with a clear message directing callers to use AssertCommand.
-func (h *BootstrapHarness) AssertIntegrationConfigured(integKey string, templateVars map[string]any) {
-	h.t.Helper()
-
-	var found *integration.IntegrationDef
-	for i := range h.integDefs {
-		if h.integDefs[i].Key() == integKey {
-			found = &h.integDefs[i]
-			break
-		}
-	}
-	if found == nil {
-		h.t.Fatalf("AssertIntegrationConfigured: integration %q not found", integKey)
-		return
-	}
-	if found.SkipIf == "" {
-		h.t.Fatalf("AssertIntegrationConfigured: integration %q has no skip_if — use AssertCommand to verify its effect instead", integKey)
-		return
-	}
-
-	script, err := renderIntegrationScript(found.SkipIf, templateVars)
-	if err != nil {
-		h.t.Fatalf("AssertIntegrationConfigured %q: render skip_if: %v", integKey, err)
-		return
-	}
-
-	if err := h.vm.Run(context.Background(), script, nil); err != nil {
-		h.t.Fatalf("AssertIntegrationConfigured %q: skip_if exited non-zero — integration not applied\n%v", integKey, err)
-	}
-}
-
 // AssertCommand runs cmd inside the container as a login shell and asserts that
 // the combined output contains wantSubstr. Fails the test on error or mismatch.
 func (h *BootstrapHarness) AssertCommand(cmd, wantSubstr string) {
@@ -237,44 +196,6 @@ func (h *BootstrapHarness) AssertCommand(cmd, wantSubstr string) {
 	}
 	if wantSubstr != "" && !strings.Contains(output, wantSubstr) {
 		h.t.Fatalf("AssertCommand %q: output does not contain %q\nfull output:\n%s", cmd, wantSubstr, output)
-	}
-}
-
-// AssertSkipIf runs the named plugin's skip_if script inside the container and
-// asserts that it exits 0 (meaning "already installed — skip"). This validates
-// idempotency: after a successful install the plugin must detect itself as set up.
-//
-// cfg may be nil; in that case the plugin's own defaults are used (same as Install).
-func (h *BootstrapHarness) AssertSkipIf(pluginName string, cfg map[string]any) {
-	h.t.Helper()
-
-	p, ok := h.reg.Get(pluginName)
-	if !ok {
-		h.t.Fatalf("AssertSkipIf: plugin %q not found in registry", pluginName)
-	}
-
-	// Build effective config: plugin defaults merged with caller overrides.
-	def := h.defs[pluginName]
-	effective := make(map[string]any, len(def.Defaults)+len(cfg))
-	for k, v := range def.Defaults {
-		effective[k] = v
-	}
-	for k, v := range cfg {
-		effective[k] = v
-	}
-
-	env := plugin.InstallEnv{
-		Config:   effective,
-		StateDir: h.stateDir,
-		VM:       h.vm,
-	}
-
-	skip, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		h.t.Fatalf("AssertSkipIf %q: skip_if script error: %v", pluginName, err)
-	}
-	if !skip {
-		h.t.Fatalf("AssertSkipIf %q: skip_if returned false — plugin should be detected as installed", pluginName)
 	}
 }
 
@@ -333,21 +254,6 @@ func (h *BootstrapHarness) AssertLaunchStartsTUI(agentName string, probeTimeout 
 		"the TUI did not start (expected the process to stay alive for ~%v)",
 		agentName, elapsed, runErr, probeTimeout)
 }
-
-// renderIntegrationScript renders a Go text/template integration script with
-// the given data map, matching the logic used by integration.Executor.
-func renderIntegrationScript(src string, data map[string]any) (string, error) {
-	t, err := template.New("").Parse(src)
-	if err != nil {
-		return "", err
-	}
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
 
 func mustRandomHex(n int) string {
 	b := make([]byte, n)

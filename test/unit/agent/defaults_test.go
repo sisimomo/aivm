@@ -44,9 +44,6 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 		if def.Description == "" {
 			t.Errorf("agent %q: empty description", tc.name)
 		}
-		if def.SkipIf == "" {
-			t.Errorf("agent %q: empty skip_if", tc.name)
-		}
 		if def.Setup == "" {
 			t.Errorf("agent %q: empty setup", tc.name)
 		}
@@ -56,7 +53,7 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 	}
 }
 
-// TestLoadDefs_ScriptsAreValidTemplates checks that every skip_if and setup
+// TestLoadDefs_ScriptsAreValidTemplates checks that every setup
 // script parses as a valid Go text/template. This catches accidental breakage
 // of template syntax (e.g. a stray {{ or }}) before any Docker container runs.
 func TestLoadDefs_ScriptsAreValidTemplates(t *testing.T) {
@@ -66,11 +63,6 @@ func TestLoadDefs_ScriptsAreValidTemplates(t *testing.T) {
 	}
 
 	for name, def := range defs {
-		if def.SkipIf != "" {
-			if _, err := template.New("").Parse(def.SkipIf); err != nil {
-				t.Errorf("agent %q: skip_if is not a valid Go template: %v", name, err)
-			}
-		}
 		if def.Setup != "" {
 			if _, err := template.New("").Parse(def.Setup); err != nil {
 				t.Errorf("agent %q: setup is not a valid Go template: %v", name, err)
@@ -92,9 +84,6 @@ func TestLoadDefs_ToPluginDef(t *testing.T) {
 		pd := def.ToPluginDef()
 		if pd.Description != def.Description {
 			t.Errorf("agent %q: ToPluginDef().Description=%q, want %q", name, pd.Description, def.Description)
-		}
-		if pd.SkipIf != def.SkipIf {
-			t.Errorf("agent %q: ToPluginDef().SkipIf mismatch", name)
 		}
 		if pd.Setup != def.Setup {
 			t.Errorf("agent %q: ToPluginDef().Setup mismatch", name)

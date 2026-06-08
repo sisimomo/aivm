@@ -257,15 +257,13 @@ Plugin installation, customization, and authoring are documented in
 Integrations run a `configure` shell script after bootstrap when their
 conditions are met: a specific plugin is installed (`from`) **and** a specific
 agent is active (`to`). Use them to wire tools into an agent's context (e.g.
-register an MCP server). Each integration's `skip_if` script gates re-runs.
+register an MCP server).
 
 ```yaml
 integrations:
   - name: my-tool-claude   # required when from is empty; optional otherwise
     from: my-tool          # plugin that must be installed (omit for agent-only)
     to: claude             # agent that must be active
-    skip_if: |
-      my-tool status --agent claude >/dev/null 2>&1
     configure: |
       my-tool configure --agent claude
 ```
@@ -569,7 +567,7 @@ Started by `aivm start` — see [T3 Code GUI](#t3-code-gui).
 ### Customize built-in plugins
 
 Tune shipped plugins via `plugins.config` (settings) or `plugins.define`
-(override install scripts). After changing `setup` or `skip_if`, run
+(override install scripts). After changing `setup`, run
 `aivm recreate`.
 
 #### Settings with `plugins.config`
@@ -649,7 +647,6 @@ plugins:
 | `path_entries` | Directories added to VM `PATH` |
 | `defaults` | Default values merged with `plugins.config` |
 | `agents` | Limit plugin to specific agents |
-| `skip_if` | Exit 0 = already installed, skip setup |
 | `setup` | Install script |
 
 ### Create a custom plugin
@@ -667,19 +664,18 @@ plugins:
       dependencies: [system]
       path_entries:
         - "$HOME/.local/bin"
-      skip_if: |
-        command -v my-tool >/dev/null 2>&1
       setup: |
         curl -fsSL https://example.com/install.sh | bash
 ```
+
+`setup` scripts must be safe to run on a fresh VM (use idempotent installers).
 
 #### Schema
 
 | Field | Required | Purpose |
 | --- | --- | --- |
 | `description` | Recommended | Label in bootstrap logs |
-| `setup` | Yes | Shell script run when not skipped |
-| `skip_if` | Recommended | Exit 0 = already installed |
+| `setup` | Yes | Shell script run on bootstrap |
 | `dependencies` | No | Plugins to install first |
 | `path_entries` | No | Directories added to VM `PATH` |
 | `defaults` | No | Default `plugins.config` values |
@@ -687,7 +683,7 @@ plugins:
 
 #### Config-driven installs
 
-`setup` and `skip_if` support [Go templates](https://pkg.go.dev/text/template).
+`setup` supports [Go templates](https://pkg.go.dev/text/template).
 Values from `plugins.config.<name>` are available as template fields:
 
 ```yaml
@@ -700,8 +696,6 @@ plugins:
   define:
     my-tool:
       dependencies: [system]
-      skip_if: |
-        my-tool --version 2>/dev/null | grep -q "{{ .version }}"
       setup: |
         curl -fsSL "https://example.com/my-tool-{{ .version }}.tar.gz" \
           | tar -xz -C "$HOME/.local"
@@ -737,7 +731,7 @@ Built-in agent definitions live in
 | --- | --- |
 | `cli_command` | Binary invoked in the VM |
 | `launch_args` | Flags appended by bare `aivm` (not `aivm agent --`) |
-| `skip_if` / `setup` | Override the agent's install script |
+| `setup` | Override the agent's install script |
 | `dependencies` | Plugins/toolchains required before install |
 | `path_entries` | Directories added to VM `PATH` |
 

@@ -4,8 +4,7 @@ package bootstraptest
 
 import "testing"
 
-// TestPlugin_System verifies that the system baseline-package plugin installs
-// correctly and that its skip_if script detects the installed state.
+// TestPlugin_System verifies that the system baseline-package plugin installs correctly.
 func TestPlugin_System(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
@@ -13,5 +12,4 @@ func TestPlugin_System(t *testing.T) {
 	h.AssertCommand("jq --version", "jq-")
 	h.AssertCommand("git --version", "git version")
 	h.AssertCommand("curl --version", "curl")
-	h.AssertSkipIf("system", nil)
 }

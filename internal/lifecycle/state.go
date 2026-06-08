@@ -9,10 +9,13 @@ import (
 	"sort"
 
 	"github.com/sisimomo/aivm/internal/agent"
-	"github.com/sisimomo/aivm/internal/bootstrap"
 	"github.com/sisimomo/aivm/internal/integration"
 	"github.com/sisimomo/aivm/internal/plugin"
 )
+
+// BootstrapVersion is incremented whenever host bootstrap-state schema or
+// bootstrap behaviour changes. Stored in bootstrap-state.json on the host only.
+const BootstrapVersion = "3"
 
 // BootstrapState is persisted on the host (no SSH required) and records the
 // provider and a hash of all execution-relevant configuration. Subsequent
@@ -58,14 +61,14 @@ func clearBootstrapState(stateDir string) {
 
 // NeedsMigration reports whether the recorded schema version is outdated.
 func (s *BootstrapState) NeedsMigration() bool {
-	return s.Version != bootstrap.BootstrapVersion
+	return s.Version != BootstrapVersion
 }
 
 // recordBootstrapState saves a BootstrapState with the current provider and
-// config hash. Call this after any successful full bootstrap.
+// config hash. Call this after any successful bootstrap.
 func (svc *LifecycleService) recordBootstrapState() error {
 	return saveBootstrapState(svc.Config.StateDir, &BootstrapState{
-		Version:    bootstrap.BootstrapVersion,
+		Version:    BootstrapVersion,
 		Provider:   svc.Provider.Name(),
 		ConfigHash: svc.currentConfigHash(),
 		EnvHash:    svc.currentEnvHash(),

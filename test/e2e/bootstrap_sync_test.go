@@ -68,28 +68,29 @@ func TestConfigChangedPluginRecreatesVM(t *testing.T) {
 		Run()
 }
 
-// TestStartRerunBootstrapAfterVersionMismatch verifies that a stale
-// bootstrap state (wrong version) triggers a full re-bootstrap.
+// TestStartRecreatesVMAfterVersionMismatch verifies that a stale bootstrap
+// state (wrong version) triggers VM recreation instead of in-place reconcile.
 //
 //  1. First start: bootstrap runs, state recorded.
 //  2. Corrupt the state's version field to simulate an old format.
-//  3. Second start: version mismatch triggers fullBootstrap → scripts run again.
-func TestStartRerunBootstrapAfterVersionMismatch(t *testing.T) {
+//  3. Second start: version mismatch triggers recreateVM.
+func TestStartRecreatesVMAfterVersionMismatch(t *testing.T) {
 	t.Parallel()
-	h := framework.New(t)
+	h := framework.New(t,
+		framework.WithInteractive("y"), // not used — recreateVM does not prompt
+	)
 
-	h.Scenario("stale bootstrap version triggers full re-bootstrap").
+	h.Scenario("stale bootstrap version triggers VM recreation").
 		Step("Start VM (first boot)", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state recorded", assertions.BootstrapComplete()).
 		Step("Corrupt bootstrap state version to simulate an upgrade", actions.CorruptBootstrapVersion()).
 		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Start VM again — version mismatch triggers full re-bootstrap", actions.CLI("start")).
-		Assert("VM still running", assertions.VMStatus(vm.StatusRunning)).
-		Assert("Re-bootstrap ran", assertions.OutputContains("Bootstrap complete!")).
+		Step("Start VM again — version mismatch triggers recreation", actions.CLI("start")).
+		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Assert("Bootstrap state is valid again", assertions.BootstrapComplete()).
-		Assert("User saw reconcile header (force=false re-bootstrap)", assertions.OutputContains("Reconciling VM bootstrap")).
-		Assert("User saw completion message", assertions.OutputContains("Bootstrap complete!")).
+		Assert("User saw stale-state warning", assertions.StderrContains("bootstrap state missing or outdated")).
+		Assert("User saw VM recreated message", assertions.OutputContains("VM recreated")).
 		Run()
 }
 

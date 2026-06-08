@@ -16,20 +16,15 @@ func TestLoadDefaults_ParsesWithoutError(t *testing.T) {
 	}
 }
 
-// TestLoadDefaults_TemplatesCompile parses every skip_if and configure script
+// TestLoadDefaults_ConfigureTemplatesCompile parses every configure script
 // as a Go text/template to catch syntax errors before any container runs.
-func TestLoadDefaults_TemplatesCompile(t *testing.T) {
+func TestLoadDefaults_ConfigureTemplatesCompile(t *testing.T) {
 	defs, err := integration.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
 
 	for _, d := range defs {
-		if d.SkipIf != "" {
-			if _, err := template.New("").Parse(d.SkipIf); err != nil {
-				t.Errorf("integration %q: skip_if is not a valid Go template: %v", d.Key(), err)
-			}
-		}
 		if d.Configure != "" {
 			if _, err := template.New("").Parse(d.Configure); err != nil {
 				t.Errorf("integration %q: configure is not a valid Go template: %v", d.Key(), err)

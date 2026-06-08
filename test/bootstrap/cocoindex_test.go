@@ -7,8 +7,7 @@ import (
 )
 
 // TestPlugin_CocoindexCode verifies that the cocoindex-code plugin correctly
-// installs the `ccc` CLI via uv tool install and that skip_if detects the
-// installed binary (idempotency). Both template branches are exercised:
+// installs the `ccc` CLI via uv tool install. Both template branches are exercised:
 //   - "full" (default): installs cocoindex-code[full] with local ML embeddings
 //   - "slim": installs the lightweight variant without ML dependencies
 func TestPlugin_CocoindexCode(t *testing.T) {
@@ -35,17 +34,13 @@ func TestPlugin_CocoindexCode(t *testing.T) {
 
 			// The binary must be runnable without error.
 			h.AssertCommand("ccc --help 2>&1", "")
-
-			// skip_if must detect the installed binary (idempotency: no re-install).
-			h.AssertSkipIf("cocoindex-code", cfg)
 		})
 	}
 }
 
 // TestPlugin_CocoindexCode_SlimWithConfig verifies that when a `config` map is
 // provided, the plugin writes ~/.cocoindex_code/global_settings.yml with the
-// serialised YAML content (mode 0600) and that skip_if also checks for the
-// file presence (idempotency).
+// serialised YAML content (mode 0600).
 func TestPlugin_CocoindexCode_SlimWithConfig(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
@@ -77,9 +72,6 @@ func TestPlugin_CocoindexCode_SlimWithConfig(t *testing.T) {
 	h.AssertCommand("grep -q 'provider: litellm' \"$HOME/.cocoindex_code/global_settings.yml\"", "")
 	h.AssertCommand("grep -q '^envs:' \"$HOME/.cocoindex_code/global_settings.yml\"", "")
 	h.AssertCommand("grep -q 'VOYAGE_API_KEY:' \"$HOME/.cocoindex_code/global_settings.yml\"", "")
-
-	// skip_if must check both ccc binary and config file (idempotency).
-	h.AssertSkipIf("cocoindex-code", cfg)
 }
 
 // TestPlugin_CocoindexCode_SkillInstall verifies that the cocoindex-code plugin

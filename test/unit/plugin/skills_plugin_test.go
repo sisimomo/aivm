@@ -65,20 +65,6 @@ func TestSkillsPlugin_Meta(t *testing.T) {
 	}
 }
 
-func TestSkillsPlugin_NoSkipIf(t *testing.T) {
-	defs, err := plugin.LoadDefaults()
-	if err != nil {
-		t.Fatalf("LoadDefaults: %v", err)
-	}
-	def, ok := defs["skills"]
-	if !ok {
-		t.Fatal("skills plugin not found in defaults.yaml")
-	}
-	if def.SkipIf != "" {
-		t.Errorf("SkipIf should be empty (always run), got %q", def.SkipIf)
-	}
-}
-
 func TestSkillsPlugin_Setup_NoSources(t *testing.T) {
 	lines := renderSkillsSetup(t, map[string]any{})
 	if len(lines) != 0 {

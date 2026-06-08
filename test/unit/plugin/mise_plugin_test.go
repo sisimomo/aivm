@@ -2,7 +2,6 @@ package plugin_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/plugin"
@@ -75,111 +74,6 @@ func TestMisePlugin_Dependencies(t *testing.T) {
 	}
 }
 
-// wantSkipIfScript builds the expected SkipIf script for a tool + version list.
-func wantSkipIfScript(tool string, versions ...string) string {
-	header := fmt.Sprintf(
-		"_check() {\n  local v=\"$1\"\n  if [ \"$v\" = \"latest\" ]; then\n    v=$(mise latest %s 2>/dev/null) || return 1\n  fi\n  mise where %s@\"$v\" >/dev/null 2>&1\n}\n",
-		tool, tool)
-	var checks string
-	for i, v := range versions {
-		if i > 0 {
-			checks += " && "
-		}
-		checks += fmt.Sprintf("_check %q", v)
-	}
-	return header + checks
-}
-
-func TestMisePlugin_SkipIf_DefaultVersion(t *testing.T) {
-	p, _ := plugin.NewMisePlugin("mise-node")
-	vm := &mockVMRunner{}
-
-	env := plugin.InstallEnv{VM: vm}
-	skip, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		t.Fatalf("SkipIf returned unexpected error: %v", err)
-	}
-	if !skip {
-		t.Error("expected skip=true when VM.Run returns nil")
-	}
-	want := wantSkipIfScript("node", "latest")
-	if vm.lastScript != want {
-		t.Errorf("SkipIf script:\ngot:  %q\nwant: %q", vm.lastScript, want)
-	}
-}
-
-func TestMisePlugin_SkipIf_PinnedVersion(t *testing.T) {
-	p, _ := plugin.NewMisePlugin("mise-node")
-	vm := &mockVMRunner{}
-
-	env := plugin.InstallEnv{VM: vm, Config: map[string]any{"version": "22"}}
-	skip, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		t.Fatalf("SkipIf returned unexpected error: %v", err)
-	}
-	if !skip {
-		t.Error("expected skip=true when VM.Run returns nil")
-	}
-	want := wantSkipIfScript("node", "22")
-	if vm.lastScript != want {
-		t.Errorf("SkipIf script:\ngot:  %q\nwant: %q", vm.lastScript, want)
-	}
-}
-
-func TestMisePlugin_SkipIf_MultiVersion(t *testing.T) {
-	p, _ := plugin.NewMisePlugin("mise-node")
-	vm := &mockVMRunner{}
-
-	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
-		"version":        "22",
-		"extra_versions": []string{"20", "18"},
-	}}
-	skip, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		t.Fatalf("SkipIf returned unexpected error: %v", err)
-	}
-	if !skip {
-		t.Error("expected skip=true when VM.Run returns nil")
-	}
-	want := wantSkipIfScript("node", "22", "20", "18")
-	if vm.lastScript != want {
-		t.Errorf("SkipIf script:\ngot:  %q\nwant: %q", vm.lastScript, want)
-	}
-}
-
-func TestMisePlugin_SkipIf_MultiVersion_YAMLSlice(t *testing.T) {
-	// Simulate YAML-unmarshalled []interface{} (as viper/mapstructure produces).
-	p, _ := plugin.NewMisePlugin("mise-node")
-	vm := &mockVMRunner{}
-
-	env := plugin.InstallEnv{VM: vm, Config: map[string]any{
-		"version":        "22",
-		"extra_versions": []interface{}{"20", "18"},
-	}}
-	_, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		t.Fatalf("SkipIf returned unexpected error: %v", err)
-	}
-	want := wantSkipIfScript("node", "22", "20", "18")
-	if vm.lastScript != want {
-		t.Errorf("SkipIf script ([]interface{} path):\ngot:  %q\nwant: %q", vm.lastScript, want)
-	}
-}
-
-func TestMisePlugin_SkipIf_NotInstalled(t *testing.T) {
-	p, _ := plugin.NewMisePlugin("mise-rust")
-	vm := &mockVMRunner{err: errExitNonZero}
-
-	env := plugin.InstallEnv{VM: vm}
-	skip, err := p.SkipIf(context.Background(), env)
-	if err != nil {
-		t.Fatalf("SkipIf returned unexpected error: %v", err)
-	}
-	if skip {
-		t.Error("expected skip=false when VM.Run returns error")
-	}
-}
-
 func TestMisePlugin_Setup_DefaultVersion(t *testing.T) {
 	p, _ := plugin.NewMisePlugin("mise-go")
 	vm := &mockVMRunner{}
@@ -241,10 +135,3 @@ func TestMisePlugin_Setup_ExtraVersions_Latest(t *testing.T) {
 		t.Errorf("Setup script:\ngot:  %q\nwant: %q", vm.lastScript, want)
 	}
 }
-
-// errExitNonZero simulates a non-zero exit from a VM script.
-var errExitNonZero = &exitError{}
-
-type exitError struct{}
-
-func (e *exitError) Error() string { return "exit status 1" }

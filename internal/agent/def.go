@@ -12,7 +12,6 @@ type Def struct {
 	// These are collected by the Executor and written to /etc/profile.d/aivm-path.sh
 	// before any plugin setup runs.
 	PathEntries []string `yaml:"path_entries"   mapstructure:"path_entries"`
-	SkipIf      string   `yaml:"skip_if"        mapstructure:"skip_if"`
 	Setup       string   `yaml:"setup"          mapstructure:"setup"`
 	// CLICommand is the agent binary invoked in the VM (e.g. "agent", "claude").
 	CLICommand string `yaml:"cli_command" mapstructure:"cli_command"`
@@ -30,7 +29,6 @@ func (d Def) ToPluginDef() plugin.PluginDef {
 		Description:  d.Description,
 		Dependencies: d.Dependencies,
 		PathEntries:  d.PathEntries,
-		SkipIf:       d.SkipIf,
 		Setup:        d.Setup,
 	}
 }
@@ -46,9 +44,6 @@ func MergeDef(base, override Def) Def {
 	}
 	if len(override.PathEntries) > 0 {
 		result.PathEntries = override.PathEntries
-	}
-	if override.SkipIf != "" {
-		result.SkipIf = override.SkipIf
 	}
 	if override.Setup != "" {
 		result.Setup = override.Setup

@@ -44,9 +44,6 @@ func TestLoadDefaults_AllPluginsPresent(t *testing.T) {
 		if def.Description == "" {
 			t.Errorf("plugin %q: empty description", tc.name)
 		}
-		if def.SkipIf == "" {
-			t.Errorf("plugin %q: empty skip_if", tc.name)
-		}
 		if def.Setup == "" {
 			t.Errorf("plugin %q: empty setup", tc.name)
 		}
@@ -117,7 +114,7 @@ func TestLoadDefaults_T3CodeUsesStateDirTemplate(t *testing.T) {
 	}
 }
 
-// TestLoadDefaults_ScriptsAreValidTemplates parses every skip_if and setup
+// TestLoadDefaults_ScriptsAreValidTemplates parses every setup
 // script as a Go text/template to catch syntax errors before any container runs.
 func TestLoadDefaults_ScriptsAreValidTemplates(t *testing.T) {
 	defs, err := plugin.LoadDefaults()
@@ -127,11 +124,6 @@ func TestLoadDefaults_ScriptsAreValidTemplates(t *testing.T) {
 
 	fm := plugin.TemplateFuncMap()
 	for name, def := range defs {
-		if def.SkipIf != "" {
-			if _, err := template.New("").Funcs(fm).Parse(def.SkipIf); err != nil {
-				t.Errorf("plugin %q: skip_if is not a valid Go template: %v", name, err)
-			}
-		}
 		if def.Setup != "" {
 			if _, err := template.New("").Funcs(fm).Parse(def.Setup); err != nil {
 				t.Errorf("plugin %q: setup is not a valid Go template: %v", name, err)

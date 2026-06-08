@@ -38,7 +38,7 @@ func setupRetryDelay(attempt int) time.Duration {
 }
 
 // Run executes all enabled plugins in DAG order.
-func (e *Executor) Run(ctx context.Context, force bool) error {
+func (e *Executor) Run(ctx context.Context) error {
 	ordered, err := e.Ordered()
 	if err != nil {
 		return fmt.Errorf("resolving plugin order: %w", err)
@@ -84,14 +84,14 @@ func (e *Executor) Run(ctx context.Context, force bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := e.installPlugin(ctx, p, force, explicitlyEnabled, dependents); err != nil {
+		if err := e.installPlugin(ctx, p, explicitlyEnabled, dependents); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (e *Executor) installPlugin(ctx context.Context, p Plugin, force bool, explicitlyEnabled map[string]bool, dependents map[string][]string) error {
+func (e *Executor) installPlugin(ctx context.Context, p Plugin, explicitlyEnabled map[string]bool, dependents map[string][]string) error {
 	return aivmlog.WithWriter(p.Name(), func(logW io.Writer) error {
 		if !explicitlyEnabled[p.Name()] {
 			if roots := dependents[p.Name()]; len(roots) > 0 {
@@ -108,17 +108,6 @@ func (e *Executor) installPlugin(ctx context.Context, p Plugin, force bool, expl
 			StateDir: e.StateDir,
 			Log:      logW,
 			VM:       e.VMInst,
-		}
-
-		if !force {
-			skip, err := p.SkipIf(ctx, env)
-			if err != nil {
-				slog.Warn(fmt.Sprintf("skip_if failed for plugin %s: %v", p.Name(), err))
-			}
-			if skip {
-				slog.Debug(fmt.Sprintf("skip %s (already set up)", p.Name()))
-				return nil
-			}
 		}
 
 		slog.Info(fmt.Sprintf("Plugin: %s", p.Name()))
@@ -139,10 +128,6 @@ func (e *Executor) installPlugin(ctx context.Context, p Plugin, force bool, expl
 				case <-ctx.Done():
 					return ctx.Err()
 				}
-				if installed, _ := p.SkipIf(ctx, env); installed {
-					setupErr = nil
-					break
-				}
 			}
 
 			setupErr = p.Setup(ctx, env)
@@ -152,10 +137,7 @@ func (e *Executor) installPlugin(ctx context.Context, p Plugin, force bool, expl
 		}
 
 		if setupErr != nil {
-			installed, _ := p.SkipIf(ctx, env)
-			if !installed {
-				return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
-			}
+			return fmt.Errorf("setup %s: %w", p.Name(), setupErr)
 		}
 
 		slog.Info(fmt.Sprintf("%s set up (%s)", p.Name(), time.Since(start).Round(time.Second)))

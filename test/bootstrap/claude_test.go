@@ -4,8 +4,8 @@ package bootstraptest
 
 import "testing"
 
-// TestAgent_Claude verifies the Claude Code CLI install script works and that
-// skip_if detects the installed binary. Authentication is not tested here.
+// TestAgent_Claude verifies the Claude Code CLI install script works.
+// Authentication is not tested here.
 func TestAgent_Claude(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
@@ -14,5 +14,4 @@ func TestAgent_Claude(t *testing.T) {
 		export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
 		claude --version
 	`, "")
-	h.AssertSkipIf("claude", nil)
 }
