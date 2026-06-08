@@ -105,6 +105,13 @@ idle:
 #       setup: |
 #         curl -fsSL https://example.com/install.sh | sh
 
+# Context7 — up-to-date library documentation via find-docs skill.
+# Installs ctx7 globally and adds the find-docs skill to all agent directories.
+# No API key required; for higher rate limits set CONTEXT7_API_KEY in vm.env above.
+# plugins:
+#   enabled:
+#     - context7
+
 # Cocoindex Code — AST-based semantic code search MCP server.
 # When enabled, aivm installs `ccc` in the VM and automatically registers it as
 # an MCP server for every active agent (Claude Code, Copilot CLI, OpenCode).
