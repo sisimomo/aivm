@@ -75,7 +75,7 @@ type VMConfig struct {
 	ParsedMounts                []Mount       `mapstructure:"-"`
 }
 
-// Profile returns the VM identity used as the Colima profile name or Docker
+// Profile returns the VM identity used as the Lima instance name or Docker
 // container name. Falls back to "aivm" if vm.name is not set.
 func (vm *VMConfig) Profile() string {
 	if vm.Name != "" {

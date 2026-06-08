@@ -6,7 +6,7 @@ VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 BUILD_FLAGS := -ldflags="-s -w -X main.defaultStateDir=$(STATE_DIR) -X main.version=$(VERSION)"
 
 # Test parallelism — number of concurrent test goroutines.
-# Capped at 4 to avoid saturating the Colima VM during concurrent claude installs
+# Capped at 4 to avoid saturating the Lima VM during concurrent claude installs
 # (curl | bash from claude.ai) and to keep Docker daemon pressure manageable.
 # Override with: make test-e2e PARALLEL=8
 PARALLEL ?= 4

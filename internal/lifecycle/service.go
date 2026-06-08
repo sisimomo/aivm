@@ -335,7 +335,7 @@ func (svc *LifecycleService) launchT3Code(ctx context.Context) error {
 
 	// For Docker VMs (NeedsPortBindingAtBoot=true), t3 serve must bind to
 	// 0.0.0.0 so Docker port forwarding can reach the server from the host.
-	// For Colima VMs, 127.0.0.1 is correct — the SSH tunnel connects internally.
+	// For Lima VMs, 127.0.0.1 is correct — the SSH tunnel connects internally.
 	bindHost := "127.0.0.1"
 	if svc.VM.NeedsPortBindingAtBoot() {
 		bindHost = "0.0.0.0"

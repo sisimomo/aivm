@@ -174,7 +174,7 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 	}
 
 	// Backends that need port bindings at boot (e.g. Docker) declare ports via
-	// StartOptions; others (e.g. Colima) use an SSH tunnel after the VM is up.
+	// StartOptions; others (e.g. Lima) use an SSH tunnel after the VM is up.
 	var portMappings []vm.PortMapping
 	if v.NeedsPortBindingAtBoot() && cfg.T3Code.Enable {
 		if cfg.T3Code.Port == 0 {
