@@ -100,7 +100,11 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 			args = append(args, "--mount", flag)
 		}
 		cmd := exec.CommandContext(ctx, "limactl", args...)
-		return aivmlog.RunCmd(cmd, "lima")
+		if err := aivmlog.RunCmd(cmd, "lima"); err != nil {
+			return err
+		}
+		startCmd := exec.CommandContext(ctx, "limactl", "start", l.profile)
+		return aivmlog.RunCmd(startCmd, "lima")
 	}
 }
 
