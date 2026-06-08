@@ -26,10 +26,6 @@ func LimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
 	return
 }
 
-func colimaSSHEndpoint(profile string) (string, string) {
-	return LimaSSHEndpoint(profile)
-}
-
 // SSHScriptWithEnv prepends export statements so session variables are visible
 // inside the remote login shell.
 func SSHScriptWithEnv(env map[string]string, script string) string {
@@ -122,7 +118,7 @@ func quietSSHLine(line []byte) bool {
 	return strings.HasPrefix(s, "Shared connection to ") && strings.HasSuffix(s, " closed.")
 }
 
-// InteractiveSSH opens an interactive SSH session into a Colima VM profile,
+// InteractiveSSH opens an interactive SSH session into a Lima VM profile,
 // executing script inside the VM. env maps environment variable names to values
 // that are injected into the remote shell environment.
 func InteractiveSSH(ctx context.Context, profile string, env map[string]string, script string) error {
@@ -130,8 +126,8 @@ func InteractiveSSH(ctx context.Context, profile string, env map[string]string, 
 
 	sshConfig, sshHost := LimaSSHEndpoint(profile)
 
-	// colima ssh -- CMD runs without a PTY; TUI apps need one, so use ssh -t directly
-	// with the SSH config file that colima/lima writes.
+	// limactl shell runs without a PTY; TUI apps need one, so use ssh -t directly
+	// with the SSH config file that Lima writes.
 	args := []string{"-t", "-F", sshConfig}
 	args = append(args, OpenSSHOptions()...)
 	args = append(args, sshHost, bashCmd)
