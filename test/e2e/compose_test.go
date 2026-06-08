@@ -33,7 +33,6 @@ func TestComposeLifecycle(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t, framework.WithComposeContent(sleeperCompose))
 
-	// Compose container naming convention: <project>-<service>-<replica>
 	containerName := h.Profile + "-sleeper-1"
 
 	cancelLogs, bgLogs := actions.AsyncCLI("logs")
@@ -47,7 +46,7 @@ func TestComposeLifecycle(t *testing.T) {
 		Step("Run: aivm status", actions.CLI("status")).
 		Assert("Status output shows compose service name", assertions.OutputContains("sleeper:")).
 		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Stream compose logs in background", bgLogs).
+		Step("Stream aivm logs in background", bgLogs).
 		Step("Wait for logs command to start", sleepStep(1*time.Second)).
 		Step("Cancel logs stream", cancelLogs).
 		Step("Reset output buffer", actions.ResetOutput()).
@@ -57,27 +56,25 @@ func TestComposeLifecycle(t *testing.T) {
 		Run()
 }
 
-// TestComposeLogsNoFile verifies that `aivm logs` with no compose_file set
-// returns a clear error rather than hanging or panicking.
-func TestComposeLogsNoFile(t *testing.T) {
+// TestComposeLogsAivm verifies that `aivm logs` tails the main aivm log file
+// after the VM has started.
+func TestComposeLogsAivm(t *testing.T) {
 	t.Parallel()
-	// No WithComposeContent → compose_file is empty in aivm.yaml.
-	h := framework.New(t)
+	h := framework.New(t, framework.WithComposeContent(sleeperCompose))
 
-	h.Scenario("aivm logs with no compose_file configured returns clear error").
+	cancelLogs, bgLogs := actions.AsyncCLI("logs")
+
+	h.Scenario("aivm logs tails the main log file after start").
 		Step("Start VM", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
 		Step("Reset output buffer", actions.ResetOutput()).
-		Step("Run: aivm logs (exit error ignored)", cliIgnoreExit("logs")).
-		Assert("Error message mentions compose_file not configured",
-			assertions.StderrContains("no compose_file configured")).
+		Step("Stream aivm logs in background", bgLogs).
+		Step("Wait for logs to appear", sleepStep(1*time.Second)).
+		Step("Cancel logs stream", cancelLogs).
+		Assert("Output mentions aivm log activity", assertions.OutputContains("INFO")).
 		Run()
 }
 
-// ── local helpers ─────────────────────────────────────────────────────────────
-
-// assertContainerRunning returns an AssertFunc that checks the named Docker
-// container exists and its State.Running is true.
 func assertContainerRunning(containerName string) framework.AssertFunc {
 	return func(ctx context.Context, _ *framework.Harness) error {
 		out, err := exec.CommandContext(ctx, "docker", "inspect",
@@ -92,8 +89,6 @@ func assertContainerRunning(containerName string) framework.AssertFunc {
 	}
 }
 
-// assertContainerGone returns an AssertFunc that checks the named Docker
-// container is no longer running (either removed or stopped).
 func assertContainerGone(containerName string) framework.AssertFunc {
 	return func(ctx context.Context, _ *framework.Harness) error {
 		cmd := exec.CommandContext(ctx, "docker", "inspect",
@@ -102,22 +97,13 @@ func assertContainerGone(containerName string) framework.AssertFunc {
 		if err != nil {
 			outStr := strings.ToLower(string(out))
 			if strings.Contains(outStr, "no such object") || strings.Contains(outStr, "no such container") {
-				return nil // container removed — OK
+				return nil
 			}
 			return fmt.Errorf("docker inspect %q failed unexpectedly: %w\n%s", containerName, err, string(out))
 		}
 		if strings.TrimSpace(string(out)) == "true" {
 			return fmt.Errorf("container %q is still running after stop", containerName)
 		}
-		return nil
-	}
-}
-
-// cliIgnoreExit runs a CLI command and ignores a non-zero exit code. Output is
-// still captured to h.Output so subsequent Assert steps can inspect it.
-func cliIgnoreExit(args ...string) framework.StepFunc {
-	return func(ctx context.Context, h *framework.Harness) error {
-		_ = h.RunCLI(ctx, args...)
 		return nil
 	}
 }

@@ -1,9 +1,10 @@
-package lifecycle
+package lifecycle_test
 
 import (
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/config"
+	"github.com/sisimomo/aivm/internal/lifecycle"
 )
 
 func TestPathUnderMount(t *testing.T) {
@@ -19,8 +20,8 @@ func TestPathUnderMount(t *testing.T) {
 		{"/mnt/proj2/src", false},
 	}
 	for _, tc := range tests {
-		if got := pathUnderMount(tc.path, mount); got != tc.want {
-			t.Errorf("pathUnderMount(%q, %q) = %v, want %v", tc.path, mount, got, tc.want)
+		if got := lifecycle.PathUnderMount(tc.path, mount); got != tc.want {
+			t.Errorf("PathUnderMount(%q, %q) = %v, want %v", tc.path, mount, got, tc.want)
 		}
 	}
 
@@ -33,8 +34,8 @@ func TestPathUnderMount(t *testing.T) {
 		{"/home/user", true},
 	}
 	for _, tc := range rootTests {
-		if got := pathUnderMount(tc.path, root); got != tc.want {
-			t.Errorf("pathUnderMount(%q, %q) = %v, want %v", tc.path, root, got, tc.want)
+		if got := lifecycle.PathUnderMount(tc.path, root); got != tc.want {
+			t.Errorf("PathUnderMount(%q, %q) = %v, want %v", tc.path, root, got, tc.want)
 		}
 	}
 }
@@ -48,7 +49,7 @@ func TestAssertUnderMountRejectsSiblingPath(t *testing.T) {
 			},
 		},
 	}
-	if err := assertUnderMount("/mnt/proj2", cfg); err == nil {
+	if err := lifecycle.AssertUnderMount("/mnt/proj2", cfg); err == nil {
 		t.Fatal("expected error for sibling path")
 	}
 }

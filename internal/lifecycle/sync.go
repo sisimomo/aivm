@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 // syncStep represents one decision point in the bootstrap state machine.
@@ -33,7 +35,7 @@ var syncPipeline = []syncStep{
 func (svc *LifecycleService) syncBootstrap(ctx context.Context) error {
 	state, err := loadBootstrapState(svc.Config.StateDir)
 	if err != nil {
-		svc.log().Warn("could not read bootstrap state, running full bootstrap: %v", err)
+		svc.logger().Warn(fmt.Sprintf("could not read bootstrap state, running full bootstrap: %v", err))
 	}
 	configHash := svc.currentConfigHash()
 	ss := &syncState{state: state, configHash: configHash}
@@ -71,7 +73,7 @@ func (s *envChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {
 }
 
 func (s *envChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
-	svc.log().Step("VM env changed — re-applying environment variables")
+	svc.logger().Info("VM env changed — re-applying environment variables")
 	if err := applyVMEnv(ctx, svc.VM, svc.Config.VM.ResolvedEnv()); err != nil {
 		return err
 	}
@@ -80,7 +82,7 @@ func (s *envChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleSe
 		state.EnvHash = svc.currentEnvHash()
 		_ = saveBootstrapState(svc.Config.StateDir, state)
 	}
-	svc.log().Success("Environment variables updated")
+	svc.logger().Info("Environment variables updated")
 	return nil
 }
 
@@ -104,17 +106,17 @@ func (s *upToDateStep) applicable(ss *syncState, _ *LifecycleService) bool {
 }
 
 func (s *upToDateStep) run(_ context.Context, _ *syncState, svc *LifecycleService) error {
-	svc.log().Success("VM is up to date — skipping bootstrap")
+	svc.logger().Info("VM is up to date — skipping bootstrap")
 	return nil
 }
 
 // resolveConfigChange handles any config change by prompting the user to
 // recreate the VM or continue without applying the change.
 func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
-	svc.log().Warn("VM '%s' config has changed", svc.VM.Profile())
+	svc.logger().Warn(fmt.Sprintf("VM '%s' config has changed", svc.VM.Profile()))
 
-	if !PromptConfigChanged(svc.log().Out, svc.Confirmer) {
-		svc.log().Success("Continuing without applying config changes")
+	if !PromptConfigChanged(aivmlog.TerminalOut(), svc.Confirmer) {
+		svc.logger().Info("Continuing without applying config changes")
 		return nil
 	}
 
@@ -130,7 +132,7 @@ func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 
 	sessions, _ := svc.Sessions.List()
 	if len(sessions) > 0 {
-		svc.log().Step("Terminating %d active session(s)", len(sessions))
+		svc.logger().Info(fmt.Sprintf("Terminating %d active session(s)", len(sessions)))
 		for _, sess := range sessions {
 			proc, err := os.FindProcess(sess.PID)
 			if err == nil {
@@ -142,7 +144,7 @@ func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 
 	clearBootstrapState(svc.Config.StateDir)
 
-	svc.log().Step("Recreating VM")
+	svc.logger().Info("Recreating VM")
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroying VM: %w", err)
 	}
@@ -153,6 +155,6 @@ func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 
 	svc.Sessions.ClearVMStoppedAt()
 
-	svc.log().Success("VM recreated")
+	svc.logger().Info("VM recreated")
 	return nil
 }

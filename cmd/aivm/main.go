@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 
@@ -34,7 +35,7 @@ func main() {
 
 	root := cli.NewRootCmd(version, buildApp)
 	if err := root.ExecuteContext(context.Background()); err != nil {
-		aivmlog.Error("%v", err)
+		slog.Error(fmt.Sprintf("%v", err))
 		os.Exit(exitCode(err))
 	}
 }
@@ -75,6 +76,9 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	if err := cli.ApplyLogLevel(cfg.LogLevel); err != nil {
 		return nil, err
 	}
+	if err := aivmlog.InitStateDir(cfg.StateDir); err != nil {
+		return nil, fmt.Errorf("initializing logs: %w", err)
+	}
 
 	vmInst, err := vm.NewFromConfig(&cfg.VM, cfg.StateDir)
 	if err != nil {
@@ -85,7 +89,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	if cfg.ComposeFile != "" {
 		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
 		if err != nil {
-			aivmlog.Warn("Docker socket: %v", err)
+			slog.Warn(fmt.Sprintf("Docker socket: %v", err))
 		} else {
 			dockerHost = dockerHostProbe
 		}

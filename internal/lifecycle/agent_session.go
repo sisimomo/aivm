@@ -64,7 +64,7 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 	if err != nil {
 		realCWD = filepath.Clean(hostCWD)
 	}
-	if err := assertUnderMount(realCWD, cfg); err != nil {
+	if err := AssertUnderMount(realCWD, cfg); err != nil {
 		return nil, err
 	}
 
@@ -79,7 +79,7 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 
 	sess, err := svc.Sessions.Create(hostCWD)
 	if err != nil {
-		svc.log().Warn("could not create session lock: %v", err)
+		svc.logger().Warn(fmt.Sprintf("could not create session lock: %v", err))
 	}
 
 	runCtx, stop := signal.NotifyContext(ctx, os.Interrupt)
@@ -101,7 +101,7 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 	}, nil
 }
 
-func assertUnderMount(realCWD string, cfg *config.Config) error {
+func AssertUnderMount(realCWD string, cfg *config.Config) error {
 	realCWD = filepath.Clean(realCWD)
 	for _, m := range cfg.VM.ParsedMounts {
 		realMount, err := filepath.EvalSymlinks(m.HostPath)
@@ -111,14 +111,14 @@ func assertUnderMount(realCWD string, cfg *config.Config) error {
 		if realMount == "" {
 			continue
 		}
-		if pathUnderMount(realCWD, realMount) {
+		if PathUnderMount(realCWD, realMount) {
 			return nil
 		}
 	}
 	return fmt.Errorf("current directory '%s' is not under any configured VM mount\naivm only works inside a mounted directory", realCWD)
 }
 
-func pathUnderMount(path, mount string) bool {
+func PathUnderMount(path, mount string) bool {
 	sep := string(os.PathSeparator)
 	if mount == sep {
 		return true

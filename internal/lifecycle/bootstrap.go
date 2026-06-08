@@ -3,9 +3,11 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/sisimomo/aivm/internal/bootstrap"
 	"github.com/sisimomo/aivm/internal/integration"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/vm"
 )
@@ -26,10 +28,8 @@ func (svc *LifecycleService) newBootstrapEngine(targetVM vm.VM, plugins []string
 			PluginConfig: svc.Config.Plugins.Config,
 			StateDir:     svc.Config.StateDir,
 			VMInst:       targetVM,
-			Log:          svc.log(),
 		},
 		StateDir: svc.Config.StateDir,
-		Log:      svc.log(),
 	}
 }
 
@@ -44,8 +44,8 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context, targetVM vm.VM, 
 	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
 		return fmt.Errorf("applying vm.env: %w", err)
 	}
-	gitName, gitEmail := readHostGitIdentity(svc.log())
-	if err := applyGitIdentity(ctx, targetVM, gitName, gitEmail, svc.log()); err != nil {
+	gitName, gitEmail := readHostGitIdentity()
+	if err := applyGitIdentity(ctx, targetVM, gitName, gitEmail); err != nil {
 		return fmt.Errorf("applying git identity: %w", err)
 	}
 	if err := svc.recordBootstrapState(); err != nil {
@@ -65,26 +65,28 @@ func (svc *LifecycleService) runIntegrationsFromState(ctx context.Context, targe
 
 	enabledPlugins := BootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
 
-	exec := &integration.Executor{
-		Integrations:     svc.Integrations,
-		InstalledPlugins: stringSet(enabledPlugins),
-		ActiveAgents:     svc.Config.ActiveAgents(),
-		VM:               targetVM,
-		Log:              svc.log().Writer("integration"),
-		TemplateVars:     map[string]any{},
-	}
+	return aivmlog.WithWriter("integration", func(logW io.Writer) error {
+		exec := &integration.Executor{
+			Integrations:     svc.Integrations,
+			InstalledPlugins: stringSet(enabledPlugins),
+			ActiveAgents:     svc.Config.ActiveAgents(),
+			VM:               targetVM,
+			Log:              logW,
+			TemplateVars:     map[string]any{},
+		}
 
-	matching := exec.Matching()
-	if len(matching) == 0 {
+		matching := exec.Matching()
+		if len(matching) == 0 {
+			return nil
+		}
+
+		for _, integ := range matching {
+			svc.logger().Info(fmt.Sprintf("Integration: %s → %s", integ.Key(), integ.To))
+		}
+
+		if _, err := exec.Run(ctx); err != nil {
+			return fmt.Errorf("running integrations: %w", err)
+		}
 		return nil
-	}
-
-	for _, integ := range matching {
-		svc.log().Step("Integration: %s → %s", integ.Key(), integ.To)
-	}
-
-	if _, err := exec.Run(ctx); err != nil {
-		return fmt.Errorf("running integrations: %w", err)
-	}
-	return nil
+	})
 }

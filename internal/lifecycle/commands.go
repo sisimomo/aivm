@@ -11,13 +11,14 @@ import (
 	"strings"
 	"time"
 
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
 // Status displays VM, MCP, session, and monitor status to stdout.
 func (svc *LifecycleService) Status(ctx context.Context) error {
 	cfg := svc.Config
-	out := svc.log().Out
+	out := aivmlog.TerminalOut()
 
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "  ┌─ aivm status ─────────────────────────────────┐")
@@ -113,7 +114,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 	workDir, _ := os.Getwd()
 	sess, err := svc.Sessions.Create(workDir)
 	if err != nil {
-		svc.log().Warn("could not create session lock: %v", err)
+		svc.logger().Warn(fmt.Sprintf("could not create session lock: %v", err))
 	} else {
 		defer sess.Remove()
 	}
@@ -131,27 +132,16 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 	return svc.VM.SSH(ctx, svc.Config.VM.ResolvedSessionEnv())
 }
 
-// Logs streams logs for the given service. Built-in services are
-// "monitor" (or "idle-monitor"), "bootstrap", and "vm". An empty service
-// name (or omitting the argument) streams all compose service logs.
+// Logs tails the aivm or idle-monitor log file.
 func (svc *LifecycleService) Logs(service string) error {
 	stateDir := svc.Config.StateDir
 	switch service {
-	case "", "compose":
-		return svc.Compose.Logs()
-	case "monitor", "idle-monitor":
+	case "", "aivm":
+		return tailFile(filepath.Join(stateDir, "logs", "aivm.log"))
+	case "monitor":
 		return tailFile(filepath.Join(stateDir, "logs", "idle-monitor.log"))
-	case "bootstrap":
-		return tailFile(filepath.Join(stateDir, "logs", "bootstrap.log"))
-	case "vm":
-		backend := svc.Config.VM.Backend
-		if backend == "" {
-			backend = "colima" // default backend
-		}
-		logFile := fmt.Sprintf("%s.log", backend)
-		return tailFile(filepath.Join(stateDir, "logs", logFile))
 	default:
-		return fmt.Errorf("unknown service %q — valid services: monitor, bootstrap, vm (or omit for compose logs)", service)
+		return fmt.Errorf("unknown log component %q; valid options: aivm (or empty), monitor", service)
 	}
 }
 
@@ -159,7 +149,7 @@ func tailFile(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("log file not found: %s", path)
 	}
-	cmd := exec.Command("tail", "-f", path)
+	cmd := exec.Command("tail", "-F", path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -167,7 +157,7 @@ func tailFile(path string) error {
 
 // ListPlugins prints all known plugins and their status (enabled or disabled).
 func (svc *LifecycleService) ListPlugins() error {
-	out := svc.log().Out
+	out := aivmlog.TerminalOut()
 	all := svc.Registry.All()
 	fmt.Fprintf(out, "\n  %-16s %-40s %s\n", "NAME", "DESCRIPTION", "DEPENDS ON")
 	fmt.Fprintf(out, "  %-16s %-40s %s\n", "────────────────", "────────────────────────────────────────", "──────────")

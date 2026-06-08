@@ -74,7 +74,7 @@ Examples:
 	}
 
 	root.PersistentFlags().StringVar(&cfgPath, "config", "", "path to aivm.yaml")
-	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level: debug, info, warn, or error (overrides AIVM_LOG_LEVEL and config)")
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level: trace, debug, info, warn, or error (overrides AIVM_LOG_LEVEL and config)")
 	root.PersistentFlags().StringVar(&agentOverride, "agent", "", "agent to use (must be enabled in config; overrides agents.default)")
 
 	root.AddCommand(

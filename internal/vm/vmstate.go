@@ -4,12 +4,12 @@
 package vm
 
 import (
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
-
-	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
 // VMCreatedAtFile is the state file that records the Unix epoch of VM creation.
@@ -19,6 +19,6 @@ const VMCreatedAtFile = "vm-created-at"
 func RecordVMCreation(stateDir string) {
 	path := filepath.Join(stateDir, VMCreatedAtFile)
 	if err := os.WriteFile(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0644); err != nil {
-		aivmlog.Warn("write %s: %v", VMCreatedAtFile, err)
+		slog.Warn(fmt.Sprintf("write %s: %v", VMCreatedAtFile, err))
 	}
 }
