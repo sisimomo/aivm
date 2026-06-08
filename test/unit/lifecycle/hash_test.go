@@ -18,7 +18,7 @@ import (
 // written to a temp file. The caller should defer os.Remove on the returned path.
 func minimalAgentYAML(t *testing.T, agentName string) string {
 	t.Helper()
-	content := "agents:\n  default: " + agentName + "\n  define:\n    " + agentName + ":\n      enable: true\n"
+	content := "agents:\n  enabled:\n    - " + agentName + "\n"
 	f, err := os.CreateTemp(t.TempDir(), "aivm-hash-test-*.yaml")
 	if err != nil {
 		t.Fatalf("creating temp config: %v", err)
@@ -71,7 +71,7 @@ func buildHashInputsFromCompose(t *testing.T, providerName string) (
 // to the given path. Used to produce a stable cfgPath for hash comparison tests.
 func writeMinimalAgentConfig(t *testing.T, path, agentName string) {
 	t.Helper()
-	content := "agents:\n  default: " + agentName + "\n  define:\n    " + agentName + ":\n      enable: true\n"
+	content := "agents:\n  enabled:\n    - " + agentName + "\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("writeMinimalAgentConfig: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestComputeConfigHash_EnabledPluginsOrderIndependent(t *testing.T) {
 // compositions — the multi-agent equivalent of the single-agent stability test.
 func TestComputeConfigHash_MultiAgentStableAcrossRuns(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "aivm-multi.yaml")
-	content := "agents:\n  default: claude\n  define:\n    claude:\n      enable: true\n    copilot:\n      enable: true\n"
+	content := "agents:\n  default: claude\n  enabled:\n    - claude\n    - copilot\n"
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("writeFile: %v", err)
 	}
