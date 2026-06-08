@@ -72,6 +72,28 @@ func TestLoadDefaults_MiseDependsOnSystem(t *testing.T) {
 	t.Errorf("mise: 'system' not found in dependencies %v", mise.Dependencies)
 }
 
+// TestLoadDefaults_DockerDependsOnSystem asserts that the docker plugin lists
+// system as a dependency so baseline packages (curl, etc.) are guaranteed to
+// be installed before docker's setup script runs.
+func TestLoadDefaults_DockerDependsOnSystem(t *testing.T) {
+	defs, err := plugin.LoadDefaults()
+	if err != nil {
+		t.Fatalf("LoadDefaults: %v", err)
+	}
+
+	docker, ok := defs["docker"]
+	if !ok {
+		t.Fatal("docker plugin not found")
+	}
+
+	for _, dep := range docker.Dependencies {
+		if dep == "system" {
+			return
+		}
+	}
+	t.Errorf("docker: 'system' not found in dependencies %v", docker.Dependencies)
+}
+
 // TestLoadDefaults_AWSCliIsArchAware checks that the awscli setup script
 // handles both x86_64 and aarch64 architectures. A regression here would
 // silently install the wrong binary on ARM hosts.

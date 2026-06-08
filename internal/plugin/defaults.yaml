@@ -35,6 +35,18 @@ awscli:
     sudo /tmp/awscliv2/aws/install
     rm -rf /tmp/awscliv2.zip /tmp/awscliv2
 
+docker:
+  description: "Docker Engine (rootful) inside the VM"
+  dependencies:
+    - system
+  skip_if: |
+    command -v docker >/dev/null 2>&1 && \
+    systemctl is-active --quiet docker
+  setup: |
+    curl -fsSL https://get.docker.com | sh
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker "$USER"
+
 cocoindex-code:
   description: "Cocoindex Code — AST-based semantic code search (MCP server)"
   dependencies:
