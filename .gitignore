@@ -3,3 +3,5 @@
 # compiled binary
 bin/*
 *.DS_Store
+# CocoIndex Code (ccc)
+/.cocoindex_code/
