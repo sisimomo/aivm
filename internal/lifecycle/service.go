@@ -145,8 +145,8 @@ func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated 
 		return svc.syncBootstrap(ctx)
 	}
 
-	// Fresh VM: always run full bootstrap.
-	if err := svc.fullBootstrap(ctx, svc.VM, true); err != nil {
+	// Fresh VM: always run bootstrap.
+	if err := svc.bootstrap(ctx, svc.VM); err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 	return nil
@@ -546,28 +546,6 @@ func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
 
 	svc.logger().Info("Starting fresh VM...")
 	return svc.Start(ctx)
-}
-
-// Bootstrap runs the bootstrap process. When force is true all plugins are re-run.
-func (svc *LifecycleService) Bootstrap(ctx context.Context, onlyPlugin string, force bool) error {
-	status, err := svc.VM.Status(ctx)
-	if err != nil || status != vm.StatusRunning {
-		return fmt.Errorf("VM is not running — run 'aivm start' first")
-	}
-
-	if onlyPlugin != "" {
-		eng := svc.newBootstrapEngine(svc.VM, []string{onlyPlugin})
-		if err := eng.Run(ctx, force); err != nil {
-			return err
-		}
-		return svc.recordBootstrapState()
-	}
-
-	if force {
-		return svc.fullBootstrap(ctx, svc.VM, true)
-	}
-
-	return svc.syncBootstrap(ctx)
 }
 
 // Recreate destroys the current VM and starts a fresh one, re-running bootstrap.

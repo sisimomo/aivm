@@ -58,9 +58,6 @@ type Plugin interface {
 	// These are collected by the Executor and written to /etc/profile.d/aivm-path.sh
 	// before any plugin setup runs.
 	PathEntries() []string
-	// SkipIf runs the skip_if script. Returns true when the plugin is already
-	// set up and setup should be skipped (exit code 0 = skip).
-	SkipIf(ctx context.Context, env InstallEnv) (bool, error)
 	// Setup runs the combined install+configure script for this plugin.
 	Setup(ctx context.Context, env InstallEnv) error
 }

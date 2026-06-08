@@ -29,7 +29,6 @@ type PluginDef struct {
 	// Entries from all enabled plugins are collected by the Executor and written
 	// to /etc/profile.d/aivm-path.sh before any plugin setup runs.
 	PathEntries []string `yaml:"path_entries"  mapstructure:"path_entries"`
-	SkipIf      string   `yaml:"skip_if"       mapstructure:"skip_if"`
 	Setup       string   `yaml:"setup"         mapstructure:"setup"`
 }
 
@@ -57,9 +56,6 @@ func MergePluginDef(base, override PluginDef) PluginDef {
 	}
 	if len(override.PathEntries) > 0 {
 		result.PathEntries = override.PathEntries
-	}
-	if override.SkipIf != "" {
-		result.SkipIf = override.SkipIf
 	}
 	if override.Setup != "" {
 		result.Setup = override.Setup
@@ -112,8 +108,8 @@ func (p *YAMLPlugin) effectiveConfig(env InstallEnv) map[string]any {
 	return cfg
 }
 
-// TemplateFuncMap returns the text/template FuncMap available to all plugin
-// setup and skip_if scripts. Exposed so callers (e.g. tests) can parse
+// TemplateFuncMap returns the text/template.FuncMap available to all plugin
+// setup scripts. Exposed so callers (e.g. tests) can parse
 // templates with the same function set that render() uses.
 func TemplateFuncMap() template.FuncMap {
 	return template.FuncMap{
@@ -141,21 +137,6 @@ func (p *YAMLPlugin) render(src string, data map[string]any) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
-}
-
-func (p *YAMLPlugin) SkipIf(ctx context.Context, env InstallEnv) (bool, error) {
-	if p.def.SkipIf == "" {
-		return false, nil
-	}
-	script, err := p.render(p.def.SkipIf, p.effectiveConfig(env))
-	if err != nil {
-		return false, err
-	}
-	if env.VM != nil {
-		return env.VM.Run(ctx, script, nil) == nil, nil
-	}
-	_, err = run.Output(ctx, "bash", "-lc", script)
-	return err == nil, nil
 }
 
 func (p *YAMLPlugin) Setup(ctx context.Context, env InstallEnv) error {

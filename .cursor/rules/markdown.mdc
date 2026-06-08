@@ -1,0 +1,9 @@
+---
+description: Enforce markdownlint-cli2 rules when generating or updating documentation
+globs: "**/*.md"
+---
+# Markdown Best Practices
+
+- We use `markdownlint-cli2` for all markdown styling.
+- **Always run this command after editing markdown:** `npx markdownlint-cli2 "<file_path>" --fix`
+- Ensure any generated documentation aligns with our local linting rules. If errors persist, adjust your formatting rather than modifying the linting configuration.

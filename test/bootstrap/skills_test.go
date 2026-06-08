@@ -23,51 +23,8 @@ func TestPlugin_Skills_AllSkills(t *testing.T) {
 }
 
 // TestPlugin_Skills_SpecificSkills verifies that when a skills list is provided,
-// only the named skills are installed. The tdd skill must be present and
-// non-listed skills must not appear.
+// only the named skills are installed.
 func TestPlugin_Skills_SpecificSkills(t *testing.T) {
-	t.Parallel()
-	h := newBootstrapHarness(t)
-
-	cfg := map[string]any{
-		"sources": []any{
-			map[string]any{
-				"repo":   "mattpocock/skills",
-				"skills": []any{"tdd"},
-			},
-		},
-	}
-
-	h.Install("skills", cfg)
-
-	h.AssertCommand(`find "$HOME" -path "*/tdd/SKILL.md" -maxdepth 6 2>/dev/null | grep -q .`, "")
-}
-
-// TestPlugin_Skills_Idempotent verifies that running the skills plugin twice
-// does not produce an error. npx skills@latest is idempotent by design and
-// must succeed even when skills are already present.
-func TestPlugin_Skills_Idempotent(t *testing.T) {
-	t.Parallel()
-	h := newBootstrapHarness(t)
-
-	cfg := map[string]any{
-		"sources": []any{
-			map[string]any{"repo": "mattpocock/skills"},
-		},
-	}
-
-	h.Install("skills", cfg)
-	h.Install("skills", cfg)
-
-	h.AssertCommand(`find "$HOME" -name "SKILL.md" -maxdepth 6 2>/dev/null | grep -q .`, "")
-}
-
-// TestPlugin_Skills_IdempotentSpecificSkills verifies that running the skills
-// plugin twice with a multi-value skills list is idempotent and installs only
-// the listed skills. Both tdd and grill-me must be present after two runs;
-// grill-with-docs, which exists in the repo but is not listed, must remain
-// absent, confirming that the full skill set was not installed.
-func TestPlugin_Skills_IdempotentSpecificSkills(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
 
@@ -80,7 +37,6 @@ func TestPlugin_Skills_IdempotentSpecificSkills(t *testing.T) {
 		},
 	}
 
-	h.Install("skills", cfg)
 	h.Install("skills", cfg)
 
 	h.AssertCommand(`find "$HOME" -path "*/tdd/SKILL.md" -maxdepth 6 2>/dev/null | grep -q .`, "")

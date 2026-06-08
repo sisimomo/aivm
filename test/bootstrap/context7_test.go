@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestPlugin_Context7 verifies that the context7 plugin installs the ctx7 CLI
-// via npm and that skip_if detects the installed binary (idempotency).
+// TestPlugin_Context7 verifies that the context7 plugin installs the ctx7 CLI via npm.
 func TestPlugin_Context7(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
@@ -16,8 +15,6 @@ func TestPlugin_Context7(t *testing.T) {
 
 	h.AssertCommand("command -v ctx7", "ctx7")
 	h.AssertCommand("ctx7 --help 2>&1", "Usage")
-
-	h.AssertSkipIf("context7", nil)
 }
 
 // TestPlugin_Context7_SkillInstall verifies that the context7 plugin installs

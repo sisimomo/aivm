@@ -36,10 +36,6 @@ type IntegrationDef struct {
 	From string `yaml:"from" mapstructure:"from"`
 	// To is the agent name that must be active for this integration to run.
 	To string `yaml:"to" mapstructure:"to"`
-	// SkipIf is a shell script that determines whether the integration should
-	// be skipped. Exit code 0 = already configured, skip. If empty, the
-	// integration always runs when From/To conditions are met.
-	SkipIf string `yaml:"skip_if" mapstructure:"skip_if"`
 	// Configure is the shell script executed when all conditions are satisfied.
 	Configure string `yaml:"configure" mapstructure:"configure"`
 }
@@ -72,7 +68,7 @@ type Executor struct {
 	InstalledPlugins map[string]bool
 	// ActiveAgents is the list of agent names that are currently active.
 	ActiveAgents []string
-	// VM is used to run configure and skip_if scripts inside the VM.
+	// VM is used to run configure scripts inside the VM.
 	VM VMRunner
 	// Log receives integration output.
 	Log io.Writer
@@ -98,8 +94,8 @@ func (e *Executor) Matching() []IntegrationDef {
 	return out
 }
 
-// Run executes all matching integrations in order, skipping any whose skip_if
-// script exits 0. Returns the keys of integrations that were successfully executed.
+// Run executes all matching integrations in order.
+// Returns the keys of integrations that were successfully executed.
 func (e *Executor) Run(ctx context.Context) ([]string, error) {
 	matching := e.Matching()
 	if len(matching) == 0 {
@@ -110,17 +106,6 @@ func (e *Executor) Run(ctx context.Context) ([]string, error) {
 	for _, integ := range matching {
 		if err := ctx.Err(); err != nil {
 			return ran, err
-		}
-
-		// Check skip_if before running configure.
-		if integ.SkipIf != "" {
-			skipScript, err := renderScript(integ.SkipIf, e.TemplateVars)
-			if err != nil {
-				return ran, fmt.Errorf("integration %s: render skip_if: %w", integ.Key(), err)
-			}
-			if e.VM != nil && e.VM.Run(ctx, skipScript, nil) == nil {
-				continue // skip_if exited 0: already configured
-			}
 		}
 
 		script, err := renderScript(integ.Configure, e.TemplateVars)

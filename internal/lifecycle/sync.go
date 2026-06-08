@@ -31,11 +31,12 @@ var syncPipeline = []syncStep{
 
 // syncBootstrap is the main bootstrap entry point on every aivm invocation.
 // It reads the host-side state file (no SSH) and returns immediately when
-// nothing has changed, or triggers a full reconcile when config has changed.
+// nothing has changed, prompts to recreate when config has changed, or
+// recreates the VM when state is missing or stale.
 func (svc *LifecycleService) syncBootstrap(ctx context.Context) error {
 	state, err := loadBootstrapState(svc.Config.StateDir)
 	if err != nil {
-		svc.logger().Warn(fmt.Sprintf("could not read bootstrap state, running full bootstrap: %v", err))
+		svc.logger().Warn(fmt.Sprintf("could not read bootstrap state, will recreate VM: %v", err))
 	}
 	configHash := svc.currentConfigHash()
 	ss := &syncState{state: state, configHash: configHash}
@@ -48,8 +49,8 @@ func (svc *LifecycleService) syncBootstrap(ctx context.Context) error {
 	return nil
 }
 
-// missingOrStaleStep runs a full bootstrap when there is no state or the
-// schema version is outdated.
+// missingOrStaleStep recreates the VM when there is no state or the schema
+// version is outdated.
 type missingOrStaleStep struct{}
 
 func (s *missingOrStaleStep) applicable(ss *syncState, _ *LifecycleService) bool {
@@ -57,12 +58,13 @@ func (s *missingOrStaleStep) applicable(ss *syncState, _ *LifecycleService) bool
 }
 
 func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
-	return svc.fullBootstrap(ctx, svc.VM, false)
+	svc.logger().Warn("bootstrap state missing or outdated — recreating VM")
+	return svc.recreateVM(ctx)
 }
 
 // envChangedStep handles changes to vm.env without recreating the VM.
 // It only runs when the main config hash is unchanged — if both env and config
-// changed, configChangedStep takes over and fullBootstrap re-applies the env.
+// changed, configChangedStep takes over and bootstrap re-applies the env.
 type envChangedStep struct{}
 
 func (s *envChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {

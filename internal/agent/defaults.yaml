@@ -8,8 +8,6 @@ claude:
     - .claude/projects
   cli_command: claude
   launch_args: --dangerously-skip-permissions
-  skip_if: |
-    claude --version >/dev/null 2>&1
   setup: |
     curl -fsSL https://claude.ai/install.sh | bash
 
@@ -19,8 +17,6 @@ copilot:
     - .copilot/session-state
   cli_command: copilot
   launch_args: --yolo
-  skip_if: |
-    copilot --version >/dev/null 2>&1
   setup: |
     curl -fsSL https://gh.io/copilot-install | bash
 
@@ -34,8 +30,6 @@ cursor:
     - .cursor
   cli_command: agent
   launch_args: --yolo
-  skip_if: |
-    agent --version >/dev/null 2>&1
   setup: |
     curl https://cursor.com/install -fsS | bash
 
@@ -46,8 +40,6 @@ opencode:
   path_entries:
     - "$HOME/.opencode/bin"
   cli_command: opencode
-  skip_if: |
-    opencode --version >/dev/null 2>&1
   setup: |
     set -euo pipefail
     curl -fsSL https://opencode.ai/install | bash

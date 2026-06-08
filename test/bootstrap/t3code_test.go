@@ -34,10 +34,6 @@ func TestPlugin_T3Code(t *testing.T) {
 	// Verify t3 is actually executable.
 	h.AssertCommand("t3 --version", "")
 
-	// Verify skip_if idempotency: after a successful install the plugin must
-	// detect itself as already set up and skip re-installation.
-	h.AssertSkipIf("t3code", nil)
-
 	// Request a free port from the test framework to avoid CI collisions.
 	t3Port := framework.FreePort()
 

@@ -6,12 +6,12 @@ import "testing"
 
 // TestPlugin_Mise is a parametrized test suite that exercises the dynamic
 // mise-* plugin mechanism end-to-end inside a real Docker container.
-// Each entry installs a tool via "mise use --global <tool>@<version>", verifies
-// that the tool binary works, and confirms skip_if idempotency.
+// Each entry installs a tool via "mise use --global <tool>@<version>" and
+// verifies that the tool binary works.
 func TestPlugin_Mise(t *testing.T) {
 	tests := []struct {
 		name        string         // subtest label
-		plugin      string         // plugin name passed to Install / AssertSkipIf
+		plugin      string         // plugin name passed to Install
 		config      map[string]any // nil = use defaults (version: latest)
 		checkCmd    string         // command to run inside the container
 		wantSubstr  string         // expected substring in checkCmd output
@@ -23,7 +23,7 @@ func TestPlugin_Mise(t *testing.T) {
 		{
 			// Installs mise itself (the runtime manager) in isolation.
 			// Validates that the binary works and that the bashrc activation
-			// line is written — both conditions tested by the skip_if script.
+			// line is written.
 			name:       "mise-standalone",
 			plugin:     "mise",
 			checkCmd:   "mise --version",
@@ -76,7 +76,6 @@ func TestPlugin_Mise(t *testing.T) {
 			for _, ec := range tc.extraChecks {
 				h.AssertCommand(ec.cmd, ec.wantSubstr)
 			}
-			h.AssertSkipIf(tc.plugin, tc.config)
 		})
 	}
 }

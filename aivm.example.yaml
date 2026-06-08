@@ -95,8 +95,6 @@ idle:
 #     my-tool:
 #       description: "My custom tool"
 #       dependencies: [system]
-#       skip_if: |
-#         my-tool --version >/dev/null 2>&1
 #       setup: |
 #         curl -fsSL https://example.com/install.sh | sh
 
@@ -136,8 +134,6 @@ idle:
 # integrations:
 #   - from: my-tool
 #     to: claude
-#     skip_if: |
-#       my-tool status --agent claude >/dev/null 2>&1
 #     configure: |
 #       my-tool configure --agent claude
 
