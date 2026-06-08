@@ -33,8 +33,7 @@ import (
 // enabled in aivm.yaml, a single bootstrap run installs both of them.
 //
 // Scenario:
-//  1. Config: agents.default=claude, agents.define.claude.enable=true,
-//     agents.define.opencode.enable=true.
+//  1. Config: agents.default=claude, agents.enabled=[claude, opencode].
 //  2. aivm start — full bootstrap should install both claude and opencode.
 //  3. Both binaries are present and runnable inside the VM.
 func TestMultiAgent_BothAgentsBootstrapped(t *testing.T) {
