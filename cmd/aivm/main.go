@@ -95,7 +95,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	dockerHost := ""
 	if cfg.ComposeFile != "" {
-		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
+		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background())
 		if err != nil {
 			slog.Warn(fmt.Sprintf("Docker socket: %v", err))
 		} else {
