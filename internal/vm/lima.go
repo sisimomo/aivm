@@ -35,9 +35,6 @@ func NewLima(profile, stateDir string) *LimaVM {
 	}
 }
 
-// NewColima is a temporary compatibility alias until backend wiring is fully migrated.
-func NewColima(profile, stateDir string) *LimaVM { return NewLima(profile, stateDir) }
-
 func (l *LimaVM) Profile() string              { return l.profile }
 func (l *LimaVM) NeedsPortBindingAtBoot() bool { return false }
 

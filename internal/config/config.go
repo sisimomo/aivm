@@ -56,9 +56,9 @@ type VMConfig struct {
 	// (bare aivm and aivm ssh). Values support ${HOST_VAR} expansion from the host
 	// at session start and are not persisted (unlike vm.env).
 	SessionEnv map[string]string `mapstructure:"session_env"`
-	Name       string            `mapstructure:"name"` // VM identity (Colima profile name / Docker container name)
+	Name       string            `mapstructure:"name"` // VM identity (Lima instance name / Docker container name)
 
-	// Backend selects the VM runtime. Supported values: "colima" (default), "docker".
+	// Backend selects the VM runtime. Supported values: "lima" (default), "docker".
 	Backend string `mapstructure:"backend"`
 
 	// DockerImage is the Docker image used when backend is "docker".
@@ -299,15 +299,15 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 
 	// --- backend ---
 	switch vm.Backend {
-	case "", "colima", "docker":
+	case "", "lima", "docker":
 		// valid
 	default:
-		return fmt.Errorf("vm.backend: unsupported value %q — use \"colima\" or \"docker\"", vm.Backend)
+		return fmt.Errorf("vm.backend: unsupported value %q — use \"lima\" or \"docker\"", vm.Backend)
 	}
 
-	// --- vm name (required for colima backend) ---
-	if (vm.Backend == "" || vm.Backend == "colima") && vm.Name == "" {
-		return fmt.Errorf("vm.name: must not be empty when using the colima backend")
+	// --- vm name (required for lima backend) ---
+	if (vm.Backend == "" || vm.Backend == "lima") && vm.Name == "" {
+		return fmt.Errorf("vm.name: must not be empty when using the lima backend")
 	}
 
 	// --- docker image (required for docker backend) ---
