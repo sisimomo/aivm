@@ -36,16 +36,15 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
   - [Mounts](#mounts)
   - [Session host environment](#session-host-environment)
   - [Idle Management](#idle-management)
-  - [Plugins](#plugins)
-  - [Cocoindex Code](#cocoindex-code)
-  - [Context7](#context7)
-  - [Skills](#skills)
   - [Integrations](#integrations)
   - [Compose File](#compose-file)
   - [T3 Code GUI](#t3-code-gui)
+- [Plugins](#plugins)
+  - [Available plugins](#available-plugins)
+  - [Customize built-in plugins](#customize-built-in-plugins)
+  - [Create a custom plugin](#create-a-custom-plugin)
 - [Commands](#commands)
 - [Tool integration](#tool-integration)
-- [Built-in Plugins](#built-in-plugins)
 - [Agents](#agents)
 - [Building from Source](#building-from-source)
 - [Contributing](#contributing)
@@ -56,11 +55,11 @@ Supported agents: **Claude Code** (`claude`) · **GitHub Copilot** (`copilot`) �
 ## Requirements
 
 - **macOS** (Intel or Apple Silicon) — Linux/Windows is not supported
-- [Colima](https://github.com/abiosoft/colima) +
-- [Docker](https://docs.docker.com/desktop/install/mac-install/) for the default
-- backend, or Docker Engine/Desktop for the Docker backend
+- [Colima](https://github.com/abiosoft/colima) with
+  [Docker](https://docs.docker.com/desktop/install/mac-install/) for the default
+  `colima` backend, or Docker Engine/Desktop for the `docker` backend
 - Authentication for your chosen agent is handled **inside** the VM after first
-- launch
+  launch
 
 ## Installation
 
@@ -71,8 +70,10 @@ curl -fsSL https://raw.githubusercontent.com/sisimomo/aivm/main/install.sh | sh
 ```
 
 This downloads the latest release binary for your architecture (`darwin/amd64`
-or `darwin/arm64`), installs it to `/usr/local/bin/aivm`, and creates a default
-config at `~/.aivm/aivm.yaml`.
+or `darwin/arm64`) and installs it to `~/.local/bin/aivm` (override with
+`AIVM_INSTALL_DIR`). Copy [`aivm.example.yaml`](aivm.example.yaml) to
+`~/.aivm/aivm.yaml` on first use, or run `make install` from source to create
+it automatically.
 
 ### From source
 
@@ -211,6 +212,30 @@ vm:
 Every configured key is exported each session. Missing or empty host references
 expand to empty strings.
 
+### Persistent VM environment
+
+`vm.env` injects environment variables into the VM on bootstrap and on config
+sync. Values support `${HOST_VAR}` expansion from the host shell. Unlike
+`vm.session_env`, these are persisted in the VM and shared by every shell
+session.
+
+```yaml
+vm:
+  env:
+    CONTEXT7_API_KEY: "${CONTEXT7_API_KEY}"
+    MY_API_TOKEN: "${MY_API_TOKEN}"
+```
+
+Changes to `vm.env` are applied in place on the next `aivm` run — no VM
+recreation required.
+
+### VM type and recreation prompt
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `vm.type` | _(auto)_ | Colima hypervisor: `vz`, `qemu`, or omit for auto |
+| `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this age |
+
 ### Idle Management
 
 aivm runs an idle monitor daemon that watches session activity and automatically
@@ -218,107 +243,37 @@ tears down the VM when unused:
 
 ```yaml
 idle:
-  stop_timeout: 5m    # stop VM this long after last active session ends
-  delete_timeout: 5m  # delete the stopped VM after this additional wait
+  stop_timeout: 5m      # stop VM this long after last active session ends
+  delete_timeout: 5m    # delete the stopped VM after this additional wait
+  poll_interval: 30s    # how often the idle monitor checks session activity
 ```
 
-Set either value to `0` to disable that stage. Idle monitoring is automatically
-disabled when [T3 Code](#t3-code-gui) is enabled.
+Set `stop_timeout` or `delete_timeout` to `0` to disable that stage. Idle
+monitoring is automatically disabled when [T3 Code](#t3-code-gui) is enabled.
 
-### Plugins
-
-Plugins install toolchains inside the VM during bootstrap. They are resolved in
-dependency order and are idempotent (skipped if already installed).
-
-**mise-based tools (`mise-<tool>`):**
-
-Any tool available in the [mise registry](https://mise-versions.jdx.dev/) can be
-installed by prefixing its name with `mise-`. For example:
-
-```yaml
-plugins:
-  enabled:
-    - mise-node
-    - mise-go
-    - mise-rust
-    - mise-java
-    - mise-python
-```
-
-The tool name after the `mise-` prefix is passed directly to `mise use --global
-<tool>@<version>`. See the [mise tool
-catalog](https://mise.jdx.dev/registry.html) for valid tool names.
-
-**Override the version:**
-
-```yaml
-plugins:
-  config:
-    mise-node:
-      version: "20"
-    mise-java:
-      version: "21"
-    mise-go:
-      version: "1.22.4"
-```
-
-The default version is `latest` unless overridden.
-
-**Install multiple versions of the same tool:**
-
-Use `extra_versions` to install additional versions alongside the global one.
-The `version` entry sets the global; extra versions are installed with `mise
-install` and are available for project-level `mise.toml` files to select.
-
-```yaml
-plugins:
-  config:
-    mise-node:
-      version: "22"               # global — used when no mise.toml overrides
-      extra_versions: ["20", "18"] # also installed; pick via mise.toml in projects
-```
-
-`SkipIf` is strict: setup is skipped only when **all** configured versions are
-already present. Adding a new entry to `extra_versions` will trigger
-re-installation on the next bootstrap.
-
-**Add custom plugins or restrict the enabled set:**
-
-```yaml
-plugins:
-  enabled:
-    - system
-    - mise-node
-    - azure-cli       # your custom plugin
-
-  define:
-    rust:
-      description: "Rust toolchain via rustup"
-      dependencies: [system]
-      skip_if: |
-        rustc --version >/dev/null 2>&1
-      setup: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-```
+Plugin installation, customization, and authoring are documented in
+[Plugins](#plugins).
 
 ### Integrations
 
-Integrations run a configure script when a specific plugin is installed **and**
-a specific agent is active. Use them to wire tools into an agent's context (e.g.
-register an MCP server).
+Integrations run a `configure` shell script after bootstrap when their
+conditions are met: a specific plugin is installed (`from`) **and** a specific
+agent is active (`to`). Use them to wire tools into an agent's context (e.g.
+register an MCP server). Each integration's `skip_if` script gates re-runs.
 
 ```yaml
 integrations:
-  - from: my-tool       # plugin that must be installed
-    to: claude          # agent that must be active
+  - name: my-tool-claude   # required when from is empty; optional otherwise
+    from: my-tool          # plugin that must be installed (omit for agent-only)
+    to: claude             # agent that must be active
     skip_if: |
       my-tool status --agent claude >/dev/null 2>&1
     configure: |
       my-tool configure --agent claude
 ```
 
-Omit `from` to run the integration whenever a given agent is active, regardless
-of plugins.
+Omit `from` to run whenever the `to` agent is active, regardless of plugins
+(`name` is required in that case).
 
 ### Compose File
 
@@ -362,8 +317,10 @@ output at trace). `aivm logs monitor` tails the idle monitor daemon.
 
 ### T3 Code GUI
 
-When enabled, `aivm launch` starts the [T3 Code](https://t3.tools/) web UI
-inside the VM and port-forwards it to your host:
+When enabled, `aivm start` (or the default `aivm` command, which starts the VM
+first) launches the [T3 Code](https://t3.tools/) web UI inside the VM and
+port-forwards it to your host. The normal agent terminal still opens when you run
+`aivm` — T3 Code runs alongside it as a browser-accessible frontend.
 
 ```yaml
 t3code:
@@ -371,9 +328,12 @@ t3code:
   port: 3773   # http://localhost:3773
 ```
 
+`aivm status` shows the access URL and pairing token. The `t3code` plugin is
+auto-installed when this mode is enabled.
+
 > **Note:** `agents.default` plus at least one `agents.define.<name>.enable:
-> true` entry is still required — T3 Code is a frontend, not an agent. Idle
-> monitoring is disabled in this mode; use `aivm stop` to shut down explicitly.
+> true` entry is still required. Idle monitoring is disabled in this mode; use
+> `aivm stop` to shut down explicitly.
 
 ---
 
@@ -391,11 +351,11 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm stop` | Stop VM and services (disk preserved) |
 | `aivm restart` | Stop then start VM and services |
 | `aivm destroy` | Delete VM (volumes and `~/.aivm` host state preserved) |
-| `aivm status` | Show VM and service status |
+| `aivm recreate` | Destroy VM and re-run full bootstrap (see below) |
+| `aivm status` | Show VM, compose service, and T3 Code status |
 | `aivm ssh` | Open an interactive shell in the VM |
 | `aivm cp <src> <dst>` | Copy host ↔ VM files (`vm:` prefix for VM paths) |
 | `aivm logs [component]` | Tail logs (`aivm` · `monitor`; default `aivm`) |
-| `aivm rebuild-image` | Rebuild base VM image via full bootstrap |
 | `aivm version` | Print version |
 
 **Global flags:**
@@ -453,16 +413,24 @@ With `AIVM_LOG_LEVEL=error`, progress steps are hidden so the tool sees mostly
 agent output. Cold VM start can take one to two minutes with little output until
 the agent runs or an error is reported.
 
-### `aivm rebuild-image`
+### `aivm recreate`
 
-Re-runs the full bootstrap process on a clean blank VM, unconditionally
+Destroys the current VM and re-runs full bootstrap on a fresh one, unconditionally
 installing all plugins. Useful after adding new plugins or when the image has
 drifted.
 
 ```bash
-aivm rebuild-image          # prompts if active sessions exist
-aivm rebuild-image --force  # stop active sessions without prompting
+aivm recreate          # prompts if active sessions exist
+aivm recreate --force  # stop active sessions without prompting
 ```
+
+**Environment overrides:**
+
+| Variable | Description |
+| --- | --- |
+| `AIVM_LOG_LEVEL` | Same values as `--log-level` |
+| `AIVM_STATE_DIR` | Override `~/.aivm` state directory |
+| `AIVM_INSTALL_DIR` | Install destination for `install.sh` / `make install` |
 
 ### `aivm cp`
 
@@ -485,67 +453,84 @@ aivm cp -rf ./local/dir/ vm:/home/user/dir/      # copy directory to VM, overwri
 
 ---
 
-## Built-in Plugins
+## Plugins
 
-Built-in plugins (all idempotent, resolved in dependency order):
+Plugins install software in the VM during bootstrap. Enable them in `aivm.yaml`:
 
-| Plugin | Description |
-| --- | --- |
-| `system` | Base packages via apt (`git`, `curl`, `jq`, etc.) |
-| `mise` | [mise-en-place](https://mise.jdx.dev/) — universal runtime version manager |
-| `awscli` | AWS CLI v2 |
-| `cocoindex-code` | [Cocoindex Code](https://github.com/cocoindex-io/cocoindex-code) — AST-based semantic code search MCP server |
-| `context7` | [Context7](https://context7.com) — up-to-date library documentation via find-docs skill |
-| `skills` | Install agent skills via [`npx skills@latest`](https://github.com/vercel-labs/skills) (opt-in, disabled by default) |
-| `t3code` | T3 Code web GUI (installed when `t3code.enable: true`) |
+```yaml
+plugins:
+  enabled:
+    - system        # on by default
+    - mise-node
+    - awscli
+```
 
-**`mise-<tool>` — dynamic tool plugins:**
+Dependencies install automatically — if you enable `cocoindex-code`, aivm also
+installs `mise-uv`, `mise`, and `system` without you listing them.
 
-Any tool in the [mise registry](https://mise-versions.jdx.dev/) is available as
-`mise-<tool>`:
+### Available plugins
 
-| Example | Installs |
+Only `system` is enabled by default. Everything else is opt-in under
+`plugins.enabled`, except `t3code` which is added when `t3code.enable: true`.
+
+| Plugin | Installs | How to enable |
+| --- | --- | --- |
+| `system` | apt: `git`, `curl`, `jq`, compilers, … | Default |
+| `mise` | [mise](https://mise.jdx.dev/) version manager | Auto (via `mise-*`) |
+| `mise-<tool>` | Any [mise registry](https://mise.jdx.dev/registry.html) tool | `plugins.enabled` |
+| `awscli` | AWS CLI v2 | `plugins.enabled` |
+| `cocoindex-code` | `ccc` CLI + semantic search skill | `plugins.enabled` |
+| `context7` | `ctx7` CLI + `find-docs` skill | `plugins.enabled` |
+| `skills` | Community skills from GitHub repos | `plugins.enabled` |
+| `t3code` | [T3 Code](https://t3.tools/) web GUI | `t3code.enable: true` |
+
+#### `system`
+
+Base VM packages via `apt-get`. Required by nearly every other plugin.
+
+#### `mise` and `mise-<tool>`
+
+`mise` installs the mise runtime. `mise-<tool>` is a family of plugins — one per
+tool in the mise registry. aivm runs `mise use --global <tool>@<version>`.
+
+| Plugin | Tool |
 | --- | --- |
 | `mise-node` | Node.js |
-| `mise-go` | Go |
-| `mise-java` | Java (Temurin by default) |
-| `mise-rust` | Rust |
 | `mise-python` | Python |
-| `mise-maven` | Apache Maven |
+| `mise-uv` | uv |
+| `mise-go` | Go |
+| `mise-java` | Java (Temurin) |
+| `mise-rust` | Rust |
+| `mise-maven` | Maven |
 | `mise-gradle` | Gradle |
-| `mise-terraform` | HashiCorp Terraform |
+| `mise-terraform` | Terraform |
 | `mise-helm` | Helm |
 
-See the full [mise tool catalog](https://mise.jdx.dev/registry.html#tools) for
-all available tool names.
+```yaml
+plugins:
+  enabled:
+    - mise-node
+    - mise-go
+```
 
-**Config keys for `mise-<tool>` plugins:**
+Pin versions under `plugins.config` — see
+[Customize built-in plugins](#customize-built-in-plugins).
 
-| Key | Type | Default | Description |
-| --- | --- | --- | --- |
-| `version` | string | `"latest"` | Global version via `mise use --global` |
-| `extra_versions` | list | `[]` | Extra versions via `mise install` |
+#### `awscli`
 
-Enabled agent plugins are registered automatically based on
-`agents.define.<name>.enable: true`:
+Installs AWS CLI v2 with the official architecture-aware installer.
 
-| Agent plugin | Description |
-| --- | --- |
-| `claude` | Claude Code CLI (depends on `mise-node`) |
-| `copilot` | GitHub Copilot CLI |
-| `cursor` | Cursor Agent CLI (depends on `system`) |
-| `opencode` | OpenCode CLI (depends on `system`) |
+```yaml
+plugins:
+  enabled:
+    - awscli
+```
 
----
+#### `cocoindex-code`
 
-## Cocoindex Code
-
-[Cocoindex Code](https://github.com/cocoindex-io/cocoindex-code) is an AST-based
-semantic code search tool that exposes a `search` MCP tool to your AI agent.
-When enabled, aivm installs `ccc` in the VM and automatically wires it as an MCP
-server for every active agent.
-
-Add `cocoindex-code` to `plugins.enabled`:
+[Cocoindex Code](https://github.com/cocoindex-io/cocoindex-code) — AST-based
+semantic code search (`ccc` CLI). Installs local embeddings by default (no API
+key).
 
 ```yaml
 plugins:
@@ -553,20 +538,62 @@ plugins:
     - cocoindex-code
 ```
 
-That's it. aivm installs the `full` variant by default — local
-[Snowflake/snowflake-arctic-embed-xs](https://huggingface.co/Snowflake/snowflake-arctic-embed-xs)
-embeddings, no API key required.
+#### `context7`
 
-### Cloud embedding provider
+[Context7](https://context7.com) — up-to-date library docs (`ctx7` CLI +
+`find-docs` skill). No API key required; set `CONTEXT7_API_KEY` in `vm.env` for
+higher rate limits.
 
-To use a cloud provider instead, set `variant: slim` and supply a `config:`
-block. Its contents are written verbatim as
-`~/.cocoindex_code/global_settings.yml` inside the VM — see [cocoindex-code's
-global settings
-docs](https://github.com/cocoindex-io/cocoindex-code#user-settings-cocoindex_codeglobal_settingsyml)
-and [embedding model
-reference](https://github.com/cocoindex-io/cocoindex-code#embedding-models) for
-all supported keys and providers:
+```yaml
+plugins:
+  enabled:
+    - context7
+```
+
+#### `skills`
+
+Installs agent skills from public GitHub repos via the
+[skills CLI](https://github.com/vercel-labs/skills). Requires a `sources` list
+under `plugins.config` — see
+[Customize built-in plugins](#customize-built-in-plugins).
+
+```yaml
+plugins:
+  enabled:
+    - skills
+```
+
+#### `t3code`
+
+Installs the T3 Code npm package. Auto-enabled when `t3code.enable: true`.
+Started by `aivm start` — see [T3 Code GUI](#t3-code-gui).
+
+### Customize built-in plugins
+
+Tune shipped plugins via `plugins.config` (settings) or `plugins.define`
+(override install scripts). After changing `setup` or `skip_if`, run
+`aivm recreate`.
+
+#### Settings with `plugins.config`
+
+Values are passed to the plugin's setup script.
+
+**`mise-<tool>` — pin versions**
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `version` | `"latest"` | Global version (`mise use --global`) |
+| `extra_versions` | `[]` | Extra versions via `mise install` |
+
+```yaml
+plugins:
+  config:
+    mise-node:
+      version: "22"
+      extra_versions: ["20", "18"]
+```
+
+**`cocoindex-code` — install variant**
 
 ```yaml
 plugins:
@@ -574,69 +601,15 @@ plugins:
     - cocoindex-code
   config:
     cocoindex-code:
-      variant: slim
-      config:
+      variant: slim          # default: full (local embeddings)
+      config:                # ~/.cocoindex_code/global_settings.yml
         embedding:
           model: voyage/voyage-code-3
         envs:
           VOYAGE_API_KEY: your-api-key
 ```
 
-### MCP auto-wiring
-
-When `cocoindex-code` is installed and an agent is active, aivm runs the
-appropriate integration at bootstrap time:
-
-| Agent | Integration |
-| --- | --- |
-| `claude` | `claude mcp add cocoindex-code -- ccc mcp` |
-| `copilot` | Patches `~/.copilot/mcp-config.json` |
-| `opencode` | Patches `~/.config/opencode/opencode.json` |
-
-Each integration is idempotent — it is skipped if the MCP server is already
-registered.
-
----
-
-## Context7
-
-[Context7](https://context7.com) provides up-to-date library documentation for
-AI coding agents. When enabled, aivm installs the `ctx7` CLI and the `find-docs`
-skill for every supported agent via `npx skills@latest`.
-
-Add `context7` to `plugins.enabled`:
-
-```yaml
-plugins:
-  enabled:
-    - context7
-```
-
-No API key required — `ctx7 library` and `ctx7 docs` work without
-authentication. For higher rate limits, set `CONTEXT7_API_KEY` via `vm.env`
-(supports `${HOST_VAR}` expansion from your host shell):
-
-```yaml
-plugins:
-  enabled:
-    - context7
-
-vm:
-  env:
-    CONTEXT7_API_KEY: "${CONTEXT7_API_KEY}"
-```
-
----
-
-## Skills
-
-The `skills` plugin integrates with the [skills
-CLI](https://github.com/vercel-labs/skills) — an open ecosystem tool that
-installs community-published agent skills (SKILL.md files) from any public
-GitHub repository into your AI agent's skills directory.
-
-The plugin is **disabled by default**. Enable it by adding `skills` to
-`plugins.enabled` and listing the open-source skill repositories you want:
+**`skills` — choose repositories**
 
 ```yaml
 plugins:
@@ -645,40 +618,138 @@ plugins:
   config:
     skills:
       sources:
-        - repo: mattpocock/skills
-```
-
-This runs `npx skills@latest add mattpocock/skills --global --all` inside the
-VM, installing every skill from the repository for all configured agents into
-`~/<agent>/skills/`.
-
-To install only specific skills from a repository, provide an explicit `skills`
-list:
-
-```yaml
-plugins:
-  config:
-    skills:
-      sources:
-        - repo: mattpocock/skills
-          skills: [tdd, grill-me]
-```
-
-Multiple sources are supported — each entry is resolved independently:
-
-```yaml
-plugins:
-  config:
-    skills:
-      sources:
-        - repo: mattpocock/skills          # all skills from this repo
+        - repo: mattpocock/skills          # all skills (--all)
         - repo: another-author/skills
-          skills: [tdd]                    # only tdd from this repo
+          skills: [tdd, grill-me]          # named skills only
 ```
+
+**`context7`**
+
+No plugin config keys — use `vm.env` for `CONTEXT7_API_KEY`.
+
+#### Override install scripts with `plugins.define`
+
+Merge into a built-in plugin field-by-field. Non-empty fields replace the
+built-in value.
+
+```yaml
+plugins:
+  define:
+    awscli:
+      setup: |
+        ARCH=$(uname -m)
+        curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" \
+          -o /tmp/awscliv2.zip
+        unzip -q /tmp/awscliv2.zip -d /tmp/awscliv2
+        sudo /tmp/awscliv2/aws/install --update
+```
+
+| Field | Purpose |
+| --- | --- |
+| `description` | Label shown in bootstrap logs |
+| `dependencies` | Plugins installed first |
+| `path_entries` | Directories added to VM `PATH` |
+| `defaults` | Default values merged with `plugins.config` |
+| `agents` | Limit plugin to specific agents |
+| `skip_if` | Exit 0 = already installed, skip setup |
+| `setup` | Install script |
+
+### Create a custom plugin
+
+Define a new plugin in `plugins.define` and list it in `plugins.enabled`.
+
+```yaml
+plugins:
+  enabled:
+    - my-tool
+
+  define:
+    my-tool:
+      description: "My custom tool"
+      dependencies: [system]
+      path_entries:
+        - "$HOME/.local/bin"
+      skip_if: |
+        command -v my-tool >/dev/null 2>&1
+      setup: |
+        curl -fsSL https://example.com/install.sh | bash
+```
+
+#### Schema
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `description` | Recommended | Label in bootstrap logs |
+| `setup` | Yes | Shell script run when not skipped |
+| `skip_if` | Recommended | Exit 0 = already installed |
+| `dependencies` | No | Plugins to install first |
+| `path_entries` | No | Directories added to VM `PATH` |
+| `defaults` | No | Default `plugins.config` values |
+| `agents` | No | Restrict to specific agents |
+
+#### Config-driven installs
+
+`setup` and `skip_if` support [Go templates](https://pkg.go.dev/text/template).
+Values from `plugins.config.<name>` are available as template fields:
+
+```yaml
+plugins:
+  enabled:
+    - my-tool
+  config:
+    my-tool:
+      version: "3.2.1"
+  define:
+    my-tool:
+      dependencies: [system]
+      skip_if: |
+        my-tool --version 2>/dev/null | grep -q "{{ .version }}"
+      setup: |
+        curl -fsSL "https://example.com/my-tool-{{ .version }}.tar.gz" \
+          | tar -xz -C "$HOME/.local"
+```
+
+| Template | Source |
+| --- | --- |
+| `.version`, `.repo`, … | `plugins.config` merged with `defaults` |
+| `.state_dir` | aivm state directory (auto-injected) |
+| `toYAML` | Serialize a value to YAML |
+| `b64enc` | Base64-encode for safe shell embedding |
+
+Run `aivm recreate` and verify with `aivm ssh`.
 
 ---
 
 ## Agents
+
+Agents are the AI coding CLIs that aivm launches inside the VM. Configure them
+under `agents` in `aivm.yaml`.
+
+All agents with `enable: true` are installed during bootstrap, so you can switch
+between them with `--agent` without rebuilding the VM. If only one agent is
+enabled, `agents.default` is inferred automatically.
+
+Built-in agent definitions live in
+[`internal/agent/defaults.yaml`](internal/agent/defaults.yaml).
+
+### Customizing agents
+
+| Field | Purpose |
+| --- | --- |
+| `enable` | Install this agent in the VM and allow launching it |
+| `cli_command` | Binary invoked in the VM |
+| `launch_args` | Flags appended by bare `aivm` (not `aivm agent --`) |
+| `skip_if` / `setup` | Override the agent's install script |
+| `dependencies` | Plugins/toolchains required before install |
+| `path_entries` | Directories added to VM `PATH` |
+
+```yaml
+agents:
+  define:
+    claude:
+      enable: true
+      launch_args: "--dangerously-skip-permissions --model opus"
+```
 
 ### Claude Code
 
@@ -788,7 +859,7 @@ cd aivm
 # Build binary to bin/aivm
 make build
 
-# Install to /usr/local/bin/aivm
+# Install to ~/.local/bin/aivm (override with AIVM_INSTALL_DIR)
 make install
 
 # Run unit tests

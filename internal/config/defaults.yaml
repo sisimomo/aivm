@@ -20,9 +20,6 @@ idle:
 plugins:
   enabled:
     - system
-    - mise-node
-    - mise-python
-    - mise-uv
 
 log_level: info
 
