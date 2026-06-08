@@ -21,9 +21,6 @@ type Def struct {
 	// Persist lists host-relative subdirectory paths (relative to state_dir) that
 	// should be created on the host and mounted read-write into the VM for persistence.
 	Persist []string `yaml:"persist" mapstructure:"persist"`
-	// Enable controls whether this agent is bootstrapped in the VM at startup.
-	// Set to true in agents.define.<name> to activate.
-	Enable bool `yaml:"enable" mapstructure:"enable"`
 }
 
 // ToPluginDef converts this agent definition into a plugin.PluginDef so it
@@ -64,9 +61,6 @@ func MergeDef(base, override Def) Def {
 	}
 	if len(override.Persist) > 0 {
 		result.Persist = override.Persist
-	}
-	if override.Enable {
-		result.Enable = true
 	}
 	return result
 }

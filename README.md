@@ -99,7 +99,7 @@ aivm version
    nano ~/.aivm/aivm.yaml
    ```
 
-   Set `agents.default` and enable one or more entries under `agents.define`.
+   Set `agents.enabled` and optionally `agents.default`.
    Keep `vm.backend: colima` for the default setup, or set `vm.backend: docker`
    and `vm.docker_image` to run on Docker directly.
 
@@ -124,10 +124,8 @@ Use [`aivm.example.yaml`](aivm.example.yaml) as a reference.
 ```yaml
 # Which built-in agent to launch (claude | copilot | cursor | opencode)
 agents:
-  default: claude
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 
 vm:
   cpus: 4
@@ -331,9 +329,9 @@ t3code:
 `aivm status` shows the access URL and pairing token. The `t3code` plugin is
 auto-installed when this mode is enabled.
 
-> **Note:** `agents.default` plus at least one `agents.define.<name>.enable:
-> true` entry is still required. Idle monitoring is disabled in this mode; use
-> `aivm stop` to shut down explicitly.
+> **Note:** At least one entry in `agents.enabled` is required; `agents.default`
+> is inferred automatically when only one agent is enabled. Idle monitoring is
+> disabled in this mode; use `aivm stop` to shut down explicitly.
 
 ---
 
@@ -725,9 +723,10 @@ Run `aivm recreate` and verify with `aivm ssh`.
 Agents are the AI coding CLIs that aivm launches inside the VM. Configure them
 under `agents` in `aivm.yaml`.
 
-All agents with `enable: true` are installed during bootstrap, so you can switch
-between them with `--agent` without rebuilding the VM. If only one agent is
-enabled, `agents.default` is inferred automatically.
+All agents listed in `agents.enabled` are installed during bootstrap, so you can
+switch between them with `--agent` without rebuilding the VM. If only one agent
+is enabled, `agents.default` is inferred automatically. Enabled agent plugins are
+registered automatically based on `agents.enabled`.
 
 Built-in agent definitions live in
 [`internal/agent/defaults.yaml`](internal/agent/defaults.yaml).
@@ -736,7 +735,6 @@ Built-in agent definitions live in
 
 | Field | Purpose |
 | --- | --- |
-| `enable` | Install this agent in the VM and allow launching it |
 | `cli_command` | Binary invoked in the VM |
 | `launch_args` | Flags appended by bare `aivm` (not `aivm agent --`) |
 | `skip_if` / `setup` | Override the agent's install script |
@@ -745,9 +743,10 @@ Built-in agent definitions live in
 
 ```yaml
 agents:
+  enabled:
+    - claude
   define:
     claude:
-      enable: true
       launch_args: "--dangerously-skip-permissions --model opus"
 ```
 
@@ -756,9 +755,8 @@ agents:
 ```yaml
 agents:
   default: claude
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 ```
 
 SSH in the VM and runs `claude --dangerously-skip-permissions`. Claude's project
@@ -776,9 +774,8 @@ claude auth
 ```yaml
 agents:
   default: copilot
-  define:
-    copilot:
-      enable: true
+  enabled:
+    - copilot
 ```
 
 SSH in the VM and runs `copilot --yolo`. Session state is persisted to
@@ -796,9 +793,8 @@ gh auth login
 ```yaml
 agents:
   default: cursor
-  define:
-    cursor:
-      enable: true
+  enabled:
+    - cursor
 ```
 
 SSH in the VM and runs `agent`. aivm installs Cursor with the upstream `curl
@@ -817,9 +813,8 @@ agent login
 ```yaml
 agents:
   default: opencode
-  define:
-    opencode:
-      enable: true
+  enabled:
+    - opencode
 ```
 
 SSH in the VM and runs `opencode`. The binary is installed with the upstream

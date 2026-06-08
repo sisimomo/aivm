@@ -59,7 +59,7 @@ type CompositionResult struct {
 	ActiveAgentDef agent.Def
 
 	// EnabledAgentDefs is the effective set of agent definitions for ALL enabled
-	// agents (those with enable: true in agents.define). Used by bootstrap and
+	// agents (those listed in agents.enabled). Used by bootstrap and
 	// persist-dir mounting to set up every enabled agent in the VM.
 	EnabledAgentDefs map[string]agent.Def
 
@@ -67,6 +67,13 @@ type CompositionResult struct {
 	// built-in defaults, agent definitions, and user overrides. Used for config
 	// hash computation.
 	PluginDefs map[string]plugin.PluginDef
+
+	// DefaultAgent is the resolved default agent name (explicit or auto-inferred).
+	DefaultAgent string
+
+	// CustomAgentDefs holds merged definitions for enabled agents not in the
+	// built-in registry. main registers generic providers from these after compose.
+	CustomAgentDefs map[string]agent.Def
 
 	// Integrations is the complete list of integrations (built-in + config overrides).
 	Integrations []integration.IntegrationDef
@@ -89,23 +96,11 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	if len(enabledAgentNames) == 0 {
 		return nil, &CompositionError{
 			Stage: "load_config",
-			Reason: "no agents enabled — add at least one agent to agents.define with enable: true in aivm.yaml\n" +
+			Reason: "no agents enabled — add at least one agent to agents.enabled in aivm.yaml\n" +
 				"  Example:\n" +
 				"    agents:\n" +
-				"      default: claude\n" +
-				"      define:\n" +
-				"        claude:\n" +
-				"          enable: true",
-		}
-	}
-
-	// Validate that all enabled agents are known providers.
-	for _, name := range enabledAgentNames {
-		if _, ok := agents.Get(name); !ok {
-			return nil, &CompositionError{
-				Stage:  "load_config",
-				Reason: fmt.Sprintf("unknown agent %q in agents.define — check your aivm.yaml", name),
-			}
+				"      enabled:\n" +
+				"        - claude",
 		}
 	}
 
@@ -133,11 +128,9 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	if !defaultEnabled {
 		return nil, &CompositionError{
 			Stage:  "load_config",
-			Reason: fmt.Sprintf("agents.default %q is not enabled — add it to agents.define with enable: true in aivm.yaml", defaultAgentName),
+			Reason: fmt.Sprintf("agents.default %q is not in agents.enabled", defaultAgentName),
 		}
 	}
-
-	defaultProv, _ := agents.Get(defaultAgentName)
 
 	// Load built-in agent definitions.
 	agentDefs, err := agent.LoadDefs()
@@ -155,16 +148,28 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	}
 
 	enabledAgentDefs := make(map[string]agent.Def, len(enabledAgentNames))
+	customAgentDefs := make(map[string]agent.Def)
 	for _, name := range enabledAgentNames {
 		def := agentDefs[name]
 		if def.CLICommand == "" {
+			if _, ok := agents.Get(name); !ok {
+				return nil, &CompositionError{
+					Stage:  "load_config",
+					Reason: fmt.Sprintf("unknown agent %q in agents.enabled — check your aivm.yaml", name),
+				}
+			}
 			return nil, &CompositionError{
 				Stage:  "merge_agents",
-				Reason: fmt.Sprintf("agent %q: cli_command must be set in agents.define or built-in defaults", name),
+				Reason: fmt.Sprintf("agent %q: cli_command must be set in agents.define", name),
 			}
+		}
+		if _, ok := agents.Get(name); !ok {
+			customAgentDefs[name] = def
 		}
 		enabledAgentDefs[name] = def
 	}
+
+	defaultProv, _ := agents.Get(defaultAgentName)
 
 	activeAgentDef := agentDefs[defaultAgentName]
 
@@ -231,6 +236,8 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		ActiveProvider:   defaultProv,
 		ActiveAgentDef:   activeAgentDef,
 		EnabledAgentDefs: enabledAgentDefs,
+		DefaultAgent:     defaultAgentName,
+		CustomAgentDefs:  customAgentDefs,
 		PluginDefs:       pluginDefs,
 		Integrations:     integDefs,
 	}, nil

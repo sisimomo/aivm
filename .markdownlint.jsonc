@@ -1,5 +1,8 @@
 {
   // Official markdownlint defaults — all rules enabled with standard settings.
   // https://github.com/DavidAnson/markdownlint/blob/main/schema/.markdownlint.jsonc
-  "default": true
+  "default": true,
+  "MD013": {
+    "tables": false
+  }
 }

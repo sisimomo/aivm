@@ -57,8 +57,8 @@ type testConfig struct {
 
 	// Plugins is the list of plugins.enabled entries.
 	Plugins []string
-	// ExtraEnabledAgents contains additional agent names to mark as enabled
-	// alongside Provider. All named agents are installed during bootstrap.
+	// ExtraEnabledAgents contains additional agent names to include in
+	// agents.enabled. All named agents are installed during bootstrap.
 	ExtraEnabledAgents []string
 	// PreserveCLIAgents lists enabled agents that keep built-in cli_command and
 	// launch_args (no non-interactive test wrapper). Use for aivm agent -- passthrough.
@@ -291,10 +291,6 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	fmt.Fprintf(&sb, "  poll_interval: %q\n", tc.PollInterval.String())
 
 	// ── agents ────────────────────────────────────────────────────────────
-	// cli_command and launch_args are overridden for tests — setup and skip_if
-	// come from defaults.yaml (real curl-based install scripts).
-	// Provider and any ExtraEnabledAgents are marked enable: true so all
-	// configured agents are bootstrapped in the VM.
 	extraEnabled := make(map[string]bool, len(tc.ExtraEnabledAgents))
 	for _, name := range tc.ExtraEnabledAgents {
 		extraEnabled[name] = true
@@ -303,27 +299,62 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	for _, name := range tc.PreserveCLIAgents {
 		preserveCLI[name] = true
 	}
+
+	enabledSet := make(map[string]struct{})
+	if tc.Provider != "" {
+		enabledSet[tc.Provider] = struct{}{}
+	}
+	for _, name := range tc.ExtraEnabledAgents {
+		if name == "" {
+			continue
+		}
+		enabledSet[name] = struct{}{}
+	}
+	enabledAgents := make([]string, 0, len(enabledSet))
+	for name := range enabledSet {
+		enabledAgents = append(enabledAgents, name)
+	}
+	sort.Strings(enabledAgents)
+
 	fmt.Fprintf(&sb, "agents:\n")
 	fmt.Fprintf(&sb, "  default: %q\n", tc.Provider)
-	fmt.Fprintf(&sb, "  define:\n")
+	fmt.Fprintf(&sb, "  enabled:\n")
+	for _, name := range enabledAgents {
+		fmt.Fprintf(&sb, "    - %q\n", name)
+	}
+
+	var overrideAgents []string
 	for _, name := range []string{"claude", "copilot", "cursor", "opencode"} {
-		fmt.Fprintf(&sb, "    %s:\n", name)
-		enabled := name == tc.Provider || extraEnabled[name]
-		if enabled {
-			fmt.Fprintf(&sb, "      enable: true\n")
+		if !extraEnabled[name] && name != tc.Provider {
+			continue
 		}
-		if !enabled || preserveCLI[name] {
+		if preserveCLI[name] {
 			continue
 		}
 		cliCmd, launchArgs := agentLaunchFields(name, "")
 		if tc.LaunchCommand != "" && name == tc.Provider {
 			cliCmd, launchArgs = agentLaunchFields(name, tc.LaunchCommand)
 		}
-		if cliCmd != "" {
-			fmt.Fprintf(&sb, "      cli_command: %q\n", cliCmd)
+		if cliCmd == "" && launchArgs == "" {
+			continue
 		}
-		if launchArgs != "" {
-			fmt.Fprintf(&sb, "      launch_args: %q\n", launchArgs)
+		overrideAgents = append(overrideAgents, name)
+	}
+	if len(overrideAgents) > 0 {
+		sort.Strings(overrideAgents)
+		fmt.Fprintf(&sb, "  define:\n")
+		for _, name := range overrideAgents {
+			fmt.Fprintf(&sb, "    %s:\n", name)
+			cliCmd, launchArgs := agentLaunchFields(name, "")
+			if tc.LaunchCommand != "" && name == tc.Provider {
+				cliCmd, launchArgs = agentLaunchFields(name, tc.LaunchCommand)
+			}
+			if cliCmd != "" {
+				fmt.Fprintf(&sb, "      cli_command: %q\n", cliCmd)
+			}
+			if launchArgs != "" {
+				fmt.Fprintf(&sb, "      launch_args: %q\n", launchArgs)
+			}
 		}
 	}
 

@@ -8,13 +8,10 @@ vm:
 
 agents:
   default: opencode
-  define:
-    claude:
-      enable: true
-    copilot:
-      enable: true
-    opencode:
-      enable: true
+  enabled:
+    - claude
+    - copilot
+    - opencode
 
 t3code:
   enable: true

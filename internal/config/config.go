@@ -103,6 +103,8 @@ type IdleConfig struct {
 type AgentsConfig struct {
 	// Default is the name of the agent launched when aivm is run without --agent.
 	Default string `mapstructure:"default"`
+	// Enabled lists agent names that are active in this config.
+	Enabled []string `mapstructure:"enabled"`
 	// Define holds per-agent overrides keyed by agent name.
 	Define map[string]AgentDefine `mapstructure:"define"`
 }
@@ -114,17 +116,6 @@ type AgentDefine agent.Def
 // ApplyTo merges this override into base using the same precedence rules as agent.MergeDef.
 func (d AgentDefine) ApplyTo(base agent.Def) agent.Def {
 	return agent.MergeDef(base, agent.Def(d))
-}
-
-func (c AgentsConfig) activeNames() []string {
-	var names []string
-	for name, def := range c.Define {
-		if def.Enable {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	return names
 }
 
 type PluginsConfig struct {
@@ -151,9 +142,19 @@ func ResolveStateDir(d Defaults) string {
 	return stateDir
 }
 
-// ActiveAgents returns the names of all agents with enable: true in agents.define.
+// ActiveAgents returns the deduplicated, sorted names from agents.enabled.
 func (c *Config) ActiveAgents() []string {
-	return c.Agents.activeNames()
+	seen := make(map[string]bool, len(c.Agents.Enabled))
+	names := make([]string, 0, len(c.Agents.Enabled))
+	for _, name := range c.Agents.Enabled {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (c *Config) DefaultAgent() string {

@@ -71,6 +71,14 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		return nil, err
 	}
 
+	for name, def := range compResult.CustomAgentDefs {
+		agentReg.Register(generic.NewFromDef(name, def))
+	}
+	activeProv := compResult.ActiveProvider
+	if activeProv == nil {
+		activeProv, _ = agentReg.Get(compResult.DefaultAgent)
+	}
+
 	cfg := compResult.Config
 
 	if err := cli.ApplyLogLevel(cfg.LogLevel); err != nil {
@@ -147,7 +155,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 			Monitor:          mon,
 			Registry:         compResult.Plugins,
 			Agents:           compResult.Agents,
-			Provider:         compResult.ActiveProvider,
+			Provider:         activeProv,
 			EnabledProviders: enabledProviders,
 			AgentDefs:        compResult.EnabledAgentDefs,
 			PluginDefs:       compResult.PluginDefs,

@@ -1,5 +1,4 @@
 claude:
-  enable: false
   description: "Claude Code (Anthropic)"
   dependencies:
     - mise-node
@@ -15,7 +14,6 @@ claude:
     curl -fsSL https://claude.ai/install.sh | bash
 
 copilot:
-  enable: false
   description: "GitHub Copilot CLI (copilot cli)"
   persist:
     - .copilot/session-state
@@ -27,7 +25,6 @@ copilot:
     curl -fsSL https://gh.io/copilot-install | bash
 
 cursor:
-  enable: false
   description: "Cursor Agent CLI"
   dependencies:
     - system
@@ -43,7 +40,6 @@ cursor:
     curl https://cursor.com/install -fsS | bash
 
 opencode:
-  enable: false
   description: "OpenCode CLI"
   dependencies:
     - system

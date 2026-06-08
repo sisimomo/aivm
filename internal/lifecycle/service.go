@@ -50,8 +50,8 @@ type LifecycleService struct {
 	// Used for hash/state comparison and as the launch target when no --agent
 	// override is given.
 	Provider agent.Provider
-	// EnabledProviders is the list of all enabled agent providers (those with
-	// enable: true in agents.define). Used by bootstrap to install all agents
+	// EnabledProviders is the list of all enabled agent providers (those listed in
+	// agents.enabled). Used by bootstrap to install all agents
 	// and by Launch to validate --agent overrides.
 	EnabledProviders []agent.Provider
 	// Integrations is the complete list of integrations to evaluate during bootstrap.

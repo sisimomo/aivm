@@ -8,21 +8,16 @@
 #
 # To enable a single agent:
 agents:
-  default: claude
-  define:
-    claude:
-      enable: true
+  enabled:
+    - claude
 
 # To enable multiple agents (all installed; choose default and override with --agent):
 # agents:
+#   enabled:
+#     - claude
+#     - copilot
+#     - cursor
 #   default: claude
-#   define:
-#     claude:
-#       enable: true
-#     copilot:
-#       enable: true
-#     cursor:
-#       enable: true
 
 # VM resources — tune to your machine.
 vm:
@@ -55,7 +50,7 @@ idle:
 
 # Override an agent's CLI (cli_command), interactive flags (launch_args), or install steps.
 # launch_args apply only to `aivm`; use `aivm agent -- <args>` to pass flags verbatim.
-# (These can be added under agents.define alongside enable: true.)
+# (These can be added under agents.define.)
 # agents:
 #   define:
 #     copilot:
