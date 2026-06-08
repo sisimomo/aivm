@@ -13,18 +13,21 @@ import (
 	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
-// colimaSSHEndpoint returns the scp/ssh config file path and the SSH hostname
-// for a given Colima profile. These are written by colima/lima at VM creation
-// time and consumed by scp/ssh directly (bypassing the `colima ssh` wrapper).
-func colimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
+// LimaSSHEndpoint returns the ssh/scp config file path and SSH hostname for a
+// Lima instance. Written by limactl at VM creation time.
+func LimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
 	home, _ := os.UserHomeDir()
-	colimaHome := os.Getenv("COLIMA_HOME")
-	if colimaHome == "" {
-		colimaHome = filepath.Join(home, ".colima")
+	limaHome := os.Getenv("LIMA_HOME")
+	if limaHome == "" {
+		limaHome = filepath.Join(home, ".lima")
 	}
-	sshConfig = filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
-	sshHost = "lima-colima-" + profile
+	sshConfig = filepath.Join(limaHome, profile, "ssh.config")
+	sshHost = "lima-" + profile
 	return
+}
+
+func colimaSSHEndpoint(profile string) (string, string) {
+	return LimaSSHEndpoint(profile)
 }
 
 // SSHScriptWithEnv prepends export statements so session variables are visible
@@ -125,7 +128,7 @@ func quietSSHLine(line []byte) bool {
 func InteractiveSSH(ctx context.Context, profile string, env map[string]string, script string) error {
 	bashCmd := "bash -lc " + ShellEscape(SSHScriptWithEnv(env, script))
 
-	sshConfig, sshHost := colimaSSHEndpoint(profile)
+	sshConfig, sshHost := LimaSSHEndpoint(profile)
 
 	// colima ssh -- CMD runs without a PTY; TUI apps need one, so use ssh -t directly
 	// with the SSH config file that colima/lima writes.
