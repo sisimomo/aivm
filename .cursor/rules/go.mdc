@@ -1,0 +1,12 @@
+---
+description: Enforce go fmt and golangci-lint when generating or updating Go code
+globs: "**/*.go"
+---
+# Go Formatting and Linting
+
+- We use `go fmt` for all Go code formatting.
+- We use `golangci-lint` (v2.11.2, same as CI) for static analysis.
+- **Always run these commands after editing Go files:**
+  1. `go fmt <edited files>` (one path per file you changed, e.g. `go fmt internal/foo/bar.go`)
+  2. `golangci-lint run <edited files>` (e.g. `golangci-lint run internal/foo/bar.go`)
+- Ensure any generated or modified Go code is formatted and passes lint before finishing. Do not disable or bypass standard formatting or lint rules.
