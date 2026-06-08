@@ -68,6 +68,13 @@ type CompositionResult struct {
 	// hash computation.
 	PluginDefs map[string]plugin.PluginDef
 
+	// DefaultAgent is the resolved default agent name (explicit or auto-inferred).
+	DefaultAgent string
+
+	// CustomAgentDefs holds merged definitions for enabled agents not in the
+	// built-in registry. main registers generic providers from these after compose.
+	CustomAgentDefs map[string]agent.Def
+
 	// Integrations is the complete list of integrations (built-in + config overrides).
 	Integrations []integration.IntegrationDef
 }
@@ -94,16 +101,6 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 				"    agents:\n" +
 				"      enabled:\n" +
 				"        - claude",
-		}
-	}
-
-	// Validate that all enabled agents are known providers.
-	for _, name := range enabledAgentNames {
-		if _, ok := agents.Get(name); !ok {
-			return nil, &CompositionError{
-				Stage:  "load_config",
-				Reason: fmt.Sprintf("unknown agent %q in agents.enabled — check your aivm.yaml", name),
-			}
 		}
 	}
 
@@ -135,8 +132,6 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		}
 	}
 
-	defaultProv, _ := agents.Get(defaultAgentName)
-
 	// Load built-in agent definitions.
 	agentDefs, err := agent.LoadDefs()
 	if err != nil {
@@ -153,16 +148,28 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 	}
 
 	enabledAgentDefs := make(map[string]agent.Def, len(enabledAgentNames))
+	customAgentDefs := make(map[string]agent.Def)
 	for _, name := range enabledAgentNames {
 		def := agentDefs[name]
 		if def.CLICommand == "" {
+			if _, ok := agents.Get(name); !ok {
+				return nil, &CompositionError{
+					Stage:  "load_config",
+					Reason: fmt.Sprintf("unknown agent %q in agents.enabled — check your aivm.yaml", name),
+				}
+			}
 			return nil, &CompositionError{
 				Stage:  "merge_agents",
-				Reason: fmt.Sprintf("agent %q: cli_command must be set in agents.define or built-in defaults", name),
+				Reason: fmt.Sprintf("agent %q: cli_command must be set in agents.define", name),
 			}
+		}
+		if _, ok := agents.Get(name); !ok {
+			customAgentDefs[name] = def
 		}
 		enabledAgentDefs[name] = def
 	}
+
+	defaultProv, _ := agents.Get(defaultAgentName)
 
 	activeAgentDef := agentDefs[defaultAgentName]
 
@@ -229,6 +236,8 @@ func (ce *CompositionEngine) Compose(cfgPath string, agents *agent.Registry) (*C
 		ActiveProvider:   defaultProv,
 		ActiveAgentDef:   activeAgentDef,
 		EnabledAgentDefs: enabledAgentDefs,
+		DefaultAgent:     defaultAgentName,
+		CustomAgentDefs:  customAgentDefs,
 		PluginDefs:       pluginDefs,
 		Integrations:     integDefs,
 	}, nil

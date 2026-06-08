@@ -329,9 +329,9 @@ t3code:
 `aivm status` shows the access URL and pairing token. The `t3code` plugin is
 auto-installed when this mode is enabled.
 
-> **Note:** `agents.default` plus at least one entry in `agents.enabled` is
-> still required. Idle monitoring is disabled in this mode; use `aivm stop` to
-> shut down explicitly.
+> **Note:** At least one entry in `agents.enabled` is required; `agents.default`
+> is inferred automatically when only one agent is enabled. Idle monitoring is
+> disabled in this mode; use `aivm stop` to shut down explicitly.
 
 ---
 

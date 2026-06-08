@@ -104,6 +104,43 @@ agents:
 	}
 }
 
+func registerCustomAgents(reg *agent.Registry, defs map[string]agent.Def) {
+	for name, def := range defs {
+		reg.Register(generic.NewFromDef(name, def))
+	}
+}
+
+func TestCompose_CustomAgentInEnabled_WithDefine_HappyPath(t *testing.T) {
+	t.Parallel()
+	path := writeYAML(t, `
+agents:
+  enabled:
+    - my-agent
+  define:
+    my-agent:
+      cli_command: my-agent-cli
+      setup: |
+        echo installed
+`)
+	reg := testRegistry("claude")
+	result, err := composeEngine().Compose(path, reg)
+	if err != nil {
+		t.Fatalf("Compose: unexpected error: %v", err)
+	}
+	registerCustomAgents(reg, result.CustomAgentDefs)
+	prov, ok := reg.Get("my-agent")
+	if !ok {
+		t.Fatal("my-agent not registered after custom agent registration")
+	}
+	if prov.Name() != "my-agent" {
+		t.Errorf("provider name = %q, want my-agent", prov.Name())
+	}
+	def := result.EnabledAgentDefs["my-agent"]
+	if def.CLICommand != "my-agent-cli" {
+		t.Errorf("EnabledAgentDefs[my-agent].CLICommand = %q, want my-agent-cli", def.CLICommand)
+	}
+}
+
 func TestCompose_MultipleEnabled_NoDefault_Error(t *testing.T) {
 	t.Parallel()
 	path := writeYAML(t, `
