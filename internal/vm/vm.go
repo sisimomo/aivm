@@ -42,13 +42,14 @@ type StartOptions struct {
 	Mounts       []Mount
 	SSHAgent     bool
 	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
+	Privileged   bool          // Docker only: run the container in privileged mode
 }
 
 type VM interface {
 	Profile() string
 	// NeedsPortBindingAtBoot reports whether ports must be declared at container
 	// creation time (true for Docker) rather than opened via a post-boot tunnel
-	// (false for Colima). Callers use this instead of inspecting the backend
+	// (false for Lima). Callers use this instead of inspecting the backend
 	// config string so the decision stays behind the VM seam.
 	NeedsPortBindingAtBoot() bool
 	Status(ctx context.Context) (Status, error)
@@ -79,7 +80,7 @@ type VM interface {
 	// GetPublishedPort returns the host port that maps to the given container
 	// port. For Docker this queries the actual Docker-assigned port (important
 	// when the host port was 0 / auto-assigned at container creation). For
-	// Colima, which uses an SSH tunnel, host port == container port, so
+	// Lima, which uses an SSH tunnel, host port == container port, so
 	// containerPort is returned unchanged.
 	GetPublishedPort(containerPort int) (int, error)
 }

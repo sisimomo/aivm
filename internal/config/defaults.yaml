@@ -5,7 +5,7 @@ vm:
   mounts:
     - "~/dev:rw"
   name: aivm
-  backend: colima
+  backend: lima
   recreate_prompt_after: "7d"
 
 t3code:

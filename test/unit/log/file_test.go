@@ -18,7 +18,7 @@ func TestSubprocessWriterLineBuffering(t *testing.T) {
 	dir := t.TempDir()
 	testSetupWithFile(t, dir, aivmlog.LevelTrace)
 
-	w := aivmlog.Writer("colima")
+	w := aivmlog.Writer("lima")
 	if _, err := w.Write([]byte("partial")); err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestSubprocessWriterLineBuffering(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := readLogFile(t, dir, "aivm.log")
-	if !strings.Contains(content, "[colima] partial line") {
+	if !strings.Contains(content, "[lima] partial line") {
 		t.Fatalf("want tagged line in file, got %q", content)
 	}
 }
@@ -108,7 +108,7 @@ func TestSubprocessWriterCloseFlushesPartialLine(t *testing.T) {
 	dir := t.TempDir()
 	testSetupWithFile(t, dir, aivmlog.LevelTrace)
 
-	w := aivmlog.Writer("colima")
+	w := aivmlog.Writer("lima")
 	if _, err := w.Write([]byte("trailing without newline")); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSubprocessWriterCloseFlushesPartialLine(t *testing.T) {
 	}
 	flushWriter(w)
 	content := readLogFile(t, dir, "aivm.log")
-	if !strings.Contains(content, "[colima] trailing without newline") {
+	if !strings.Contains(content, "[lima] trailing without newline") {
 		t.Fatalf("want flushed line in file, got %q", content)
 	}
 }
@@ -130,7 +130,7 @@ func TestSubprocessWriterFileOnlyAtErrorLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := aivmlog.Writer("colima")
+	w := aivmlog.Writer("lima")
 	if _, err := w.Write([]byte("subprocess output\n")); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestSubprocessWriterFileOnlyAtErrorLevel(t *testing.T) {
 		t.Fatalf("subprocess output should not appear on terminal at error level, got %q", termBuf.String())
 	}
 	content := readLogFile(t, dir, "aivm.log")
-	if !strings.Contains(content, "[colima] subprocess output") {
+	if !strings.Contains(content, "[lima] subprocess output") {
 		t.Fatalf("want subprocess output in file, got %q", content)
 	}
 }
@@ -197,13 +197,13 @@ func TestSubprocessWriterCapsLongLine(t *testing.T) {
 	dir := t.TempDir()
 	testSetupWithFile(t, dir, aivmlog.LevelTrace)
 
-	w := aivmlog.Writer("colima")
+	w := aivmlog.Writer("lima")
 	long := strings.Repeat("a", 300*1024)
 	if _, err := w.Write([]byte(long)); err != nil {
 		t.Fatal(err)
 	}
 	content := readLogFile(t, dir, "aivm.log")
-	if !strings.Contains(content, "[colima]") {
+	if !strings.Contains(content, "[lima]") {
 		t.Fatalf("want flushed oversized line in file, got %q", content)
 	}
 }

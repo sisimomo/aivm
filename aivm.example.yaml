@@ -21,6 +21,7 @@ agents:
 
 # VM resources — tune to your machine.
 vm:
+  backend: lima
   cpus: 4
   memory: "8GB"
   disk: "60GB"    # supports MB, GB, TB
@@ -70,6 +71,11 @@ idle:
 # t3code:
 #   enable: false
 #   port: 3773
+
+# plugins:
+#   enabled:
+#     - system
+#     - docker   # opt-in: rootful Docker inside the VM
 
 # Per-plugin configuration — override the version for any mise-* plugin.
 # plugins:

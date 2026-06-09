@@ -1,0 +1,18 @@
+# aivm Lima instance template — VM only, no Docker provision.
+# Docker is opt-in via the docker plugin at bootstrap.
+
+minimumLimaVersion: 2.0.0
+
+base:
+  - template:_images/ubuntu-25.10
+  # Do not include template:_default/mounts — it bind-mounts the entire host
+  # home (~). aivm only mounts paths from vm.mounts and agent persist dirs.
+
+ssh:
+  forwardAgent: false
+
+hostResolver:
+  hosts:
+    host.docker.internal: host.lima.internal
+
+# No portForwards for docker.sock — Docker stays inside the VM only.

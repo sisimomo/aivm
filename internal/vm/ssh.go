@@ -13,17 +13,19 @@ import (
 	aivmlog "github.com/sisimomo/aivm/internal/log"
 )
 
-// colimaSSHEndpoint returns the scp/ssh config file path and the SSH hostname
-// for a given Colima profile. These are written by colima/lima at VM creation
-// time and consumed by scp/ssh directly (bypassing the `colima ssh` wrapper).
-func colimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
-	home, _ := os.UserHomeDir()
-	colimaHome := os.Getenv("COLIMA_HOME")
-	if colimaHome == "" {
-		colimaHome = filepath.Join(home, ".colima")
+// LimaSSHEndpoint returns the ssh/scp config file path and SSH hostname for a
+// Lima instance. Written by limactl at VM creation time.
+func LimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
+	home, err := os.UserHomeDir()
+	limaHome := os.Getenv("LIMA_HOME")
+	if limaHome == "" {
+		if err != nil {
+			return "", ""
+		}
+		limaHome = filepath.Join(home, ".lima")
 	}
-	sshConfig = filepath.Join(colimaHome, "_lima", "colima-"+profile, "ssh.config")
-	sshHost = "lima-colima-" + profile
+	sshConfig = filepath.Join(limaHome, profile, "ssh.config")
+	sshHost = "lima-" + profile
 	return
 }
 
@@ -119,17 +121,28 @@ func quietSSHLine(line []byte) bool {
 	return strings.HasPrefix(s, "Shared connection to ") && strings.HasSuffix(s, " closed.")
 }
 
-// InteractiveSSH opens an interactive SSH session into a Colima VM profile,
+// CloseSSHControlMaster tears down Lima's multiplexed SSH control connection.
+// Bootstrap runs many limactl shell sessions before plugins such as docker add
+// supplementary groups; multiplexed sessions keep the groups from the first
+// login, so later interactive shells cannot access /var/run/docker.sock.
+func CloseSSHControlMaster(ctx context.Context, profile string) {
+	sshConfig, sshHost := LimaSSHEndpoint(profile)
+	args := []string{"-O", "exit", "-F", sshConfig, sshHost}
+	_ = exec.CommandContext(ctx, "ssh", args...).Run() // non-zero when no master exists
+}
+
+// InteractiveSSH opens an interactive SSH session into a Lima VM profile,
 // executing script inside the VM. env maps environment variable names to values
 // that are injected into the remote shell environment.
 func InteractiveSSH(ctx context.Context, profile string, env map[string]string, script string) error {
 	bashCmd := "bash -lc " + ShellEscape(SSHScriptWithEnv(env, script))
 
-	sshConfig, sshHost := colimaSSHEndpoint(profile)
+	sshConfig, sshHost := LimaSSHEndpoint(profile)
 
-	// colima ssh -- CMD runs without a PTY; TUI apps need one, so use ssh -t directly
-	// with the SSH config file that colima/lima writes.
-	args := []string{"-t", "-F", sshConfig}
+	// limactl shell runs without a PTY; TUI apps need one, so use ssh -t directly
+	// with the SSH config file that Lima writes. ControlMaster=no ensures each
+	// interactive session gets a fresh login with current supplementary groups.
+	args := []string{"-t", "-F", sshConfig, "-o", "ControlMaster=no"}
 	args = append(args, OpenSSHOptions()...)
 	args = append(args, sshHost, bashCmd)
 	cmd := exec.CommandContext(ctx, "ssh", args...)

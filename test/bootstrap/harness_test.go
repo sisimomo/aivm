@@ -38,10 +38,22 @@ type BootstrapHarness struct {
 	stateDir         string
 }
 
+type bootstrapHarnessOptions struct {
+	privileged bool
+}
+
 // newBootstrapHarness builds a fresh Docker container and loads all real
 // plugin, agent, and integration definitions. The container and temp state dir
 // are removed automatically when the test ends.
 func newBootstrapHarness(t *testing.T) *BootstrapHarness {
+	return newBootstrapHarnessWithOptions(t, bootstrapHarnessOptions{})
+}
+
+func newPrivilegedBootstrapHarness(t *testing.T) *BootstrapHarness {
+	return newBootstrapHarnessWithOptions(t, bootstrapHarnessOptions{privileged: true})
+}
+
+func newBootstrapHarnessWithOptions(t *testing.T, opts bootstrapHarnessOptions) *BootstrapHarness {
 	t.Helper()
 	acquireBootstrapHarness(t)
 
@@ -65,7 +77,7 @@ func newBootstrapHarness(t *testing.T) *BootstrapHarness {
 	dockerVM := vm.NewDocker(profile, stateDir, framework.TestImageName)
 
 	ctx := context.Background()
-	if err := dockerVM.Start(ctx, vm.StartOptions{}); err != nil {
+	if err := dockerVM.Start(ctx, vm.StartOptions{Privileged: opts.privileged}); err != nil {
 		t.Fatalf("harness: start container: %v", err)
 	}
 	if err := dockerVM.WaitReady(ctx, 30*time.Second); err != nil {

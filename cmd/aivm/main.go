@@ -95,7 +95,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 
 	dockerHost := ""
 	if cfg.ComposeFile != "" {
-		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background(), cfg.VM.Profile())
+		dockerHostProbe, err := compose.FindHostDockerSocket(context.Background())
 		if err != nil {
 			slog.Warn(fmt.Sprintf("Docker socket: %v", err))
 		} else {
@@ -118,7 +118,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 	var t3codeMgr t3code.Manager
 	if cfg.T3Code.Enable {
 		// Backends that need port binding at boot (e.g. Docker) expose the port
-		// via PortMappings in StartOptions — no tunnel required. Colima uses an
+		// via PortMappings in StartOptions — no tunnel required. Lima uses an
 		// SSH tunnel to forward the port from the VM to the host.
 		if !vmInst.NeedsPortBindingAtBoot() {
 			t3codeMgr = &t3code.Tunnel{

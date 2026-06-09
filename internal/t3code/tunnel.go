@@ -9,13 +9,15 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 // Tunnel is the production Manager implementation. It starts an SSH
-// port-forward from the host to the Colima VM and tracks the SSH process by
+// port-forward from the host to the Lima VM and tracks the SSH process by
 // PID file so it can be stopped by a later `aivm stop` invocation.
 type Tunnel struct {
-	// Profile is the Colima VM profile name (e.g. "default").
+	// Profile is the Lima VM profile name (e.g. "default").
 	Profile string
 	// StateDir is the aivm state directory where the PID file is written.
 	StateDir string
@@ -100,12 +102,5 @@ func (t *Tunnel) readPID() (int, error) {
 }
 
 func (t *Tunnel) sshCoords() (sshConfig, sshHost string) {
-	home, _ := os.UserHomeDir()
-	colimaHome := os.Getenv("COLIMA_HOME")
-	if colimaHome == "" {
-		colimaHome = filepath.Join(home, ".colima")
-	}
-	sshConfig = filepath.Join(colimaHome, "_lima", "colima-"+t.Profile, "ssh.config")
-	sshHost = "lima-colima-" + t.Profile
-	return
+	return vm.LimaSSHEndpoint(t.Profile)
 }

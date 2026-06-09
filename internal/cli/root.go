@@ -35,10 +35,10 @@ func NewRootCmd(version string, buildApp AppFactory) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "aivm [directory]",
-		Short: "Launch AI agents in a secure Colima VM",
+		Short: "Launch AI agents in a secure Lima VM",
 		Long: `aivm — AI VM manager
 
-Launch AI agents in a secure, disposable Colima VM.
+Launch AI agents in a secure, disposable Lima VM.
 Run from any directory under your dev root.
 
 Built-in providers: claude, copilot, cursor, opencode
