@@ -32,3 +32,13 @@ func TestLimaSSHEndpoint_LimaHome(t *testing.T) {
 		t.Fatalf("ssh host: got %q", host)
 	}
 }
+
+func TestLimaSSHEndpoint_NoHome(t *testing.T) {
+	t.Setenv("LIMA_HOME", "")
+	t.Setenv("HOME", "")
+
+	cfg, host := vm.LimaSSHEndpoint("aivm")
+	if cfg != "" || host != "" {
+		t.Fatalf("ssh endpoint: got cfg=%q host=%q want empty", cfg, host)
+	}
+}

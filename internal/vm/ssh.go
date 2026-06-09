@@ -16,9 +16,12 @@ import (
 // LimaSSHEndpoint returns the ssh/scp config file path and SSH hostname for a
 // Lima instance. Written by limactl at VM creation time.
 func LimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
 	limaHome := os.Getenv("LIMA_HOME")
 	if limaHome == "" {
+		if err != nil {
+			return "", ""
+		}
 		limaHome = filepath.Join(home, ".lima")
 	}
 	sshConfig = filepath.Join(limaHome, profile, "ssh.config")

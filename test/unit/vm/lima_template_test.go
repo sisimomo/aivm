@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/sisimomo/aivm/internal/vm"
 )
@@ -20,7 +21,10 @@ func TestLimaTemplate_ValidatesWithLimactl(t *testing.T) {
 	}
 	defer os.Remove(path)
 
-	cmd := exec.CommandContext(context.Background(), "limactl", "template", "validate", path)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "limactl", "template", "validate", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("limactl template validate: %v\n%s", err, out)
