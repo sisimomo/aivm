@@ -35,7 +35,7 @@ This is a breaking change with no migration path — acceptable in alpha.
 
 ## Architecture
 
-```
+```text
 Host (macOS)
 ├── aivm CLI
 │   ├── LimaVM ──limactl──► ~/.lima/<name>/  (VM)
@@ -58,7 +58,7 @@ Host (macOS)
 ### Added
 
 - `internal/vm/lima.go` — `LimaVM` implementing `vm.VM`
-- `config/lima.yaml` — bundled Lima instance template (VM only, no Docker)
+- `internal/vm/lima.yaml` — embedded Lima instance template (VM only, no Docker)
 - `docker` entry in `internal/plugin/defaults.yaml`
 - Shared SSH helper (`limaSSHEndpoint`) used by `vm`, `t3code`
 
@@ -70,9 +70,9 @@ Host (macOS)
 - Bootstrap, plugin executor, agents, idle monitor, session management
 - Default `plugins.enabled`: `system` only (docker is **not** added)
 
-## Lima Template (`config/lima.yaml`)
+## Lima Template (`internal/vm/lima.yaml`)
 
-Bundled base template shipped with aivm. Lima merges this with CLI flags at
+Embedded base template shipped with aivm. Lima merges this with CLI flags at
 instance creation; the combined config is stored at
 `$LIMA_HOME/<name>/lima.yaml`.
 
@@ -138,9 +138,6 @@ docker:
   description: "Docker Engine (rootful) inside the VM"
   dependencies:
     - system
-  skip_if: |
-    command -v docker >/dev/null 2>&1 && \
-    systemctl is-active --quiet docker
   setup: |
     curl -fsSL https://get.docker.com | sh
     sudo systemctl enable --now docker
@@ -168,8 +165,7 @@ No plugin-level config keys. No agent declares `docker` as a required plugin.
 ### Enabling after initial bootstrap
 
 Adding `docker` to `plugins.enabled` triggers bootstrap reconcile on the next
-`aivm` run (existing `syncBootstrap` path). The plugin's `skip_if` makes
-re-runs idempotent.
+`aivm` run (existing `syncBootstrap` path).
 
 ## `LimaVM` Implementation
 
@@ -294,7 +290,7 @@ case "docker":
 - README: update VM backend table (`lima` default, remove `colima`)
 - README: add `docker` to the available plugins table (opt-in, in-VM runtime)
 - CLI help text: "secure Lima VM" instead of "secure Colima VM"
-- Remove `config/colima.yaml`, add `config/lima.yaml` with comments
+- Remove `config/colima.yaml`
 - `aivm.example.yaml`: `backend: lima`, commented `docker` plugin example
 
 ## Breaking Changes (alpha)
@@ -315,14 +311,13 @@ case "docker":
 - `limaSSHEndpoint` path construction (`LIMA_HOME`, default `~/.lima`)
 - Factory routes `lima` and rejects `colima`
 - Log writer tag tests updated to `[lima]`
-- Docker plugin `skip_if` / setup script renders without error
+- Docker plugin setup script renders without error
 
 ### Bootstrap tests (Docker backend, `//go:build bootstrap`)
 
 When `docker` is in `plugins.enabled`:
 
 - `docker ps` succeeds inside VM after bootstrap
-- `skip_if` passes on re-run
 
 ### E2E / integration
 
@@ -343,7 +338,7 @@ When `docker` is in `plugins.enabled`:
 | Action | Path |
 | --- | --- |
 | Add | `internal/vm/lima.go` |
-| Add | `config/lima.yaml` |
+| Add | `internal/vm/lima.yaml` |
 | Add | `docs/superpowers/specs/2026-06-08-lima-backend-design.md` |
 | Remove | `internal/vm/colima.go` |
 | Remove | `config/colima.yaml` |

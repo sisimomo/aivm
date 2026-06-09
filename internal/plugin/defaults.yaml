@@ -39,9 +39,6 @@ docker:
   description: "Docker Engine (rootful) inside the VM"
   dependencies:
     - system
-  skip_if: |
-    command -v docker >/dev/null 2>&1 && \
-    systemctl is-active --quiet docker
   setup: |
     curl -fsSL https://get.docker.com | sh
     sudo systemctl enable --now docker

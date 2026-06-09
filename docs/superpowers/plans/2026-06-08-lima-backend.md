@@ -32,7 +32,6 @@ installs at bootstrap time only when listed in `plugins.enabled`.
 | `internal/plugin/defaults.yaml` | Opt-in `docker` plugin definition |
 | `internal/compose/docker.go` | Host Docker socket discovery (no aivm exclusion) |
 | `internal/t3code/tunnel.go` | SSH tunnel via `limaSSHEndpoint` |
-| `config/lima.yaml` | User-facing copy of template (docs/manual use; keep in sync) |
 
 ---
 
@@ -139,7 +138,6 @@ git commit -m "refactor(vm): add LimaSSHEndpoint helper"
 
 - Create: `internal/vm/lima.yaml`
 - Create: `internal/vm/template.go`
-- Create: `config/lima.yaml`
 
 - [ ] **Step 1: Create embedded Lima template**
 
@@ -194,13 +192,6 @@ func LimaTemplatePath() (string, error) {
 }
 ```
 
-Copy identical content to `config/lima.yaml` with a header comment:
-
-```yaml
-# User-facing copy of internal/vm/lima.yaml.
-# aivm uses the embedded copy at runtime; keep these files in sync.
-```
-
 - [ ] **Step 2: Verify embed compiles**
 
 Run: `go build ./internal/vm/...`
@@ -209,7 +200,7 @@ Expected: success
 - [ ] **Step 3: Commit**
 
 ```bash
-git add internal/vm/lima.yaml internal/vm/template.go config/lima.yaml
+git add internal/vm/lima.yaml internal/vm/template.go
 git commit -m "feat(vm): add embedded Lima instance template"
 ```
 
@@ -585,9 +576,6 @@ docker:
   description: "Docker Engine (rootful) inside the VM"
   dependencies:
     - system
-  skip_if: |
-    command -v docker >/dev/null 2>&1 && \
-    systemctl is-active --quiet docker
   setup: |
     curl -fsSL https://get.docker.com | sh
     sudo systemctl enable --now docker
@@ -609,8 +597,8 @@ func TestLoadDefaults_DockerDependsOnSystem(t *testing.T) {
  if !ok {
   t.Fatal("docker plugin not found")
  }
- if docker.Setup == "" || docker.SkipIf == "" {
-  t.Fatal("docker plugin missing setup or skip_if")
+ if docker.Setup == "" {
+  t.Fatal("docker plugin missing setup")
  }
  found := false
  for _, dep := range docker.Dependencies {
