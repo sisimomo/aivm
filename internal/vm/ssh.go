@@ -118,6 +118,16 @@ func quietSSHLine(line []byte) bool {
 	return strings.HasPrefix(s, "Shared connection to ") && strings.HasSuffix(s, " closed.")
 }
 
+// CloseSSHControlMaster tears down Lima's multiplexed SSH control connection.
+// Bootstrap runs many limactl shell sessions before plugins such as docker add
+// supplementary groups; multiplexed sessions keep the groups from the first
+// login, so later interactive shells cannot access /var/run/docker.sock.
+func CloseSSHControlMaster(ctx context.Context, profile string) {
+	sshConfig, sshHost := LimaSSHEndpoint(profile)
+	args := []string{"-O", "exit", "-F", sshConfig, sshHost}
+	_ = exec.CommandContext(ctx, "ssh", args...).Run() // non-zero when no master exists
+}
+
 // InteractiveSSH opens an interactive SSH session into a Lima VM profile,
 // executing script inside the VM. env maps environment variable names to values
 // that are injected into the remote shell environment.
@@ -127,8 +137,9 @@ func InteractiveSSH(ctx context.Context, profile string, env map[string]string, 
 	sshConfig, sshHost := LimaSSHEndpoint(profile)
 
 	// limactl shell runs without a PTY; TUI apps need one, so use ssh -t directly
-	// with the SSH config file that Lima writes.
-	args := []string{"-t", "-F", sshConfig}
+	// with the SSH config file that Lima writes. ControlMaster=no ensures each
+	// interactive session gets a fresh login with current supplementary groups.
+	args := []string{"-t", "-F", sshConfig, "-o", "ControlMaster=no"}
 	args = append(args, OpenSSHOptions()...)
 	args = append(args, sshHost, bashCmd)
 	cmd := exec.CommandContext(ctx, "ssh", args...)

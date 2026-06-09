@@ -25,6 +25,9 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := exec.Run(ctx); err != nil {
 		return err
 	}
+	if _, ok := targetVM.(*vm.LimaVM); ok {
+		vm.CloseSSHControlMaster(ctx, targetVM.Profile())
+	}
 	svc.logger().Info("Bootstrap complete!")
 	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
 		return fmt.Errorf("applying vm.env: %w", err)

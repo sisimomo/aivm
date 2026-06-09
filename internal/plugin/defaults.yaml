@@ -50,7 +50,7 @@ docker:
         sleep 1
       done
     fi
-    sudo usermod -aG docker "$USER"
+    sudo usermod -aG docker "${USER:-$(id -un)}"
 
 cocoindex-code:
   description: "Cocoindex Code — AST-based semantic code search (MCP server)"

@@ -206,9 +206,6 @@ func (l *LimaVM) RunOutput(ctx context.Context, script string, env map[string]st
 }
 
 func (l *LimaVM) SSH(ctx context.Context, env map[string]string) error {
-	if len(env) == 0 {
-		return run.Interactive(ctx, "limactl", "shell", l.profile)
-	}
 	return InteractiveSSH(ctx, l.profile, env, "exec bash -l")
 }
 
