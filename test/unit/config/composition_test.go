@@ -86,6 +86,26 @@ agents:
 	}
 }
 
+func TestCompose_ColimaBackend_Error(t *testing.T) {
+	t.Parallel()
+	path := writeYAML(t, `
+vm:
+  backend: colima
+  name: aivm
+agents:
+  enabled:
+    - claude
+`)
+	_, err := composeEngine().Compose(path, testRegistry("claude"))
+	ce := asCompositionError(err)
+	if ce == nil {
+		t.Fatalf("expected *CompositionError, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "colima") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "colima")
+	}
+}
+
 func TestCompose_UnknownAgentInEnabledSet_Error(t *testing.T) {
 	t.Parallel()
 	// "mystery" is enabled in YAML but not registered in the agent registry.

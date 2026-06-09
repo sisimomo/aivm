@@ -83,6 +83,9 @@ func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
 		d.mu.Unlock()
 
 		args := []string{"run", "-d", "--name", d.containerName}
+		if opts.Privileged {
+			args = append(args, "--privileged")
+		}
 		for _, pm := range opts.PortMappings {
 			args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 		}

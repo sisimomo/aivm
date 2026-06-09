@@ -42,6 +42,7 @@ type StartOptions struct {
 	Mounts       []Mount
 	SSHAgent     bool
 	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
+	Privileged   bool          // Docker only: run the container in privileged mode
 }
 
 type VM interface {

@@ -32,6 +32,7 @@ func TestLoadDefaults_AllPluginsPresent(t *testing.T) {
 		{"system"},
 		{"mise"},
 		{"awscli"},
+		{"docker"},
 		{"t3code"},
 	}
 

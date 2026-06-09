@@ -37,16 +37,15 @@ func FindHostDockerSocket(ctx context.Context) (string, error) {
 		return "unix://" + orbSock, nil
 	}
 
-	defaultSock := filepath.Join(home, ".colima", "default", "docker.sock")
-	if fi, err := os.Stat(defaultSock); err == nil &&
-		(fi.Mode()&os.ModeSocket != 0) {
-		return "unix://" + defaultSock, nil
-	}
+	return "", HostDockerRuntimeNotFoundError()
+}
 
-	return "", fmt.Errorf(`no suitable host Docker runtime found.
+// HostDockerRuntimeNotFoundError is returned when compose_file is configured but
+// no host-side Docker runtime socket can be found.
+func HostDockerRuntimeNotFoundError() error {
+	return fmt.Errorf(`no suitable host Docker runtime found.
 Compose services require a Docker runtime on the host (separate from the aivm VM).
 Options:
   • Docker Desktop:  https://www.docker.com/products/docker-desktop/
-  • OrbStack:        https://orbstack.dev/
-  • Colima:          colima start`)
+  • OrbStack:        https://orbstack.dev/`)
 }
