@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sisimomo/aivm/internal/config"
+	aivmlog "github.com/sisimomo/aivm/internal/log"
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
@@ -131,7 +133,21 @@ func (svc *LifecycleService) decideStartAction(ctx context.Context, status vm.St
 
 func (svc *LifecycleService) handleRecreationPrompt(ctx context.Context, action RecreationAction, status vm.Status) error {
 	switch action {
-	case ActionPromptRuntimeChange, ActionPromptConfigChange:
+	case ActionPromptRuntimeChange:
+		state, _ := loadBootstrapState(svc.Config.StateDir)
+		from := runtimeLabel("", "")
+		if state != nil {
+			from = runtimeLabel(state.Backend, state.VMType)
+		}
+		to := runtimeLabel(effectiveBackend(svc.Config.VM), effectiveVMType(svc.Config.VM))
+		if !PromptRuntimeChange(aivmlog.TerminalOut(), svc.Confirmer, from, to) {
+			return nil
+		}
+		svc.deleteBaseImage(ctx)
+		clearBootstrapState(svc.Config.StateDir)
+		vm.ClearHostAgeState(svc.Config.StateDir)
+		return svc.recreateVM(ctx)
+	case ActionPromptConfigChange:
 		if err := svc.resolveConfigChange(ctx); err != nil {
 			return err
 		}
@@ -159,15 +175,56 @@ func (svc *LifecycleService) handleRecreationPrompt(ctx context.Context, action 
 			return svc.fullBootstrap(ctx)
 		}
 		return svc.resumeOrStartVM(ctx, status)
-	case ActionPromptBootstrapRefresh, ActionPromptCombined:
-		choice := strings.ToLower(strings.TrimSpace(svc.Confirmer.ReadAnswer()))
-		if choice == "y" || choice == "1" {
+	case ActionPromptBootstrapRefresh:
+		threshold := svc.Config.VM.BootstrapRefreshPromptAfterDuration
+		bootstrapAge := svc.readBootstrapAge()
+		if PromptBootstrapRefresh(aivmlog.TerminalOut(), svc.Confirmer, bootstrapAge, threshold) {
 			return svc.fullBootstrap(ctx)
 		}
+		if status == vm.StatusRunning {
+			return nil
+		}
 		return svc.fastRecreate(ctx)
+	case ActionPromptCombined:
+		vmThreshold := svc.Config.VM.RecreatePromptAfterDuration
+		bootstrapThreshold := svc.Config.VM.BootstrapRefreshPromptAfterDuration
+		vmAge := svc.readVMAge()
+		bootstrapAge := svc.readBootstrapAge()
+		choice := PromptCombined(
+			aivmlog.TerminalOut(),
+			svc.Confirmer,
+			status != vm.StatusNotFound,
+			bootstrapAge,
+			bootstrapThreshold,
+			vmAge,
+			vmThreshold,
+		)
+		switch choice {
+		case CombinedFullBootstrap:
+			return svc.fullBootstrap(ctx)
+		case CombinedFastRecreate:
+			return svc.fastRecreate(ctx)
+		case CombinedContinue:
+			return svc.resumeOrStartVM(ctx, status)
+		default:
+			return svc.resumeOrStartVM(ctx, status)
+		}
 	default:
 		return nil
 	}
+}
+
+func runtimeLabel(backend, vmType string) string {
+	if backend == "" {
+		backend = "lima"
+	}
+	if backend == "docker" {
+		return "docker"
+	}
+	if vmType == "" {
+		return backend
+	}
+	return fmt.Sprintf("%s/%s", backend, vmType)
 }
 
 func RuntimeChangedForTest(svc *LifecycleService, state *BootstrapState) bool {

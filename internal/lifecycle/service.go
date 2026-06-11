@@ -508,6 +508,9 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 		return fmt.Errorf("listing sessions: %w", err)
 	}
 	if len(sessions) == 0 {
+		if svc.hasValidBase(ctx) {
+			return svc.fastRecreate(ctx)
+		}
 		return svc.recreateCurrentVM(ctx)
 	}
 
@@ -524,6 +527,9 @@ func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
 			_ = proc.Signal(syscall.SIGTERM)
 		}
 		s.Remove()
+	}
+	if svc.hasValidBase(ctx) {
+		return svc.fastRecreate(ctx)
 	}
 	return svc.recreateCurrentVM(ctx)
 }
