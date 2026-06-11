@@ -40,7 +40,12 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 		return err
 	}
 	vm.RecordBootstrapAt(svc.Config.StateDir)
-	return svc.runIntegrationsFromState(ctx, targetVM)
+	if err := svc.runIntegrationsFromState(ctx, targetVM); err != nil {
+		return err
+	}
+	opts := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	_ = svc.SaveBaseImageBestEffort(ctx, opts)
+	return nil
 }
 
 // runIntegrationsFromState executes integrations whose From/To conditions are
