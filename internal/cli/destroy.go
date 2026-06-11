@@ -7,7 +7,8 @@ import (
 )
 
 func DestroyCmd(getApp func() (*App, error)) *cobra.Command {
-	return &cobra.Command{
+	var keepBase bool
+	cmd := &cobra.Command{
 		Use:   "destroy",
 		Short: "Delete the VM (volumes and host state preserved)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -15,11 +16,13 @@ func DestroyCmd(getApp func() (*App, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return DoDestroy(cmd.Context(), app)
+			return DoDestroy(cmd.Context(), app, keepBase)
 		},
 	}
+	cmd.Flags().BoolVar(&keepBase, "keep-base", false, "keep base image and host bootstrap state")
+	return cmd
 }
 
-func DoDestroy(ctx context.Context, app *App) error {
-	return app.Lifecycle.Destroy(ctx)
+func DoDestroy(ctx context.Context, app *App, keepBase bool) error {
+	return app.Lifecycle.Destroy(ctx, keepBase)
 }

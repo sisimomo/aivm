@@ -203,7 +203,9 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 }
 
 // Destroy deletes the VM and stops all services.
-func (svc *LifecycleService) Destroy(ctx context.Context) error {
+// When keepBase is true, the base image and host bootstrap state are preserved
+// so a subsequent start can restore from the base image.
+func (svc *LifecycleService) Destroy(ctx context.Context, keepBase bool) error {
 	svc.Monitor.Stop()
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.logger().Warn(fmt.Sprintf("T3 Code tunnel stop error: %v", err))
@@ -216,6 +218,11 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.Compose.Down(ctx); err != nil {
 		svc.logger().Warn(fmt.Sprintf("compose destroy error: %v", err))
 		composeErr = err
+	}
+	if !keepBase {
+		svc.deleteBaseImage(ctx)
+		clearBootstrapState(svc.Config.StateDir)
+		vm.ClearHostAgeState(svc.Config.StateDir)
 	}
 	if vmErr != nil || composeErr != nil {
 		if vmErr != nil && composeErr != nil {
@@ -554,7 +561,8 @@ func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
 
 // Recreate destroys the current VM and starts a fresh one, re-running bootstrap.
 // With force=true, active sessions are killed without prompting.
-func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
+// With fast=true, restore from the base image when valid instead of full bootstrap.
+func (svc *LifecycleService) Recreate(ctx context.Context, force, fast bool) error {
 	sessions, err := svc.Sessions.List()
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
@@ -583,16 +591,15 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
 		}
 	}
 
-	// Stop the idle monitor before destroying the VM. If Destroy fails the
+	// Stop the idle monitor before destroying the VM. If recreation fails the
 	// monitor stays stopped; Start will restart it via its normal launch path.
 	svc.Monitor.Stop()
 
-	clearBootstrapState(svc.Config.StateDir)
-
-	svc.logger().Info("Destroying existing VM")
-	if err := svc.VM.Destroy(ctx); err != nil {
-		return fmt.Errorf("destroying VM: %w", err)
+	if fast && svc.baseImageEnabled() && svc.hasValidBase(ctx) {
+		return svc.fastRecreate(ctx)
 	}
-
-	return svc.Start(ctx)
+	if fast && svc.baseImageEnabled() {
+		svc.logger().Warn("No valid base image — running full bootstrap")
+	}
+	return svc.fullBootstrap(ctx)
 }
