@@ -78,27 +78,33 @@ func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
 		return dockerCmd(ctx, "start", d.containerName)
 
 	default:
-		d.mu.Lock()
-		d.lastStartOpts = opts
-		d.mu.Unlock()
-
-		args := []string{"run", "-d", "--name", d.containerName}
-		if opts.Privileged {
-			args = append(args, "--privileged")
-		}
-		for _, pm := range opts.PortMappings {
-			args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
-		}
-		for _, m := range opts.Mounts {
-			mode := "ro"
-			if m.Writable {
-				mode = "rw"
-			}
-			args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
-		}
-		args = append(args, d.image)
-		return dockerCmd(ctx, args...)
+		return d.startFromImage(ctx, d.image, opts)
 	}
+}
+
+// startFromImage creates and starts a new container from the given image with
+// mounts and port mappings from opts.
+func (d *DockerVM) startFromImage(ctx context.Context, image string, opts StartOptions) error {
+	d.mu.Lock()
+	d.lastStartOpts = opts
+	d.mu.Unlock()
+
+	args := []string{"run", "-d", "--name", d.containerName}
+	if opts.Privileged {
+		args = append(args, "--privileged")
+	}
+	for _, pm := range opts.PortMappings {
+		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
+	}
+	for _, m := range opts.Mounts {
+		mode := "ro"
+		if m.Writable {
+			mode = "rw"
+		}
+		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
+	}
+	args = append(args, image)
+	return dockerCmd(ctx, args...)
 }
 
 // Stop stops the running container without removing it.
