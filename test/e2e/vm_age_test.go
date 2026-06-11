@@ -20,7 +20,8 @@ import (
 //  3. Backdate vm-created-at by 31 days (threshold is 30).
 //  4. Start VM again in interactive mode, answer "y":
 //     "VM is 31 day(s) old — Delete and recreate? [y/N]" → y
-//  5. VM is destroyed and a new one is created; bootstrap runs again.
+//  5. VM is recreated from the base image when valid (fast path); bootstrap
+//     plugins are not rerun.
 func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 	t.Parallel()
 	h := framework.New(t,
@@ -38,7 +39,8 @@ func TestVMMaxAgeRecreationAccepted(t *testing.T) {
 		Step("Reset output buffer", actions.ResetOutput()).
 		Step("Start VM — age check triggers, user accepts recreation", actions.CLI("start")).
 		Wait("VM is running after recreation", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Assert("Bootstrap ran on new VM", assertions.OutputContains("Bootstrap complete!")).
+		Assert("VM running after fast recreate", assertions.VMStatus(vm.StatusRunning)).
+		Assert("Full bootstrap not rerun", assertions.OutputNotContains("Bootstrapping VM")).
 		Assert("Bootstrap state valid after recreation", assertions.BootstrapComplete()).
 		Run()
 }

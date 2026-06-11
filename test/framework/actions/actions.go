@@ -147,6 +147,15 @@ func ChangeSessionEnv(env map[string]string) fw.StepFunc {
 	}
 }
 
+// SetBootstrapDaysAgo backdates bootstrap-at for bootstrap refresh tests.
+func SetBootstrapDaysAgo(days int) fw.StepFunc {
+	return func(_ context.Context, h *fw.Harness) error {
+		ts := time.Now().AddDate(0, 0, -days).Unix()
+		path := filepath.Join(h.StateDir, vm.BootstrapAtFile)
+		return os.WriteFile(path, []byte(strconv.FormatInt(ts, 10)), 0644)
+	}
+}
+
 // SetVMCreatedDaysAgo backdates the vm-created-at state file so the CLI thinks
 // the VM is <days> days old. Use together with WithMaxAgeDays to exercise the
 // "VM too old" interactive prompt.
