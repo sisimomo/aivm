@@ -39,6 +39,7 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := svc.recordBootstrapState(); err != nil {
 		return err
 	}
+	vm.RecordBootstrapAt(svc.Config.StateDir)
 	return svc.runIntegrationsFromState(ctx, targetVM)
 }
 

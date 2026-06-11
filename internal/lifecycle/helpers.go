@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,6 +107,23 @@ func BootstrapEnabledPlugins(reg *plugin.Registry, providers []agent.Provider, c
 		}
 	}
 	return enabled
+}
+
+func effectiveBackend(vm config.VMConfig) string {
+	if vm.Backend == "" {
+		return "lima"
+	}
+	return vm.Backend
+}
+
+func effectiveVMType(vm config.VMConfig) string {
+	if vm.Type != "" {
+		return vm.Type
+	}
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		return "vz"
+	}
+	return "qemu"
 }
 
 func stringSet(items []string) map[string]bool {

@@ -15,7 +15,7 @@ import (
 
 // BootstrapVersion is incremented whenever host bootstrap-state schema or
 // bootstrap behaviour changes. Stored in bootstrap-state.json on the host only.
-const BootstrapVersion = "3"
+const BootstrapVersion = "4"
 
 // BootstrapState is persisted on the host (no SSH required) and records the
 // provider and a hash of all execution-relevant configuration. Subsequent
@@ -24,6 +24,8 @@ const BootstrapVersion = "3"
 type BootstrapState struct {
 	Version    string `json:"version"`
 	Provider   string `json:"provider"`
+	Backend    string `json:"backend"`
+	VMType     string `json:"vm_type"`
 	ConfigHash string `json:"config_hash"`
 	EnvHash    string `json:"env_hash"`
 }
@@ -70,6 +72,8 @@ func (svc *LifecycleService) recordBootstrapState() error {
 	return saveBootstrapState(svc.Config.StateDir, &BootstrapState{
 		Version:    BootstrapVersion,
 		Provider:   svc.Provider.Name(),
+		Backend:    effectiveBackend(svc.Config.VM),
+		VMType:     effectiveVMType(svc.Config.VM),
 		ConfigHash: svc.currentConfigHash(),
 		EnvHash:    svc.currentEnvHash(),
 	})
