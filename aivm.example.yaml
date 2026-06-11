@@ -25,6 +25,9 @@ vm:
   cpus: 4
   memory: "8GB"
   disk: "60GB"    # supports MB, GB, TB
+  base_image_enable: true
+  recreate_prompt_after: "7d"
+  bootstrap_refresh_prompt_after: "30d"
 
   # Directories to mount into the VM. Format: <host_path>:<mode>
   # mode: rw (read-write, default) or ro (read-only)

@@ -231,7 +231,15 @@ recreation required.
 | Key | Default | Description |
 | --- | --- | --- |
 | `vm.type` | _(auto)_ | Lima hypervisor: `vz`, `qemu`, or omit for auto |
+| `vm.base_image_enable` | `true` | Save and restore VM snapshots for fast recreate |
 | `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this age |
+| `vm.bootstrap_refresh_prompt_after` | `"30d"` | Prompt to rerun full bootstrap after this age |
+
+When base images are enabled (default), aivm saves a snapshot after bootstrap and
+can recreate the VM from it quickly without rerunning plugin install.
+`recreate_prompt_after` nudges you to recreate the VM instance; when the base is
+still valid, that recreate is fast. `bootstrap_refresh_prompt_after` nudges you
+to rerun a full bootstrap so installed plugins and tools stay fresh.
 
 ### Idle Management
 
