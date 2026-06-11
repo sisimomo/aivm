@@ -57,7 +57,10 @@ func (s *missingOrStaleStep) applicable(ss *syncState, _ *LifecycleService) bool
 	return ss.state == nil || ss.state.NeedsMigration()
 }
 
-func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+func (s *missingOrStaleStep) run(ctx context.Context, ss *syncState, svc *LifecycleService) error {
+	if ss.state != nil && ss.state.NeedsMigration() {
+		svc.deleteBaseImage(ctx)
+	}
 	svc.logger().Warn("bootstrap state missing or outdated — recreating VM")
 	return svc.recreateVM(ctx)
 }
@@ -97,6 +100,7 @@ func (s *configChangedStep) applicable(ss *syncState, svc *LifecycleService) boo
 }
 
 func (s *configChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+	svc.deleteBaseImage(ctx)
 	return svc.resolveConfigChange(ctx)
 }
 

@@ -78,21 +78,53 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 
 	svc.logger().Info("Starting aivm")
 
-	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
-
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
 		return err
 	}
 
-	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		svc.logger().Info(fmt.Sprintf("Deleting aged VM profile '%s'", svc.VM.Profile()))
-		if err := svc.VM.Destroy(ctx); err != nil {
-			return err
-		}
-		status = vm.StatusNotFound
+	action, err := svc.decideStartAction(ctx, status)
+	if err != nil {
+		return err
 	}
 
+	switch action {
+	case ActionFullBootstrap:
+		if err := svc.fullBootstrap(ctx); err != nil {
+			return err
+		}
+	case ActionFastRecreate:
+		if err := svc.fastRecreate(ctx); err != nil {
+			return err
+		}
+	case ActionPromptBootstrapRefresh, ActionPromptVMAge, ActionPromptCombined, ActionPromptRuntimeChange, ActionPromptConfigChange:
+		if err := svc.handleRecreationPrompt(ctx, action, status); err != nil {
+			return err
+		}
+	default:
+		if err := svc.resumeOrStartVM(ctx, status); err != nil {
+			return err
+		}
+	}
+
+	if cfg.T3Code.Enable {
+		svc.logger().Info("T3 Code mode — idle monitoring disabled")
+		if err := svc.launchT3Code(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := svc.Monitor.EnsureRunning(); err != nil {
+			svc.logger().Warn(fmt.Sprintf("could not start idle monitor: %v", err))
+		}
+	}
+
+	svc.logger().Info("aivm is ready")
+	return nil
+}
+
+func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Status) error {
+	cfg := svc.Config
+	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
@@ -123,18 +155,6 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		}
 	}
 
-	if cfg.T3Code.Enable {
-		svc.logger().Info("T3 Code mode — idle monitoring disabled")
-		if err := svc.launchT3Code(ctx); err != nil {
-			return err
-		}
-	} else {
-		if err := svc.Monitor.EnsureRunning(); err != nil {
-			svc.logger().Warn(fmt.Sprintf("could not start idle monitor: %v", err))
-		}
-	}
-
-	svc.logger().Info("aivm is ready")
 	return nil
 }
 
@@ -150,28 +170,6 @@ func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated 
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 	return nil
-}
-
-// shouldRecreateVM prompts the user when the VM has exceeded its configured age threshold.
-func (svc *LifecycleService) shouldRecreateVM() bool {
-	cfg := svc.Config
-	threshold := cfg.VM.RecreatePromptAfterDuration
-	if threshold == config.DisabledDuration || threshold <= 0 {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return false
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return false
-	}
-	age := time.Since(time.Unix(epoch, 0))
-	if age < threshold {
-		return false
-	}
-	return promptVMAge(svc.Confirmer, svc.VM.Profile(), age, threshold) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
