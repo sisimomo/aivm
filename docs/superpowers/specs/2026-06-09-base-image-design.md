@@ -26,7 +26,8 @@ Users are pushed to recreate often, but pay the full bootstrap cost every time.
 ## What we want
 
 - **Fast recreate** when nothing meaningful changed — restore post-bootstrap state
-- **Full bootstrap** on a schedule (default every 30 days) to refresh packages and plugins
+- **Full bootstrap** on a schedule (default every 30 days) to refresh packages and
+  plugins
 - **Two independent timers** — VM age vs bootstrap age
 - **Config opt-out** — feature on by default, disable if unwanted
 - **Safe fallback** — enabled with no base, or a broken base, must work like today
@@ -55,8 +56,27 @@ Changing these keys does **not** invalidate the base image.
 
 - After full bootstrap, save a base image (best effort)
 - On recreate, restore from base when valid — skip bootstrap
-- If **no base exists yet**, behave exactly like today: create + full bootstrap, then try to save
-- If **restore or save fails**, delete the broken base, warn the user, and continue with full bootstrap — do not hang or leave aivm in a bad state
+- If **no base exists yet**, behave exactly like today: create + full bootstrap,
+  then try to save
+- If **restore or save fails**, delete the broken base, warn the user, and
+  continue with full bootstrap — do not hang or leave aivm in a bad state
+
+## Full bootstrap vs fast recreate
+
+**Full bootstrap** always:
+
+1. Destroy the live VM or container
+2. Create a fresh instance from the default template (`docker_image` / Lima template)
+3. Run the full plugin bootstrap
+4. Save a new base image (best effort)
+
+This applies to `aivm recreate`, bootstrap refresh acceptance, combined-prompt
+option 1, and config-change recreation. It does **not** bootstrap in place on a
+running VM.
+
+**Fast recreate** restores from the saved base image (shadow clone or committed
+Docker image), skips plugin bootstrap, reapplies `vm.env` and git identity, and
+does not run integrations.
 
 ## Host state
 
@@ -68,9 +88,9 @@ Host state lives under `~/.aivm/state/<profile>/` (same as today).
 | `bootstrap-at` | Full bootstrap completes | `bootstrap_refresh_prompt_after` |
 | `bootstrap-state.json` | Full bootstrap completes | Skip plugin bootstrap when hash matches; base validity check |
 
-`bootstrap-state.json` gains a `backend` field (`lima` or `docker`) recorded at
-full bootstrap. It is not part of `config_hash` but is checked separately at
-restore time.
+`bootstrap-state.json` gains `backend` (`lima` or `docker`) and `vm_type` (`vz`,
+`qemu`, or empty for Docker) fields recorded at full bootstrap. They are not
+part of `config_hash` but are checked separately at restore time.
 
 **Missing `bootstrap-at`:** bootstrap age is not due — skip bootstrap refresh
 prompts; run full bootstrap normally on first create.
@@ -82,9 +102,11 @@ prompts; run full bootstrap normally on first create.
 There is no separate `base-image.json`. Base validity is determined at restore
 time by checking:
 
-1. The backend artifact exists (Lima shadow instance or Docker committed image), and
+1. The backend artifact exists (Lima shadow instance or Docker committed image),
+   and
 2. `bootstrap-state.json` `config_hash` matches the current config hash, and
-3. `bootstrap-state.json` `backend` matches the current `vm.backend`.
+3. `bootstrap-state.json` `backend` matches the current `vm.backend`, and
+4. `bootstrap-state.json` `vm_type` matches the current effective `vm.type`.
 
 If any check fails, treat the base as invalid: delete the artifact and fall back
 to full bootstrap.
@@ -101,6 +123,16 @@ aivm tracks two separate ages:
 **Fast recreate** resets VM age but keeps bootstrap age.
 
 **Full bootstrap** resets both and refreshes the base image.
+
+## Decision order
+
+On each `aivm start` or launch, evaluate checks in this order. Stop at the
+first that applies:
+
+1. **Runtime change** (`vm.backend` or `vm.type` mismatch) — full-wipe prompt
+2. **Config hash change** — delete base; recreate prompt (skipped if step 1 applied)
+3. **Timer prompts** (bootstrap refresh, VM age, or combined)
+4. **Fast restore or full bootstrap** (no prompt due, or non-interactive VM missing)
 
 ## Prompt entry points
 
@@ -126,8 +158,8 @@ VM age and bootstrap refresh are evaluated at the **same entry points**:
 | Both timers due + interactive + VM missing | Combined prompt (2 options: full bootstrap vs fast restore) |
 | Timer due + non-interactive + VM exists | Resume VM as today — no prompt, no recreation |
 | Timer due + non-interactive + VM missing | Fast restore when base valid; else full bootstrap |
-| Config hash changed since last bootstrap | Delete base; prompt to recreate (user can decline, as today) |
-| `vm.backend` changed | Prompt; accept = full wipe like `aivm destroy` (see Backend change) |
+| Config hash changed (no runtime change) | Delete base; prompt to recreate (user can decline, as today) |
+| `vm.backend` or `vm.type` changed | Full-wipe prompt (see Runtime change); takes priority over config-hash prompt |
 | `BootstrapVersion` stale in bootstrap state | Delete base; full bootstrap on next create |
 | Restore fails | Delete base; full bootstrap |
 | `aivm recreate` | Full bootstrap; refresh base |
@@ -154,8 +186,9 @@ WARN  Bootstrap is N day(s) old (threshold: 30 days)
   → Rerun full bootstrap to update toolchains? [y/N]
 ```
 
-- **y** — full bootstrap and new base image
-- **n** — if VM is **running**, keep it as-is (no recreation); if VM is **stopped or missing**, fast restore from base when valid
+- **y** — full bootstrap (destroy, create fresh, bootstrap, save base)
+- **n** — if VM is **running**, keep it as-is (no recreation); if VM is
+  **stopped or missing**, fast restore from base when valid
 
 ### VM age only (`recreate_prompt_after`)
 
@@ -176,8 +209,10 @@ WARN  VM is M day(s) old (threshold: 7 days)
   → [3] Continue without changes
 ```
 
-- **1** — full bootstrap, new base, both clocks reset
-- **2** — fast restore if base valid; otherwise full bootstrap (warn once); stops active sessions if needed
+- **1** — full bootstrap (destroy, create fresh, bootstrap, save base); both
+  clocks reset
+- **2** — fast restore if base valid; otherwise full bootstrap (warn once);
+  stops active sessions if needed
 - **3** — keep current VM as-is; no recreation
 
 **VM missing** (e.g. after idle delete) — two options only (no “continue”):
@@ -196,20 +231,27 @@ Skip all prompts.
 - **VM exists** (stopped or running): resume as today — no recreation
 - **VM missing**: fast restore when base is valid; otherwise full bootstrap
 
-## Backend change
+## Runtime change (`vm.backend` or `vm.type`)
 
-Changing `vm.backend` (e.g. `lima` → `docker`) is equivalent to `aivm destroy`
-followed by a fresh start on the new backend. aivm prompts before proceeding:
+Changing `vm.backend` (e.g. `lima` → `docker`) or `vm.type` (e.g. `vz` → `qemu`)
+invalidates the saved base — a shadow clone from one hypervisor cannot be
+restored under another. This takes **priority** over the config-hash change
+prompt; if both apply, show only the runtime-change prompt.
 
 ```text
-WARN  VM backend has changed (lima → docker)
+WARN  VM runtime has changed (lima/vz → docker)
   → This will destroy the VM and base image. Continue? [y/N]
 ```
 
 - **y** — remove live VM, base image, and all host bootstrap/age state; next
-  `aivm start` creates and bootstraps on the new backend
-- **n** — keep the current setup as-is; warn that the config change was not
-  applied (same as declining a config-change recreation today)
+  `aivm start` creates and runs full bootstrap on the new runtime
+- **n** — keep the current setup as-is (VM and base unchanged); warn that the
+  config change was not applied. Stop evaluation for this run — do not also show
+  the config-hash prompt. Re-prompt on subsequent runs until config is reverted
+  or the user accepts.
+
+Declining a runtime-change prompt does **not** delete the base (unlike
+config-hash decline, which deletes the base preemptively).
 
 ## CLI
 
@@ -217,7 +259,7 @@ WARN  VM backend has changed (lima → docker)
 | --- | --- |
 | `aivm destroy` | Destroy live VM/container, delete base image, clear `bootstrap-state.json`, `bootstrap-at`, and `vm-created-at` |
 | `aivm destroy --keep-base` | Destroy live VM/container only; keep base artifact and all host state files |
-| `aivm recreate` | Destroy, full bootstrap, save new base |
+| `aivm recreate` | Full bootstrap (destroy, create fresh, bootstrap, save base) |
 | `aivm recreate --fast` | Restore from base if possible; otherwise full bootstrap |
 
 `--fast` on `recreate` has no effect when `vm.base_image_enable: false`.
@@ -282,24 +324,29 @@ Base cleanup never deletes the **live** VM or container.
 
 Delete the base when:
 
-- Config hash changes (plugins, agents, VM settings that affect bootstrap)
+- Config hash changes (delete preemptively before prompt; not on runtime-change
+  decline)
 - `BootstrapVersion` in `bootstrap-state.json` is stale
 - Save or restore failed or timed out
 - User runs full `aivm recreate` (without `--fast`)
 - User runs `aivm destroy` (without `--keep-base`)
-- User accepts a `vm.backend` change prompt
-- `vm.type` changes (within the same backend)
+- User accepts a runtime-change prompt (`vm.backend` or `vm.type`)
 - Base artifact expected but shadow instance or image is missing
 
-If the user declines recreation after a config change, keep the running VM as
-today — but delete the base so it cannot be restored incorrectly.
+If the user declines recreation after a **config hash** change, keep the running
+VM as today — but delete the base so it cannot be restored incorrectly.
+
+If the user declines a **runtime change** prompt, keep the VM **and** the base.
 
 ## Reliability
 
 - **Never hang** on save, restore, or cleanup — use timeouts; then fall back
-- **Save is best-effort** — if bootstrap succeeded but save failed, the VM is still usable; warn and try again next full bootstrap
-- **Restore failure** — delete the base, create fresh, full bootstrap in the same `aivm start`
-- **No base yet** — must work completely; indistinguishable from today except a save attempt after bootstrap
+- **Save is best-effort** — if bootstrap succeeded but save failed, the VM is
+  still usable; warn and try again next full bootstrap
+- **Restore failure** — delete the base, create fresh, full bootstrap in the
+  same `aivm start`
+- **No base yet** — must work completely; indistinguishable from today except a
+  save attempt after bootstrap
 
 ## Validation
 
