@@ -10,12 +10,6 @@ type BaseImageStore interface {
 }
 
 func AsBaseImageStore(v VM) (BaseImageStore, bool) {
-	switch x := v.(type) {
-	case *LimaVM:
-		return x, true
-	case *DockerVM:
-		return x, true
-	default:
-		return nil, false
-	}
+	store, ok := v.(BaseImageStore)
+	return store, ok
 }
