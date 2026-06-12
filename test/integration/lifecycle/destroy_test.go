@@ -31,6 +31,12 @@ func TestDestroy_KeepBase_PreservesBootstrapAndBaseImage(t *testing.T) {
 	if h.VM().HasCall("DeleteBaseImage") {
 		t.Fatal("DeleteBaseImage must not run when keepBase=true")
 	}
+	if !h.StateFileExists(vm.BootstrapAtFile) {
+		t.Fatal("expected bootstrap-at preserved with --keep-base")
+	}
+	if !h.StateFileExists(vm.VMCreatedAtFile) {
+		t.Fatal("expected vm-created-at preserved with --keep-base")
+	}
 }
 
 func TestDestroy_NoKeepBase_ClearsBootstrapAndBaseImage(t *testing.T) {
@@ -52,5 +58,11 @@ func TestDestroy_NoKeepBase_ClearsBootstrapAndBaseImage(t *testing.T) {
 	}
 	if !h.VM().HasCall("DeleteBaseImage") {
 		t.Fatal("expected DeleteBaseImage called")
+	}
+	if h.StateFileExists(vm.BootstrapAtFile) {
+		t.Fatal("expected bootstrap-at cleared")
+	}
+	if h.StateFileExists(vm.VMCreatedAtFile) {
+		t.Fatal("expected vm-created-at cleared")
 	}
 }

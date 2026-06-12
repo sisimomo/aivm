@@ -8,7 +8,7 @@ type BaseImageCheck struct {
 }
 
 func BaseImageValid(state *BootstrapState, check BaseImageCheck) bool {
-	if state == nil || !check.ArtifactExists {
+	if state == nil || !check.ArtifactExists || state.NeedsMigration() {
 		return false
 	}
 	return state.ConfigHash == check.ConfigHash &&

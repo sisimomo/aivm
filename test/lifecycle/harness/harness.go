@@ -185,19 +185,23 @@ func effectiveVMType(vmCfg config.VMConfig) string {
 	return "qemu"
 }
 
-func (h *Harness) writeBootstrapState(state *lifecycle.BootstrapState) {
+func (h *Harness) writeBootstrapStateOnly(state *lifecycle.BootstrapState) {
 	h.t.Helper()
-	stateDir := h.StateDir()
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		h.t.Fatalf("marshal bootstrap state: %v", err)
 	}
-	path := filepath.Join(stateDir, "bootstrap-state.json")
+	path := filepath.Join(h.StateDir(), "bootstrap-state.json")
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		h.t.Fatalf("write bootstrap state: %v", err)
 	}
-	vm.RecordBootstrapAt(stateDir)
-	vm.RecordVMCreation(stateDir)
+}
+
+func (h *Harness) writeBootstrapState(state *lifecycle.BootstrapState) {
+	h.t.Helper()
+	h.writeBootstrapStateOnly(state)
+	vm.RecordBootstrapAt(h.StateDir())
+	vm.RecordVMCreation(h.StateDir())
 }
 
 func (h *Harness) SeedBootstrapped() {
@@ -277,13 +281,73 @@ func (h *Harness) HasBaseImage() bool {
 
 func (h *Harness) BootstrapAtUnix() int64 {
 	h.t.Helper()
-	data, err := os.ReadFile(filepath.Join(h.StateDir(), vm.BootstrapAtFile))
+	return h.readEpochFile(vm.BootstrapAtFile)
+}
+
+func (h *Harness) VMCreatedAtUnix() int64 {
+	h.t.Helper()
+	return h.readEpochFile(vm.VMCreatedAtFile)
+}
+
+func (h *Harness) readEpochFile(name string) int64 {
+	h.t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.StateDir(), name))
 	if err != nil {
-		h.t.Fatalf("read bootstrap-at: %v", err)
+		h.t.Fatalf("read %s: %v", name, err)
 	}
 	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	if err != nil {
-		h.t.Fatalf("parse bootstrap-at: %v", err)
+		h.t.Fatalf("parse %s: %v", name, err)
 	}
 	return ts
+}
+
+func (h *Harness) SetBootstrapConfigHash(hash string) {
+	h.t.Helper()
+	state := h.BootstrapState()
+	state.ConfigHash = hash
+	h.writeBootstrapStateOnly(state)
+}
+
+func (h *Harness) SetBootstrapVersion(version string) {
+	h.t.Helper()
+	state := h.BootstrapState()
+	state.Version = version
+	h.writeBootstrapStateOnly(state)
+}
+
+func (h *Harness) SetBootstrapVMType(vmType string) {
+	h.t.Helper()
+	state := h.BootstrapState()
+	state.VMType = vmType
+	h.writeBootstrapStateOnly(state)
+}
+
+func (h *Harness) SetBootstrapBackend(backend string) {
+	h.t.Helper()
+	state := h.BootstrapState()
+	state.Backend = backend
+	h.writeBootstrapStateOnly(state)
+}
+
+func (h *Harness) RemoveBootstrapAt() {
+	h.t.Helper()
+	path := filepath.Join(h.StateDir(), vm.BootstrapAtFile)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		h.t.Fatalf("remove bootstrap-at: %v", err)
+	}
+}
+
+// VMCallLogHasRunSubstr reports whether any Run/RunOutput call log entry contains substr.
+func (h *Harness) VMCallLogHasRunSubstr(substr string) bool {
+	h.t.Helper()
+	for _, c := range h.VM().CallLog() {
+		if c.Method != "Run" && c.Method != "RunOutput" {
+			continue
+		}
+		if strings.Contains(c.Detail, substr) {
+			return true
+		}
+	}
+	return false
 }

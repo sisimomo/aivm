@@ -32,6 +32,7 @@ type FakeVM struct {
 	baseImageExists bool
 	calls           []Call
 	faults          Faults
+	waitReadyCalls  int
 }
 
 func New() *FakeVM {
@@ -146,7 +147,11 @@ func (f *FakeVM) WaitReady(_ context.Context, _ time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.appendCall("WaitReady", "")
-	return f.faults.WaitReadyErr
+	if f.faults.WaitReadyErr != nil && f.waitReadyCalls == 0 {
+		f.waitReadyCalls++
+		return f.faults.WaitReadyErr
+	}
+	return nil
 }
 
 func (f *FakeVM) GetPublishedPort(port int) (int, error) {

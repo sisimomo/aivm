@@ -104,6 +104,204 @@ func TestStart_CombinedPrompt_Option2_FastRecreate(t *testing.T) {
 	}
 }
 
+func TestStart_BootstrapRefreshDeclined_RunningVM_NoRecreate(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithScriptedAnswers("n"),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusRunning)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("declined refresh on running VM must keep VM as-is")
+	}
+}
+
+func TestStart_VMAgePromptDeclined_ResumesStoppedVM(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithRecreatePromptDays(30),
+		harness.WithScriptedAnswers("n"),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusStopped)
+	h.SetBaseImage(true)
+	h.SetVMCreatedDaysAgo(31)
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("declined VM age prompt must resume without recreate")
+	}
+	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
+		t.Fatalf("expected VM running after resume, got %v", got)
+	}
+}
+
+func TestStart_CombinedPrompt_VMMissing_Option1_FullBootstrap(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+		harness.WithScriptedAnswers("1"),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusNotFound)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !h.VM().HasCall("Destroy") {
+		t.Fatal("option 1 with missing VM should full bootstrap")
+	}
+}
+
+func TestStart_CombinedPrompt_VMMissing_Option2_FastRecreate(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+		harness.WithScriptedAnswers("2"),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusNotFound)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("option 2 with missing VM should fast recreate")
+	}
+}
+
+func TestStart_NonInteractive_StaleTimers_RunningVM_Resumes(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusRunning)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("non-interactive stale timers on running VM must resume silently")
+	}
+}
+
+func TestStart_NonInteractive_StaleTimers_StoppedVM_Resumes(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusStopped)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("non-interactive stale timers on stopped VM must resume silently")
+	}
+	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
+		t.Fatalf("expected VM started, got %v", got)
+	}
+}
+
+func TestStart_NonInteractive_RuntimeMismatch_NoDestroy(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t, harness.WithBackend("docker"))
+	h.SeedBootstrapStateWithBackend("lima", "qemu")
+	h.SetVMStatus(vm.StatusRunning)
+	h.SetBaseImage(true)
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") {
+		t.Fatal("non-interactive runtime mismatch must not destroy VM")
+	}
+	if !h.HasBaseImage() {
+		t.Fatal("base image must be preserved when runtime mismatch skipped")
+	}
+}
+
+func TestStart_NonInteractive_ConfigHashChange_BaseDeleted_NoDestroy(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusRunning)
+	h.SetBaseImage(true)
+	h.SVC().Config.VM.CPUs = 99
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.HasBaseImage() {
+		t.Fatal("config hash change must delete base preemptively")
+	}
+	if h.VM().HasCall("Destroy") {
+		t.Fatal("non-interactive config change must resume without recreate")
+	}
+}
+
+func TestStart_NonInteractive_VMMissing_StaleTimers_FastRecreate(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusNotFound)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("non-interactive missing VM with valid base should fast restore")
+	}
+}
+
 func TestStart_CombinedPrompt_Option3_Resume(t *testing.T) {
 	t.Parallel()
 	h := harness.New(t,
