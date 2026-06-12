@@ -28,7 +28,7 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.bootstrap(ctx, svc.VM); err != nil {
 		return err
 	}
-	_ = svc.SaveBaseImageBestEffort(ctx, opts)
+	// bootstrap() saves the base image; no second save here.
 	if err := svc.Compose.Up(ctx); err != nil {
 		return fmt.Errorf("compose up: %w", err)
 	}
@@ -47,11 +47,12 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, vm.BaseImageOpTimeout)
 	defer cancel()
 	if err := store.RestoreFromBaseImage(ctx, opts); err != nil {
-		svc.logger().Warn(fmt.Sprintf("restore failed, deleting base: %v", err))
+		svc.logger().Warn(fmt.Sprintf("restore from base failed, falling back to full bootstrap: %v", err))
 		svc.deleteBaseImage(ctx)
 		return svc.fullBootstrap(ctx)
 	}
 	if err := svc.VM.WaitReady(ctx, 60*time.Second); err != nil {
+		svc.logger().Warn(fmt.Sprintf("restored VM not ready, falling back to full bootstrap: %v", err))
 		svc.deleteBaseImage(ctx)
 		return svc.fullBootstrap(ctx)
 	}

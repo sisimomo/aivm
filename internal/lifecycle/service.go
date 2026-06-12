@@ -74,8 +74,6 @@ func (svc *LifecycleService) logger() *slog.Logger {
 
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
-	cfg := svc.Config
-
 	svc.logger().Info("Starting aivm")
 
 	status, err := svc.VM.Status(ctx)
@@ -107,6 +105,11 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		}
 	}
 
+	return svc.finalizeStart(ctx)
+}
+
+func (svc *LifecycleService) finalizeStart(ctx context.Context) error {
+	cfg := svc.Config
 	if cfg.T3Code.Enable {
 		svc.logger().Info("T3 Code mode — idle monitoring disabled")
 		if err := svc.launchT3Code(ctx); err != nil {
@@ -595,11 +598,17 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force, fast bool) err
 	// monitor stays stopped; Start will restart it via its normal launch path.
 	svc.Monitor.Stop()
 
+	var recreateErr error
 	if fast && svc.baseImageEnabled() && svc.hasValidBase(ctx) {
-		return svc.fastRecreate(ctx)
+		recreateErr = svc.fastRecreate(ctx)
+	} else {
+		if fast && svc.baseImageEnabled() {
+			svc.logger().Warn("No valid base image — running full bootstrap")
+		}
+		recreateErr = svc.fullBootstrap(ctx)
 	}
-	if fast && svc.baseImageEnabled() {
-		svc.logger().Warn("No valid base image — running full bootstrap")
+	if recreateErr != nil {
+		return recreateErr
 	}
-	return svc.fullBootstrap(ctx)
+	return svc.finalizeStart(ctx)
 }

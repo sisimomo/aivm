@@ -68,6 +68,9 @@ func (l *LimaVM) RestoreFromBaseImage(ctx context.Context, opts StartOptions) er
 	defer cancel()
 
 	shadow := LimaShadowProfile(l.profile)
+	if !l.HasBaseImage(ctx) {
+		return fmt.Errorf("shadow instance %q not found", shadow)
+	}
 
 	if err := l.deleteLiveIfExists(ctx); err != nil {
 		return err
@@ -75,12 +78,14 @@ func (l *LimaVM) RestoreFromBaseImage(ctx context.Context, opts StartOptions) er
 
 	memGiB := opts.MemoryBytes >> 30
 	diskGiB := opts.DiskBytes >> 30
-	args := LimaFastRestoreArgs(shadow, l.profile, opts.CPUs, memGiB, diskGiB, opts.VMType, opts.Mounts)
+	args := LimaFastRestoreArgs(shadow, l.profile, opts.CPUs, memGiB, diskGiB, opts.VMType)
 	cloneArgs := append([]string{"-y"}, args...)
+	slog.Info(fmt.Sprintf("Restoring from base image: cloning %q → %q", shadow, l.profile))
 	cmd := exec.CommandContext(ctx, "limactl", cloneArgs...)
 	if err := aivmlog.RunCmd(cmd, "lima"); err != nil {
 		return fmt.Errorf("restore from base image: %w", err)
 	}
+	slog.Info(fmt.Sprintf("Restored live VM %q from base image", l.profile))
 
 	return l.WaitReady(ctx, 2*time.Minute)
 }
@@ -111,7 +116,11 @@ func (l *LimaVM) HasBaseImage(ctx context.Context) bool {
 
 // LimaFastRestoreArgs builds limactl clone arguments for restoring from a shadow
 // profile. Returned args are suitable for: limactl -y <args...>
-func LimaFastRestoreArgs(shadow, live string, cpus int, memGiB, diskGiB int64, vmType string, mounts []Mount) []string {
+//
+// Mounts are intentionally omitted: the shadow instance already carries the
+// mount set from the live→shadow save clone. Passing --mount again makes
+// limactl reject overlapping paths (see limactl clone docs).
+func LimaFastRestoreArgs(shadow, live string, cpus int, memGiB, diskGiB int64, vmType string) []string {
 	args := []string{
 		"clone", shadow, live,
 		"--start",
@@ -120,13 +129,6 @@ func LimaFastRestoreArgs(shadow, live string, cpus int, memGiB, diskGiB int64, v
 		"--disk", strconv.Itoa(int(diskGiB)),
 	}
 	args = append(args, limaCloneVMTypeFlags(vmType)...)
-	for _, m := range mounts {
-		flag := m.HostPath + ":r"
-		if m.Writable {
-			flag = m.HostPath + ":w"
-		}
-		args = append(args, "--mount", flag)
-	}
 	return args
 }
 
