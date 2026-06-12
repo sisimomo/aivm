@@ -2,11 +2,16 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/config"
@@ -15,6 +20,7 @@ import (
 	"github.com/sisimomo/aivm/internal/providers/generic"
 	"github.com/sisimomo/aivm/internal/session"
 	"github.com/sisimomo/aivm/internal/t3code"
+	"github.com/sisimomo/aivm/internal/vm"
 	"github.com/sisimomo/aivm/test/testvm"
 )
 
@@ -161,3 +167,123 @@ func (h *Harness) SVC() *lifecycle.LifecycleService { return h.svc }
 func (h *Harness) VM() *testvm.FakeVM { return h.fake }
 
 func (h *Harness) StateDir() string { return h.svc.Config.StateDir }
+
+func effectiveBackend(vmCfg config.VMConfig) string {
+	if vmCfg.Backend == "" {
+		return "lima"
+	}
+	return vmCfg.Backend
+}
+
+func effectiveVMType(vmCfg config.VMConfig) string {
+	if vmCfg.Type != "" {
+		return vmCfg.Type
+	}
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		return "vz"
+	}
+	return "qemu"
+}
+
+func (h *Harness) writeBootstrapState(state *lifecycle.BootstrapState) {
+	h.t.Helper()
+	stateDir := h.StateDir()
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		h.t.Fatalf("marshal bootstrap state: %v", err)
+	}
+	path := filepath.Join(stateDir, "bootstrap-state.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		h.t.Fatalf("write bootstrap state: %v", err)
+	}
+	vm.RecordBootstrapAt(stateDir)
+	vm.RecordVMCreation(stateDir)
+}
+
+func (h *Harness) SeedBootstrapped() {
+	h.t.Helper()
+	h.writeBootstrapState(&lifecycle.BootstrapState{
+		Version:    lifecycle.BootstrapVersion,
+		Provider:   h.svc.Provider.Name(),
+		Backend:    effectiveBackend(h.svc.Config.VM),
+		VMType:     effectiveVMType(h.svc.Config.VM),
+		ConfigHash: h.svc.CurrentConfigHashForTest(),
+		EnvHash:    h.svc.CurrentEnvHashForTest(),
+	})
+}
+
+func (h *Harness) SeedBootstrapStateWithBackend(backend, vmType string) {
+	h.t.Helper()
+	h.writeBootstrapState(&lifecycle.BootstrapState{
+		Version:    lifecycle.BootstrapVersion,
+		Provider:   h.svc.Provider.Name(),
+		Backend:    backend,
+		VMType:     vmType,
+		ConfigHash: h.svc.CurrentConfigHashForTest(),
+		EnvHash:    h.svc.CurrentEnvHashForTest(),
+	})
+}
+
+func (h *Harness) SetBootstrapDaysAgo(days int) {
+	h.t.Helper()
+	ts := time.Now().AddDate(0, 0, -days).Unix()
+	path := filepath.Join(h.StateDir(), vm.BootstrapAtFile)
+	payload := []byte(strconv.FormatInt(ts, 10))
+	if err := os.WriteFile(path, payload, 0644); err != nil {
+		h.t.Fatalf("write bootstrap-at: %v", err)
+	}
+}
+
+func (h *Harness) SetVMCreatedDaysAgo(days int) {
+	h.t.Helper()
+	ts := time.Now().AddDate(0, 0, -days).Unix()
+	path := filepath.Join(h.StateDir(), vm.VMCreatedAtFile)
+	payload := []byte(strconv.FormatInt(ts, 10))
+	if err := os.WriteFile(path, payload, 0644); err != nil {
+		h.t.Fatalf("write vm-created-at: %v", err)
+	}
+}
+
+func (h *Harness) SetVMStatus(s vm.Status) {
+	h.VM().SetStatus(s)
+}
+
+func (h *Harness) SetBaseImage(exists bool) {
+	h.VM().SetBaseImageExists(exists)
+}
+
+func (h *Harness) StateFileExists(name string) bool {
+	h.t.Helper()
+	_, err := os.Stat(filepath.Join(h.StateDir(), name))
+	return err == nil
+}
+
+func (h *Harness) BootstrapState() *lifecycle.BootstrapState {
+	h.t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.StateDir(), "bootstrap-state.json"))
+	if err != nil {
+		h.t.Fatalf("read bootstrap state: %v", err)
+	}
+	var state lifecycle.BootstrapState
+	if err := json.Unmarshal(data, &state); err != nil {
+		h.t.Fatalf("parse bootstrap state: %v", err)
+	}
+	return &state
+}
+
+func (h *Harness) HasBaseImage() bool {
+	return h.VM().BaseImageExists()
+}
+
+func (h *Harness) BootstrapAtUnix() int64 {
+	h.t.Helper()
+	data, err := os.ReadFile(filepath.Join(h.StateDir(), vm.BootstrapAtFile))
+	if err != nil {
+		h.t.Fatalf("read bootstrap-at: %v", err)
+	}
+	ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		h.t.Fatalf("parse bootstrap-at: %v", err)
+	}
+	return ts
+}

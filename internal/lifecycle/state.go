@@ -100,6 +100,16 @@ func (svc *LifecycleService) currentEnvHash() string {
 }
 
 // currentConfigHash computes the hash covering all execution-relevant config.
+// CurrentConfigHashForTest exposes currentConfigHash for harness seeding.
+func (svc *LifecycleService) CurrentConfigHashForTest() string {
+	return svc.currentConfigHash()
+}
+
+// CurrentEnvHashForTest exposes currentEnvHash for integration harness seeding.
+func (svc *LifecycleService) CurrentEnvHashForTest() string {
+	return svc.currentEnvHash()
+}
+
 func (svc *LifecycleService) currentConfigHash() string {
 	enabled := BootstrapEnabledPlugins(svc.Registry, svc.EnabledProviders, svc.Config.Plugins.Enabled)
 	return ComputeConfigHash(
