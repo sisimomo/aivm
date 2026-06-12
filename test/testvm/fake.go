@@ -122,10 +122,10 @@ func (f *FakeVM) RunStream(
 	return 0, nil
 }
 
-func (f *FakeVM) SSH(_ context.Context, _ map[string]string) error {
+func (f *FakeVM) SSH(_ context.Context, workDir string, _ map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.appendCall("SSH", "")
+	f.appendCall("SSH", workDir)
 	return nil
 }
 

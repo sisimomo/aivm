@@ -63,3 +63,20 @@ func TestSSHAutoStart(t *testing.T) {
 		Assert("User saw ready message", assertions.OutputContains("aivm is ready")).
 		Run()
 }
+
+// TestSSHOopensCWD verifies that aivm ssh lands in the host's current working
+// directory (mirrored into the VM via bind mounts).
+func TestSSHOopensCWD(t *testing.T) {
+	t.Parallel()
+	h := framework.New(t)
+
+	h.Scenario("aivm ssh opens current working directory").
+		Step("Start VM", actions.CLI("start")).
+		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
+		Assert("Bootstrap complete", assertions.BootstrapComplete()).
+		Step("Reset output buffer", actions.ResetOutput()).
+		Step("SSH: print pwd", actions.CLIWithStdin("pwd\nexit\n", "ssh")).
+		Assert("SSH lands in mounted dev root", assertions.OutputContains("/dev")).
+		Assert("SSH lands in test run directory", assertions.OutputContains("test-runs")).
+		Run()
+}

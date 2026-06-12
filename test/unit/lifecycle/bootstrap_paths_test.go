@@ -48,7 +48,7 @@ func (c *captureVM) RunStream(_ context.Context, script string, _ map[string]str
 	return 0, nil
 }
 
-func (c *captureVM) SSH(_ context.Context, _ map[string]string) error { return nil }
+func (c *captureVM) SSH(_ context.Context, _ string, _ map[string]string) error { return nil }
 
 func (c *captureVM) CopyTo(_ context.Context, _, _ string, _ bool) error { return nil }
 

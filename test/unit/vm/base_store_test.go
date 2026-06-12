@@ -40,7 +40,7 @@ func (s *stubBaseStore) RunStream(_ context.Context, _ string, _ map[string]stri
 	return 0, nil
 }
 
-func (s *stubBaseStore) SSH(_ context.Context, _ map[string]string) error { return nil }
+func (s *stubBaseStore) SSH(_ context.Context, _ string, _ map[string]string) error { return nil }
 
 func (s *stubBaseStore) CopyTo(_ context.Context, _, _ string, _ bool) error { return nil }
 

@@ -188,12 +188,12 @@ func (d *DockerVM) RunInteractive(ctx context.Context, script string, env map[st
 
 // SSH opens an interactive shell in the container. Session env is exported first;
 // -t is only passed when stdin is a TTY.
-func (d *DockerVM) SSH(ctx context.Context, env map[string]string) error {
+func (d *DockerVM) SSH(ctx context.Context, workDir string, env map[string]string) error {
 	args := []string{"exec", "-i"}
 	if isTTY() {
 		args = append(args, "-t")
 	}
-	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-c", BuildDockerSSHCmd(env))
+	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-c", BuildDockerSSHCmd(workDir, env))
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -264,11 +264,14 @@ func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// BuildDockerSSHCmd builds the bash -c script for Docker SSH (export env, then exec bash).
-func BuildDockerSSHCmd(env map[string]string) string {
+// BuildDockerSSHCmd builds the bash -c script for Docker SSH (export env, cd, exec bash).
+func BuildDockerSSHCmd(workDir string, env map[string]string) string {
 	var sb strings.Builder
 	for k, v := range env {
 		fmt.Fprintf(&sb, "export %s=%s; ", k, ShellEscape(v))
+	}
+	if workDir != "" {
+		fmt.Fprintf(&sb, "cd %s; ", ShellEscape(workDir))
 	}
 	sb.WriteString("exec bash")
 	return sb.String()

@@ -9,7 +9,7 @@ import (
 
 func TestBuildDockerSSHCmd_ExportsConfiguredVars(t *testing.T) {
 	t.Parallel()
-	got := vm.BuildDockerSSHCmd(map[string]string{
+	got := vm.BuildDockerSSHCmd("", map[string]string{
 		"MY_TOOL_SESSION_ID": "abc-123",
 		"CI_JOB_ID":          "job-9",
 	})
@@ -26,7 +26,7 @@ func TestBuildDockerSSHCmd_ExportsConfiguredVars(t *testing.T) {
 
 func TestBuildDockerSSHCmd_EmptyEnv(t *testing.T) {
 	t.Parallel()
-	got := vm.BuildDockerSSHCmd(nil)
+	got := vm.BuildDockerSSHCmd("", nil)
 	if got != "exec bash" {
 		t.Fatalf("got %q, want %q", got, "exec bash")
 	}
@@ -34,7 +34,7 @@ func TestBuildDockerSSHCmd_EmptyEnv(t *testing.T) {
 
 func TestBuildDockerSSHCmd_ExportsEmptyValues(t *testing.T) {
 	t.Parallel()
-	got := vm.BuildDockerSSHCmd(map[string]string{
+	got := vm.BuildDockerSSHCmd("", map[string]string{
 		"UNSET_ON_HOST": "",
 	})
 	if !strings.Contains(got, "export UNSET_ON_HOST=''") {
@@ -44,7 +44,7 @@ func TestBuildDockerSSHCmd_ExportsEmptyValues(t *testing.T) {
 
 func TestBuildDockerSSHCmd_EscapesSingleQuotes(t *testing.T) {
 	t.Parallel()
-	got := vm.BuildDockerSSHCmd(map[string]string{
+	got := vm.BuildDockerSSHCmd("", map[string]string{
 		"TOKEN": "it's-fine",
 	})
 	want := "export TOKEN='it'\"'\"'s-fine'"
@@ -71,5 +71,30 @@ func TestSSHScriptWithEnv_EmptyEnvReturnsScriptUnchanged(t *testing.T) {
 	script := "echo hi"
 	if got := vm.SSHScriptWithEnv(nil, script); got != script {
 		t.Fatalf("got %q, want %q", got, script)
+	}
+}
+
+func TestSSHLoginScript_CdsToWorkDir(t *testing.T) {
+	t.Parallel()
+	got := vm.SSHLoginScript("/home/user/proj")
+	want := "cd '/home/user/proj' && exec bash -l"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestSSHLoginScript_EmptyWorkDir(t *testing.T) {
+	t.Parallel()
+	if got := vm.SSHLoginScript(""); got != "exec bash -l" {
+		t.Fatalf("got %q, want %q", got, "exec bash -l")
+	}
+}
+
+func TestBuildDockerSSHCmd_CdsToWorkDir(t *testing.T) {
+	t.Parallel()
+	got := vm.BuildDockerSSHCmd("/work/proj", nil)
+	want := "cd '/work/proj'; exec bash"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

@@ -52,17 +52,9 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		return nil, fmt.Errorf("agent %q: cli_command is not configured", prov.Name())
 	}
 
-	getCWD := svc.GetWorkDir
-	if getCWD == nil {
-		getCWD = os.Getwd
-	}
-	hostCWD, err := getCWD()
+	hostCWD, realCWD, err := svc.resolveSessionCWD()
 	if err != nil {
-		return nil, fmt.Errorf("getting working directory: %w", err)
-	}
-	realCWD, err := filepath.EvalSymlinks(hostCWD)
-	if err != nil {
-		realCWD = filepath.Clean(hostCWD)
+		return nil, err
 	}
 	if err := AssertUnderMount(realCWD, cfg); err != nil {
 		return nil, err
@@ -99,6 +91,22 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		ctx:     runCtx,
 		cleanup: cleanup,
 	}, nil
+}
+
+func (svc *LifecycleService) resolveSessionCWD() (hostCWD, realCWD string, err error) {
+	getCWD := svc.GetWorkDir
+	if getCWD == nil {
+		getCWD = os.Getwd
+	}
+	hostCWD, err = getCWD()
+	if err != nil {
+		return "", "", fmt.Errorf("getting working directory: %w", err)
+	}
+	realCWD, err = filepath.EvalSymlinks(hostCWD)
+	if err != nil {
+		realCWD = filepath.Clean(hostCWD)
+	}
+	return hostCWD, realCWD, nil
 }
 
 func AssertUnderMount(realCWD string, cfg *config.Config) error {

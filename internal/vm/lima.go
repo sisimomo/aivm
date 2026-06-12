@@ -205,8 +205,8 @@ func (l *LimaVM) RunOutput(ctx context.Context, script string, env map[string]st
 	return buf.String(), nil
 }
 
-func (l *LimaVM) SSH(ctx context.Context, env map[string]string) error {
-	return InteractiveSSH(ctx, l.profile, env, "exec bash -l")
+func (l *LimaVM) SSH(ctx context.Context, workDir string, env map[string]string) error {
+	return InteractiveSSH(ctx, l.profile, env, SSHLoginScript(workDir))
 }
 
 func (l *LimaVM) RunStream(ctx context.Context, script string, env map[string]string) (int, error) {
