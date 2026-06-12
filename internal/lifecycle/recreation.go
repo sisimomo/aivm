@@ -115,9 +115,6 @@ func (svc *LifecycleService) decideStartAction(ctx context.Context, status vm.St
 	}
 
 	if status == vm.StatusNotFound {
-		if interactive && (timers.BootstrapDue || timers.VMAgeDue) {
-			return ActionPromptCombined, nil
-		}
 		if svc.hasValidBase(ctx) {
 			return ActionFastRecreate, nil
 		}
@@ -158,6 +155,8 @@ func (svc *LifecycleService) handleRecreationPrompt(ctx context.Context, action 
 		if currentStatus == vm.StatusRunning {
 			return nil
 		}
+		svc.skipConfigChangePrompt = true
+		defer func() { svc.skipConfigChangePrompt = false }()
 		return svc.resumeOrStartVM(ctx, currentStatus)
 	case ActionPromptVMAge:
 		threshold := svc.Config.VM.RecreatePromptAfterDuration

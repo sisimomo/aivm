@@ -430,3 +430,79 @@ func TestStart_VMAgePromptAccepted_ValidBase_FastRecreate(t *testing.T) {
 		t.Fatal("bootstrap-at unchanged on fast recreate")
 	}
 }
+
+func TestLaunch_BootstrapRefreshAccepted_FullBootstrap(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithScriptedAnswers("y"),
+	)
+	workDir := t.TempDir()
+	h.SetLaunchWorkDir(workDir)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusRunning)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	oldBootstrapAt := h.BootstrapAtUnix()
+
+	ctx := context.Background()
+	if err := h.SVC().Launch(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if h.BootstrapAtUnix() <= oldBootstrapAt {
+		t.Fatal("expected bootstrap-at updated after accepted refresh on launch")
+	}
+	if !h.VM().HasCall("Destroy") {
+		t.Fatal("expected full bootstrap destroy during launch")
+	}
+}
+
+func TestStart_ConfigHashChangeDeclined_StoppedVM_NoDoublePrompt(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t, harness.WithScriptedAnswers("n"))
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusStopped)
+	h.SetBaseImage(true)
+	h.SVC().Config.VM.CPUs = 99
+	h.VM().ResetCallLog()
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.VM().HasCall("Destroy") {
+		t.Fatal("declined config change must resume stopped VM without recreate")
+	}
+	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
+		t.Fatalf("expected VM running after resume, got %v", got)
+	}
+}
+
+func TestStart_CombinedPrompt_Option2_TerminatesSessions(t *testing.T) {
+	t.Parallel()
+	h := harness.New(t,
+		harness.WithBootstrapRefreshDays(30),
+		harness.WithRecreatePromptDays(30),
+		harness.WithScriptedAnswers("2"),
+	)
+	h.SeedBootstrapped()
+	h.SetVMStatus(vm.StatusStopped)
+	h.SetBaseImage(true)
+	h.SetBootstrapDaysAgo(31)
+	h.SetVMCreatedDaysAgo(31)
+	h.SeedSession("/tmp/work")
+	if h.ActiveSessionCount() != 1 {
+		t.Fatal("expected seeded session")
+	}
+
+	ctx := context.Background()
+	if err := h.SVC().Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !h.VM().HasCall("RestoreFromBaseImage") {
+		t.Fatal("option 2 should fast recreate")
+	}
+	if h.ActiveSessionCount() != 0 {
+		t.Fatal("fast recreate must terminate active sessions")
+	}
+}

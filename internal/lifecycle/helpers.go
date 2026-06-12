@@ -134,18 +134,6 @@ func stringSet(items []string) map[string]bool {
 	return m
 }
 
-func vmCreatedRecently(stateDir string) bool {
-	data, err := os.ReadFile(filepath.Join(stateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return false
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return false
-	}
-	return time.Since(time.Unix(epoch, 0)) < 10*time.Minute
-}
-
 // ensureAgentPersistDirs creates the host-side directories that are mounted
 // into the VM for persistence.
 func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) {

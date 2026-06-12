@@ -60,11 +60,32 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		return nil, err
 	}
 
-	if err := svc.checkVMAge(ctx); err != nil {
+	status, err := svc.VM.Status(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	status, err := svc.VM.Status(ctx)
+	action, err := svc.decideStartAction(ctx, status)
+	if err != nil {
+		return nil, err
+	}
+
+	switch action {
+	case ActionFullBootstrap:
+		if err := svc.fullBootstrap(ctx); err != nil {
+			return nil, err
+		}
+	case ActionFastRecreate:
+		if err := svc.fastRecreate(ctx); err != nil {
+			return nil, err
+		}
+	case ActionPromptBootstrapRefresh, ActionPromptVMAge, ActionPromptCombined, ActionPromptRuntimeChange, ActionPromptConfigChange:
+		if err := svc.handleRecreationPrompt(ctx, action, status); err != nil {
+			return nil, err
+		}
+	}
+
+	status, err = svc.VM.Status(ctx)
 	if err != nil || status != vm.StatusRunning {
 		return nil, fmt.Errorf("VM is not running — run 'aivm start' first")
 	}

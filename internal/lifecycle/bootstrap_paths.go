@@ -11,6 +11,7 @@ import (
 // fullBootstrap destroys live VM, creates fresh, runs plugin bootstrap, saves base (best effort).
 func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	svc.Monitor.Stop()
+	svc.terminateActiveSessions()
 	svc.deleteBaseImage(ctx)
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroy VM: %w", err)
@@ -37,6 +38,7 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 
 // fastRecreate restores from base, reapplies env/git, skips plugins.
 func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
+	svc.terminateActiveSessions()
 	store, ok := vm.AsBaseImageStore(svc.VM)
 	if !ok || !svc.hasValidBase(ctx) {
 		svc.logger().Warn("No valid base image — falling back to full bootstrap")

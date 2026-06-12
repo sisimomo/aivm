@@ -10,7 +10,7 @@ func DestroyCmd(getApp func() (*App, error)) *cobra.Command {
 	var keepBase bool
 	cmd := &cobra.Command{
 		Use:   "destroy",
-		Short: "Delete the VM (volumes and host state preserved)",
+		Short: "Delete the VM and clear base image, bootstrap state, and age tracking files",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := getApp()
 			if err != nil {
@@ -19,7 +19,7 @@ func DestroyCmd(getApp func() (*App, error)) *cobra.Command {
 			return DoDestroy(cmd.Context(), app, keepBase)
 		},
 	}
-	cmd.Flags().BoolVar(&keepBase, "keep-base", false, "keep base image and host bootstrap state")
+	cmd.Flags().BoolVar(&keepBase, "keep-base", false, "preserve base image and host bootstrap/age state for fast recreate")
 	return cmd
 }
 

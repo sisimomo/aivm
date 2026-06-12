@@ -30,12 +30,21 @@ func TestStart_MissingBootstrapAt_SkipsBootstrapRefreshPrompt(t *testing.T) {
 	}
 }
 
-func TestStart_VMAgeOnly_VMMissing_Interactive_FastRecreateOnOption2(t *testing.T) {
+type noPromptConfirmer struct {
+	t *testing.T
+}
+
+func (c *noPromptConfirmer) IsInteractive() bool { return true }
+
+func (c *noPromptConfirmer) ReadAnswer() string {
+	c.t.Fatal("unexpected interactive prompt")
+	return ""
+}
+
+func TestStart_VMAgeOnly_VMMissing_Interactive_SilentFastRecreate(t *testing.T) {
 	t.Parallel()
-	h := harness.New(t,
-		harness.WithRecreatePromptDays(30),
-		harness.WithScriptedAnswers("2"),
-	)
+	h := harness.New(t, harness.WithRecreatePromptDays(30))
+	h.SVC().Confirmer = &noPromptConfirmer{t: t}
 	h.SeedBootstrapped()
 	h.SetVMStatus(vm.StatusNotFound)
 	h.SetBaseImage(true)
@@ -47,7 +56,7 @@ func TestStart_VMAgeOnly_VMMissing_Interactive_FastRecreateOnOption2(t *testing.
 		t.Fatal(err)
 	}
 	if !h.VM().HasCall("RestoreFromBaseImage") {
-		t.Fatal("VM age due with missing VM should offer fast recreate")
+		t.Fatal("VM age due with missing VM should silently fast recreate when base valid")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
 		t.Fatal("bootstrap-at unchanged on fast recreate")

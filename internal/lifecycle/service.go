@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
@@ -63,6 +62,9 @@ type LifecycleService struct {
 	GetWorkDir func() (string, error)
 	// Log overrides slog.Default() in tests. When nil, slog.Default() is used.
 	Log *slog.Logger
+	// skipConfigChangePrompt suppresses the config-changed prompt in syncBootstrap
+	// after the user already declined it during handleRecreationPrompt.
+	skipConfigChangePrompt bool
 }
 
 func (svc *LifecycleService) logger() *slog.Logger {
@@ -476,90 +478,6 @@ var ipRe = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
 
 func rewriteIPsToLocalhost(s string) string {
 	return ipRe.ReplaceAllString(s, "localhost")
-}
-
-// checkVMAge prompts the user when the VM is older than the configured
-// recreate_prompt_after threshold. It may recreate the current VM after
-// confirming with the user.
-func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
-	cfg := svc.Config
-
-	if !svc.Confirmer.IsInteractive() {
-		return nil
-	}
-	if vmCreatedRecently(cfg.StateDir) {
-		return nil
-	}
-
-	threshold := cfg.VM.RecreatePromptAfterDuration
-	if threshold == config.DisabledDuration || threshold <= 0 {
-		return nil
-	}
-
-	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return nil
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return nil
-	}
-	vmAge := time.Since(time.Unix(epoch, 0))
-	if vmAge < threshold {
-		return nil
-	}
-
-	if promptVMAge(svc.Confirmer, svc.VM.Profile(), vmAge, threshold) != vmAgeRecreate {
-		return nil
-	}
-
-	sessions, err := svc.Sessions.List()
-	if err != nil {
-		return fmt.Errorf("listing sessions: %w", err)
-	}
-	if len(sessions) == 0 {
-		if svc.hasValidBase(ctx) {
-			return svc.fastRecreate(ctx)
-		}
-		return svc.recreateCurrentVM(ctx)
-	}
-
-	fmt.Fprintf(aivmlog.TerminalOut(), "\n  You have %d active session(s).\n", len(sessions))
-	if !PromptYesNo(aivmlog.TerminalOut(), svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ", false) {
-		fmt.Fprintln(aivmlog.TerminalOut(), "\n  VM recreation cancelled.")
-		return nil
-	}
-
-	svc.logger().Info(fmt.Sprintf("Killing %d active session(s)...", len(sessions)))
-	for _, s := range sessions {
-		proc, err := os.FindProcess(s.PID)
-		if err == nil {
-			_ = proc.Signal(syscall.SIGTERM)
-		}
-		s.Remove()
-	}
-	if svc.hasValidBase(ctx) {
-		return svc.fastRecreate(ctx)
-	}
-	return svc.recreateCurrentVM(ctx)
-}
-
-// recreateCurrentVM destroys the current VM and starts a fresh one.
-func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
-	svc.logger().Info("Stopping current VM...")
-	if err := svc.Stop(ctx); err != nil {
-		svc.logger().Warn(fmt.Sprintf("Stop error (continuing): %v", err))
-	}
-
-	clearBootstrapState(svc.Config.StateDir)
-
-	svc.logger().Info("Destroying VM...")
-	if err := svc.VM.Destroy(ctx); err != nil {
-		return fmt.Errorf("destroying VM: %w", err)
-	}
-
-	svc.logger().Info("Starting fresh VM...")
-	return svc.Start(ctx)
 }
 
 // Recreate destroys the current VM and starts a fresh one, re-running bootstrap.

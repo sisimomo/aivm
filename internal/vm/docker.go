@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,7 +119,6 @@ func (d *DockerVM) Stop(ctx context.Context) error {
 func (d *DockerVM) Destroy(ctx context.Context) error {
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 	return nil
 }
 
@@ -129,7 +127,6 @@ func (d *DockerVM) DestroyWithImages() {
 	ctx := context.Background()
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 }
 
 // Run executes script inside the container as the container user.

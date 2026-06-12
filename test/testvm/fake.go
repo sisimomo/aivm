@@ -26,17 +26,33 @@ type Faults struct {
 }
 
 // FakeVM is a stateful VM + base-image simulator for lifecycle integration tests.
+// It does not read or write host state files (e.g. vm-created-at); age-file cleanup
+// is exercised via LifecycleService.Destroy and vm.ClearHostAgeState.
 type FakeVM struct {
 	mu              sync.Mutex
 	status          vm.Status
+	stateDir        string
 	baseImageExists bool
 	calls           []Call
 	faults          Faults
 	waitReadyCalls  int
 }
 
+// New returns a FakeVM with no state directory. Host age files are never touched.
 func New() *FakeVM {
 	return &FakeVM{status: vm.StatusNotFound}
+}
+
+// NewWithStateDir returns a FakeVM that records stateDir for test assertions only.
+func NewWithStateDir(stateDir string) *FakeVM {
+	return &FakeVM{status: vm.StatusNotFound, stateDir: stateDir}
+}
+
+// StateDir returns the optional state directory passed to NewWithStateDir.
+func (f *FakeVM) StateDir() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stateDir
 }
 
 func (f *FakeVM) Profile() string { return "test" }

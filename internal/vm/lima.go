@@ -159,7 +159,6 @@ func (l *LimaVM) Destroy(ctx context.Context) error {
 			return fmt.Errorf("delete VM: %w", err)
 		}
 		slog.Info(fmt.Sprintf("VM '%s' destroyed", l.profile))
-		os.Remove(filepath.Join(l.stateDir, VMCreatedAtFile))
 	} else {
 		slog.Debug(fmt.Sprintf("VM '%s' does not exist — nothing to destroy", l.profile))
 	}

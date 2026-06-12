@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -350,4 +351,45 @@ func (h *Harness) VMCallLogHasRunSubstr(substr string) bool {
 		}
 	}
 	return false
+}
+
+// SetLaunchWorkDir configures ParsedMounts and GetWorkDir so Launch/AgentRun
+// can resolve a working directory under a configured mount.
+func (h *Harness) SetLaunchWorkDir(workDir string) {
+	h.t.Helper()
+	h.svc.Config.VM.ParsedMounts = []config.Mount{{HostPath: workDir, Writable: true}}
+	h.svc.GetWorkDir = func() (string, error) { return workDir, nil }
+}
+
+// SeedSession registers an active agent session backed by a sleeping subprocess.
+func (h *Harness) SeedSession(workDir string) {
+	h.t.Helper()
+	if workDir == "" {
+		workDir = "/tmp/aivm-test"
+	}
+	cmd := exec.Command("sleep", "3600")
+	if err := cmd.Start(); err != nil {
+		h.t.Fatalf("start session subprocess: %v", err)
+	}
+	h.t.Cleanup(func() { _ = cmd.Process.Kill() })
+
+	dir := filepath.Join(h.StateDir(), "sessions")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		h.t.Fatalf("mkdir sessions: %v", err)
+	}
+	lockFile := filepath.Join(dir, fmt.Sprintf("%d.lock", cmd.Process.Pid))
+	content := fmt.Sprintf("%d %d\n%s\n", cmd.Process.Pid, time.Now().Unix(), workDir)
+	if err := os.WriteFile(lockFile, []byte(content), 0644); err != nil {
+		h.t.Fatalf("write session lock: %v", err)
+	}
+}
+
+// ActiveSessionCount returns the number of live session locks.
+func (h *Harness) ActiveSessionCount() int {
+	h.t.Helper()
+	n, err := h.svc.Sessions.CountActive()
+	if err != nil {
+		h.t.Fatalf("count sessions: %v", err)
+	}
+	return n
 }
