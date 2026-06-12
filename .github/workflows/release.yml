@@ -75,7 +75,7 @@ jobs:
         run: go test -tags bootstrap -v -timeout 15m -parallel 7 ./test/bootstrap/
 
   release:
-    needs: [test-unit, test-e2e, test-bootstrap]
+    needs: [test-unit, test-integration, test-e2e, test-bootstrap]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
