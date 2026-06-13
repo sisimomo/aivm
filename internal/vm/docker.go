@@ -96,11 +96,7 @@ func (d *DockerVM) startFromImage(ctx context.Context, image string, opts StartO
 		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 	}
 	for _, m := range opts.Mounts {
-		mode := "ro"
-		if m.Writable {
-			mode = "rw"
-		}
-		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
+		args = append(args, "-v", DockerVolumeFlag(m))
 	}
 	args = append(args, image)
 	return dockerCmd(ctx, args...)

@@ -25,8 +25,9 @@ func (s Status) String() string {
 }
 
 type Mount struct {
-	HostPath string
-	Writable bool
+	HostPath  string
+	GuestPath string
+	Writable  bool
 }
 
 type PortMapping struct {

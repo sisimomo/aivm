@@ -167,7 +167,7 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 	seenHost := make(map[string]bool)
 	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts))
 	for _, m := range cfg.VM.ParsedMounts {
-		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
+		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable})
 		seenHost[m.HostPath] = true
 	}
 	agentNames := make([]string, 0, len(agentDefs))
@@ -186,11 +186,12 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 				continue
 			}
 			seenHost[r.HostPath] = true
-			mounts = append(mounts, vm.Mount{HostPath: r.HostPath, Writable: r.Writable})
+			mounts = append(mounts, vm.Mount{HostPath: r.HostPath, GuestPath: r.GuestPath, Writable: r.Writable})
 		}
 	}
 	if cfg.T3Code.Enable {
-		mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, ".t3"), Writable: true})
+		t3Path := filepath.Join(cfg.StateDir, ".t3")
+		mounts = append(mounts, vm.Mount{HostPath: t3Path, GuestPath: t3Path, Writable: true})
 	}
 
 	// Backends that need port bindings at boot (e.g. Docker) declare ports via

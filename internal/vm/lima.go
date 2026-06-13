@@ -93,11 +93,7 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 		}
 		args = append(args, l.vmTypeFlags(opts.VMType)...)
 		for _, m := range opts.Mounts {
-			flag := m.HostPath + ":r"
-			if m.Writable {
-				flag = m.HostPath + ":w"
-			}
-			args = append(args, "--mount", flag)
+			args = append(args, "--mount", LimaMountFlag(m))
 		}
 		cmd := exec.CommandContext(ctx, "limactl", args...)
 		if err := aivmlog.RunCmd(cmd, "lima"); err != nil {
