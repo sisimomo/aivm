@@ -45,11 +45,28 @@ func TestAssertUnderMountRejectsSiblingPath(t *testing.T) {
 	cfg := &config.Config{
 		VM: config.VMConfig{
 			ParsedMounts: []config.Mount{
-				{HostPath: "/mnt/proj"},
+				{HostPath: "/mnt/proj", GuestPath: "/mnt/proj", Writable: true},
 			},
 		},
 	}
 	if err := lifecycle.AssertUnderMount("/mnt/proj2", cfg); err == nil {
 		t.Fatal("expected error for sibling path")
+	}
+}
+
+func TestGuestPathForHost_UsedByAssertFlow(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{VM: config.VMConfig{ParsedMounts: []config.Mount{{
+		HostPath: "/mnt/proj", GuestPath: "/work", Writable: true,
+	}}}}
+	if err := lifecycle.AssertUnderMount("/mnt/proj/src", cfg); err != nil {
+		t.Fatalf("AssertUnderMount: %v", err)
+	}
+	got, err := lifecycle.GuestPathForHost("/mnt/proj/src", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "/work/src" {
+		t.Fatalf("got %q", got)
 	}
 }

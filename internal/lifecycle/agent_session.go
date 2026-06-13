@@ -59,6 +59,10 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 	if err := AssertUnderMount(realCWD, cfg); err != nil {
 		return nil, err
 	}
+	guestCWD, err := GuestPathForHost(realCWD, cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
@@ -107,7 +111,7 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 	return &agentSession{
 		prov:    prov,
 		provDef: provDef,
-		vmDir:   realCWD,
+		vmDir:   guestCWD,
 		hostCWD: hostCWD,
 		ctx:     runCtx,
 		cleanup: cleanup,
