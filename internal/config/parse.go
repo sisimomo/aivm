@@ -163,36 +163,3 @@ func agentDefineYAMLKeys() map[string]struct{} {
 	}
 	return allowed
 }
-
-// ParseMount parses a mount specification of the form "<host_path>:<mode>"
-// or "<host_path>" (defaults to rw). The host path is expanded (~ → home).
-// Valid modes: "ro" (read-only), "rw" (read-write). Any other mode is an error.
-func ParseMount(spec, home string) (Mount, error) {
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		return Mount{}, fmt.Errorf("empty mount specification")
-	}
-
-	parts := strings.SplitN(spec, ":", 2)
-	rawPath := strings.TrimSpace(parts[0])
-	if rawPath == "" {
-		return Mount{}, fmt.Errorf("invalid mount %q: missing host path", spec)
-	}
-
-	hostPath := expandPath(rawPath, home)
-	writable := true // default is rw
-
-	if len(parts) == 2 {
-		mode := strings.ToLower(strings.TrimSpace(parts[1]))
-		switch mode {
-		case "rw":
-			writable = true
-		case "ro":
-			writable = false
-		default:
-			return Mount{}, fmt.Errorf("invalid mount %q: unknown mode %q — use \"ro\" or \"rw\"", spec, mode)
-		}
-	}
-
-	return Mount{HostPath: hostPath, Writable: writable}, nil
-}

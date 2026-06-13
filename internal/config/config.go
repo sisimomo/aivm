@@ -14,6 +14,7 @@ import (
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
 )
 
@@ -38,20 +39,21 @@ type Config struct {
 
 // Mount represents a single host directory mounted into the VM.
 type Mount struct {
-	HostPath string
-	Writable bool
+	HostPath  string
+	GuestPath string
+	Writable  bool
 }
 
 // VMConfig holds VM configuration. String fields use human-readable units
 // (e.g. "8GB", "7d") and are validated and parsed into the Parsed* fields
 // during config loading via validateAndParse.
 type VMConfig struct {
-	CPUs   int               `mapstructure:"cpus"`
-	Memory string            `mapstructure:"memory"` // "8GB", "512MB", "1TB"
-	Disk   string            `mapstructure:"disk"`   // "60GB"
-	Type   string            `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
-	Mounts []string          `mapstructure:"mounts"` // ["~/dev:rw", "~/.ssh:ro"]
-	Env    map[string]string `mapstructure:"env"`    // arbitrary env vars injected into every VM session
+	CPUs   int                   `mapstructure:"cpus"`
+	Memory string                `mapstructure:"memory"` // "8GB", "512MB", "1TB"
+	Disk   string                `mapstructure:"disk"`   // "60GB"
+	Type   string                `mapstructure:"type"`   // "vz", "qemu", or "" for auto-detect
+	Mounts []mountspec.MountSpec `mapstructure:"mounts"`
+	Env    map[string]string     `mapstructure:"env"` // arbitrary env vars injected into every VM session
 	// SessionEnv maps VM env var names to values for each interactive session
 	// (bare aivm and aivm ssh). Values support ${HOST_VAR} expansion from the host
 	// at session start and are not persisted (unlike vm.env).
@@ -68,8 +70,8 @@ type VMConfig struct {
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
 	RecreatePromptAfter string `mapstructure:"recreate_prompt_after"`
 
-	BaseImageEnable                     bool   `mapstructure:"base_image_enable"`
-	BootstrapRefreshPromptAfter         string `mapstructure:"bootstrap_refresh_prompt_after"`
+	BaseImageEnable                     bool          `mapstructure:"base_image_enable"`
+	BootstrapRefreshPromptAfter         string        `mapstructure:"bootstrap_refresh_prompt_after"`
 	BootstrapRefreshPromptAfterDuration time.Duration `mapstructure:"-"`
 
 	// Parsed fields — populated by validateAndParse, never read from YAML.
@@ -345,17 +347,37 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	}
 
 	// --- mounts ---
+	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
 	parsed := make([]Mount, 0, len(vm.Mounts))
-	for _, spec := range vm.Mounts {
-		m, err := ParseMount(spec, home)
+	for i, spec := range vm.Mounts {
+		resolved, err := mountspec.Resolve(spec, ctx)
 		if err != nil {
-			return fmt.Errorf("vm.mounts: %w", err)
+			return fmt.Errorf("vm.mounts[%d]: %w", i, err)
 		}
-		parsed = append(parsed, m)
+		parsed = append(parsed, Mount{
+			HostPath:  resolved.HostPath,
+			GuestPath: resolved.GuestPath,
+			Writable:  resolved.Writable,
+		})
+	}
+	if err := mountspec.ValidateOverlappingLocations(toResolved(parsed)); err != nil {
+		return fmt.Errorf("vm.mounts: %w", err)
 	}
 	vm.ParsedMounts = parsed
 
 	return nil
+}
+
+func toResolved(mounts []Mount) []mountspec.ResolvedMount {
+	out := make([]mountspec.ResolvedMount, len(mounts))
+	for i, m := range mounts {
+		out[i] = mountspec.ResolvedMount{
+			HostPath:  m.HostPath,
+			GuestPath: m.GuestPath,
+			Writable:  m.Writable,
+		}
+	}
+	return out
 }
 
 func expandHome(path string) string {

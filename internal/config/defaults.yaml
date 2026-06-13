@@ -3,7 +3,9 @@ vm:
   memory: "8GB"
   disk: "60GB"
   mounts:
-    - "~/dev:rw"
+    - location: "{{ .home }}/dev"
+      mountPoint: "{{ .home }}/dev"
+      mode: rw
   name: aivm
   backend: lima
   recreate_prompt_after: "7d"

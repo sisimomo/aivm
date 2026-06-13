@@ -10,6 +10,7 @@ import (
 	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/integration"
 	"github.com/sisimomo/aivm/internal/lifecycle"
+	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/providers/generic"
 )
@@ -77,6 +78,15 @@ func writeMinimalAgentConfig(t *testing.T, path, agentName string) {
 	}
 }
 
+// defaultVMMounts matches the structured default in internal/config/defaults.yaml.
+func defaultVMMounts() []mountspec.MountSpec {
+	return []mountspec.MountSpec{{
+		Location:   "{{ .home }}/dev",
+		MountPoint: "{{ .home }}/dev",
+		Mode:       "rw",
+	}}
+}
+
 // TestComputeConfigHash_StableAcrossSimulatedRuns is the key regression test:
 // it verifies that ComputeConfigHash produces identical output when called
 // twice from independently loaded inputs — exactly as two separate process
@@ -115,7 +125,7 @@ func TestComputeConfigHash_StableAcrossSimulatedRuns(t *testing.T) {
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		provider,
 		agentDefs1,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm",
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
 	)
 
 	// Simulate run 2: load ALL inputs completely from scratch again.
@@ -127,7 +137,7 @@ func TestComputeConfigHash_StableAcrossSimulatedRuns(t *testing.T) {
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		provider,
 		agentDefs2,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm",
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
 	)
 
 	if h1 != h2 {
@@ -146,11 +156,11 @@ func TestComputeConfigHash_SameInputsSameHash(t *testing.T) {
 
 	h1 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
 
 	h2 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
 
 	if h1 != h2 {
 		t.Errorf("same inputs produced different hashes: %s vs %s", h1, h2)
@@ -165,11 +175,11 @@ func TestComputeConfigHash_EnabledPluginsOrderIndependent(t *testing.T) {
 
 	h1 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"system", "claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
 
 	h2 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
 
 	if h1 != h2 {
 		t.Errorf("hash should be order-independent for enabledPlugins: %s vs %s", h1, h2)
@@ -208,7 +218,7 @@ func TestComputeConfigHash_MultiAgentStableAcrossRuns(t *testing.T) {
 		pluginDefs1, nil, integs1,
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		"claude", agentDefs1,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm",
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
 	)
 
 	pluginDefs2, agentDefs2, integs2 := buildMultiInputs()
@@ -216,7 +226,7 @@ func TestComputeConfigHash_MultiAgentStableAcrossRuns(t *testing.T) {
 		pluginDefs2, nil, integs2,
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		"claude", agentDefs2,
-		4, "8GB", "60GB", "", []string{"~/dev:rw"}, "aivm",
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
 	)
 
 	if h1 != h2 {
@@ -242,7 +252,7 @@ func TestComputeConfigHash_NilVsEmptySlicesAreNormalised(t *testing.T) {
 		4, "8GB", "60GB", "", nil, "aivm")
 	hEmptyMounts := lifecycle.ComputeConfigHash(pluginDefs, nil, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []string{}, "aivm")
+		4, "8GB", "60GB", "", []mountspec.MountSpec{}, "aivm")
 	if hNilMounts != hEmptyMounts {
 		t.Errorf("nil VMMounts and empty VMMounts must produce the same hash:\n  nil   = %s\n  empty = %s",
 			hNilMounts, hEmptyMounts)

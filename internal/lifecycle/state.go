@@ -10,6 +10,7 @@ import (
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/integration"
+	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
 )
 
@@ -151,7 +152,7 @@ func ComputeConfigHash(
 	vmMemory string,
 	vmDisk string,
 	vmType string,
-	vmMounts []string,
+	vmMounts []mountspec.MountSpec,
 	vmProfile string,
 ) string {
 	sorted := append([]string(nil), enabledPlugins...)
@@ -164,7 +165,7 @@ func ComputeConfigHash(
 	// adds then removes `vm.mounts: []` (or `plugins.config: {}`) would see a
 	// false-positive "VM config has changed" prompt on every run.
 	if vmMounts == nil {
-		vmMounts = []string{}
+		vmMounts = []mountspec.MountSpec{}
 	}
 	if integrations == nil {
 		integrations = []integration.IntegrationDef{}
@@ -180,7 +181,7 @@ func ComputeConfigHash(
 		VMMemory       string
 		VMDisk         string
 		VMType         string
-		VMMounts       []string
+		VMMounts       []mountspec.MountSpec
 		VMProfile      string
 		EnabledPlugins []string
 		PluginDefs     map[string]plugin.PluginDef
