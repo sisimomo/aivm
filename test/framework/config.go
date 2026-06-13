@@ -30,6 +30,10 @@ type testConfig struct {
 	Disk    string // "10GB"
 	DevRoot string // convenience: creates a single rw mount
 
+	// RemappedMountGuest, when non-empty, sets mountPoint for the DevRoot mount
+	// (host location stays DevRoot). Use WithRemappedMount.
+	RemappedMountGuest string
+
 	IdleTimeout   time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
@@ -104,6 +108,16 @@ func WithDiskGiB(n int) Option { return func(c *testConfig) { c.Disk = fmt.Sprin
 
 // WithDevRoot sets the dev root directory mounted into the VM.
 func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
+
+// WithRemappedMount sets a read-write mount where host location and guest
+// mountPoint differ. location is bound on the host; mountPoint is the path
+// inside the VM (e.g. host devRoot → guest /work).
+func WithRemappedMount(hostLocation, guestMountPoint string) Option {
+	return func(c *testConfig) {
+		c.DevRoot = hostLocation
+		c.RemappedMountGuest = guestMountPoint
+	}
+}
 
 // WithIdleTimeout sets the idle-stop timeout for the monitor.
 func WithIdleTimeout(d time.Duration) Option { return func(c *testConfig) { c.IdleTimeout = d } }
@@ -272,9 +286,13 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  bootstrap_refresh_prompt_after: %q\n", tc.BootstrapRefreshPromptAfter)
 	}
 	if tc.DevRoot != "" {
+		mountPoint := tc.DevRoot
+		if tc.RemappedMountGuest != "" {
+			mountPoint = tc.RemappedMountGuest
+		}
 		fmt.Fprintf(&sb, "  mounts:\n")
 		fmt.Fprintf(&sb, "    - location: %q\n", tc.DevRoot)
-		fmt.Fprintf(&sb, "      mountPoint: %q\n", tc.DevRoot)
+		fmt.Fprintf(&sb, "      mountPoint: %q\n", mountPoint)
 		fmt.Fprintf(&sb, "      mode: rw\n")
 	}
 	if len(tc.VMEnv) > 0 {
