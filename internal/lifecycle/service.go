@@ -129,11 +129,14 @@ func (svc *LifecycleService) finalizeStart(ctx context.Context) error {
 
 func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Status) error {
 	cfg := svc.Config
-	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
+	opts, err := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
+	if err != nil {
+		return fmt.Errorf("building start options: %w", err)
+	}
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	ensureAgentPersistDirs(cfg, svc.AgentDefs)
+	ensureAgentMountDirs(cfg, svc.AgentDefs)
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)

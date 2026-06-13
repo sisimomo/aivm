@@ -135,9 +135,81 @@ func stringSet(items []string) map[string]bool {
 	return m
 }
 
-// ensureAgentPersistDirs creates the host-side directories that are mounted
+// ResolvedMountsForStart assembles VM, agent, and optional T3 mounts for VM start.
+func ResolvedMountsForStart(
+	cfg *config.Config,
+	agentDefs map[string]agent.Def,
+	t3Enabled bool,
+) ([]vm.Mount, error) {
+	home, _ := os.UserHomeDir()
+	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+
+	mounts := make([]vm.Mount, 0, 16)
+	resolved := make([]mountspec.ResolvedMount, 0, 16)
+
+	for _, m := range cfg.VM.ParsedMounts {
+		mounts = append(mounts, vm.Mount{
+			HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable,
+		})
+		resolved = append(resolved, mountspec.ResolvedMount{
+			HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable,
+		})
+	}
+
+	seenGuest := make(map[string]bool)
+	for _, m := range mounts {
+		seenGuest[m.GuestPath] = true
+	}
+
+	agentNames := make([]string, 0, len(agentDefs))
+	for k := range agentDefs {
+		agentNames = append(agentNames, k)
+	}
+	sort.Strings(agentNames)
+	for _, name := range agentNames {
+		for _, spec := range agentDefs[name].Mounts {
+			r, err := mountspec.Resolve(spec, ctx)
+			if err != nil {
+				return nil, fmt.Errorf("agent %q mounts: %w", name, err)
+			}
+			if seenGuest[r.GuestPath] {
+				continue
+			}
+			seenGuest[r.GuestPath] = true
+			mounts = append(mounts, vm.Mount{
+				HostPath: r.HostPath, GuestPath: r.GuestPath, Writable: r.Writable,
+			})
+			resolved = append(resolved, r)
+		}
+	}
+
+	if t3Enabled {
+		t3Spec := mountspec.MountSpec{
+			Location:   "{{ .state_dir }}/.t3",
+			MountPoint: "{{ .home }}/.t3",
+			Mode:       "rw",
+		}
+		r, err := mountspec.Resolve(t3Spec, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !seenGuest[r.GuestPath] {
+			mounts = append(mounts, vm.Mount{
+				HostPath: r.HostPath, GuestPath: r.GuestPath, Writable: r.Writable,
+			})
+			resolved = append(resolved, r)
+		}
+	}
+
+	if err := mountspec.ValidateDuplicateMountPoints(resolved); err != nil {
+		return nil, err
+	}
+	return mounts, nil
+}
+
+// ensureAgentMountDirs creates the host-side directories that are mounted
 // into the VM for persistence.
-func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
+func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
 	home, _ := os.UserHomeDir()
 	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
 	seen := make(map[string]bool)
@@ -155,43 +227,23 @@ func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) 
 		}
 	}
 	if cfg.T3Code.Enable {
-		_ = os.MkdirAll(filepath.Join(cfg.StateDir, ".t3"), 0755)
+		r, _ := mountspec.Resolve(mountspec.MountSpec{
+			Location:   "{{ .state_dir }}/.t3",
+			MountPoint: "{{ .home }}/.t3",
+			Mode:       "rw",
+		}, ctx)
+		if r.HostPath != "" {
+			_ = os.MkdirAll(r.HostPath, 0755)
+		}
 	}
 }
 
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
-func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) vm.StartOptions {
-	home, _ := os.UserHomeDir()
-	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
-	seenHost := make(map[string]bool)
-	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts))
-	for _, m := range cfg.VM.ParsedMounts {
-		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable})
-		seenHost[m.HostPath] = true
-	}
-	agentNames := make([]string, 0, len(agentDefs))
-	for k := range agentDefs {
-		agentNames = append(agentNames, k)
-	}
-	sort.Strings(agentNames)
-	for _, name := range agentNames {
-		def := agentDefs[name]
-		for _, spec := range def.Mounts {
-			r, err := mountspec.Resolve(spec, ctx)
-			if err != nil {
-				continue
-			}
-			if seenHost[r.HostPath] {
-				continue
-			}
-			seenHost[r.HostPath] = true
-			mounts = append(mounts, vm.Mount{HostPath: r.HostPath, GuestPath: r.GuestPath, Writable: r.Writable})
-		}
-	}
-	if cfg.T3Code.Enable {
-		t3Path := filepath.Join(cfg.StateDir, ".t3")
-		mounts = append(mounts, vm.Mount{HostPath: t3Path, GuestPath: t3Path, Writable: true})
+func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	mounts, err := ResolvedMountsForStart(cfg, agentDefs, cfg.T3Code.Enable)
+	if err != nil {
+		return vm.StartOptions{}, err
 	}
 
 	// Backends that need port bindings at boot (e.g. Docker) declare ports via
@@ -213,7 +265,7 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 		VMType:       cfg.VM.Type,
 		Mounts:       mounts,
 		PortMappings: portMappings,
-	}
+	}, nil
 }
 
 // applyVMEnv writes vm.env as shell exports to /etc/profile.d/aivm-user-env.sh
