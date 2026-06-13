@@ -29,11 +29,20 @@ vm:
   recreate_prompt_after: "7d"
   bootstrap_refresh_prompt_after: "30d"
 
-  # Directories to mount into the VM. Format: <host_path>:<mode>
-  # mode: rw (read-write, default) or ro (read-only)
-  # ~ is expanded to your home directory.
+  # Directories to mount into the VM. Each entry has location (host path),
+  # mountPoint (guest path), and mode (rw or ro). Paths support {{ .home }}
+  # and {{ .state_dir }} templates. When location == mountPoint, host and
+  # guest paths match; aivm ssh and agent launch translate your host CWD
+  # automatically. When they differ, only the mountPoint side is visible in
+  # the VM.
   mounts:
-    - "~/dev:rw"
+    - location: "{{ .home }}/dev"
+      mountPoint: "{{ .home }}/dev"
+      mode: rw
+    # Remapped mount — host path differs from guest path
+    # - location: "{{ .home }}/company-secrets"
+    #   mountPoint: "/secrets"
+    #   mode: ro
   # Arbitrary environment variables injected into every VM session.
   # Values support ${HOST_VAR} expansion from the host shell environment.
   # Changes are applied in-place the next time you run aivm — no VM recreation needed.

@@ -4,7 +4,9 @@ vm:
   memory: "6GB"
   disk: "40GB"
   mounts:
-    - "~/dev:rw"
+    - location: "{{ .home }}/dev"
+      mountPoint: "{{ .home }}/dev"
+      mode: rw
 
 agents:
   default: opencode

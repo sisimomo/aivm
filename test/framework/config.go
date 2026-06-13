@@ -273,7 +273,9 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	}
 	if tc.DevRoot != "" {
 		fmt.Fprintf(&sb, "  mounts:\n")
-		fmt.Fprintf(&sb, "    - %q\n", tc.DevRoot+":rw")
+		fmt.Fprintf(&sb, "    - location: %q\n", tc.DevRoot)
+		fmt.Fprintf(&sb, "      mountPoint: %q\n", tc.DevRoot)
+		fmt.Fprintf(&sb, "      mode: rw\n")
 	}
 	if len(tc.VMEnv) > 0 {
 		keys := make([]string, 0, len(tc.VMEnv))
