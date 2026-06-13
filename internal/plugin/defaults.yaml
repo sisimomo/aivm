@@ -95,13 +95,3 @@ t3code:
     - mise-node
   setup: |
     npm install -g t3
-
-    {{ if .state_dir }}
-    T3_DIR="{{ .state_dir }}/.t3"
-    mkdir -p "$T3_DIR"
-    # Make the directory world-writable with sticky bit so the container user
-    # (which may differ from the host user) can write to it, but only file
-    # owners can remove their own files (prevents accidental deletions).
-    sudo chmod 1777 "$T3_DIR"
-    ln -sfn "$T3_DIR" "$HOME/.t3"
-    {{ end }}
