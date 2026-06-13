@@ -1,6 +1,9 @@
 package agent
 
-import "github.com/sisimomo/aivm/internal/plugin"
+import (
+	"github.com/sisimomo/aivm/internal/mountspec"
+	"github.com/sisimomo/aivm/internal/plugin"
+)
 
 // Def is the definition of an AI agent: how to set it up in the VM
 // and its runtime launch settings.
@@ -17,9 +20,8 @@ type Def struct {
 	CLICommand string `yaml:"cli_command" mapstructure:"cli_command"`
 	// LaunchArgs are appended only for the interactive shortcut (aivm / aivm launch).
 	LaunchArgs string `yaml:"launch_args,omitempty" mapstructure:"launch_args"`
-	// Persist lists host-relative subdirectory paths (relative to state_dir) that
-	// should be created on the host and mounted read-write into the VM for persistence.
-	Persist []string `yaml:"persist" mapstructure:"persist"`
+	// Mounts lists host→guest bind mounts for agent state directories.
+	Mounts []mountspec.MountSpec `yaml:"mounts" mapstructure:"mounts"`
 }
 
 // ToPluginDef converts this agent definition into a plugin.PluginDef so it
@@ -54,8 +56,8 @@ func MergeDef(base, override Def) Def {
 	if override.LaunchArgs != "" {
 		result.LaunchArgs = override.LaunchArgs
 	}
-	if len(override.Persist) > 0 {
-		result.Persist = override.Persist
+	if len(override.Mounts) > 0 {
+		result.Mounts = override.Mounts
 	}
 	return result
 }

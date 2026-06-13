@@ -71,6 +71,23 @@ func TestLoadDefs_ScriptsAreValidTemplates(t *testing.T) {
 	}
 }
 
+func TestLoadDefs_ClaudeMounts(t *testing.T) {
+	defs, err := agent.LoadDefs()
+	if err != nil {
+		t.Fatalf("LoadDefs: %v", err)
+	}
+	claude := defs["claude"]
+	if len(claude.Mounts) != 2 {
+		t.Fatalf("claude mounts len = %d, want 2", len(claude.Mounts))
+	}
+	if claude.Mounts[0].Location != `{{ .state_dir }}/.claude/projects` {
+		t.Fatalf("projects location = %q", claude.Mounts[0].Location)
+	}
+	if claude.Mounts[1].Location != `{{ .state_dir }}/.claude/image-cache` {
+		t.Fatalf("image-cache location = %q", claude.Mounts[1].Location)
+	}
+}
+
 // TestLoadDefs_ToPluginDef verifies that ToPluginDef copies the bootstrap-relevant
 // fields correctly. These fields drive the actual VM provisioning, so a
 // mis-mapping would silently break bootstrap without any script error.

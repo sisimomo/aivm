@@ -21,6 +21,7 @@ import (
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/config"
 	aivmlog "github.com/sisimomo/aivm/internal/log"
+	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
 	"github.com/sisimomo/aivm/internal/vm"
 )
@@ -137,14 +138,20 @@ func stringSet(items []string) map[string]bool {
 // ensureAgentPersistDirs creates the host-side directories that are mounted
 // into the VM for persistence.
 func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
+	home, _ := os.UserHomeDir()
+	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
 	seen := make(map[string]bool)
 	for _, def := range agentDefs {
-		for _, rel := range def.Persist {
-			if seen[rel] {
+		for _, spec := range def.Mounts {
+			r, err := mountspec.Resolve(spec, ctx)
+			if err != nil {
 				continue
 			}
-			seen[rel] = true
-			_ = os.MkdirAll(filepath.Join(cfg.StateDir, rel), 0755)
+			if seen[r.HostPath] {
+				continue
+			}
+			seen[r.HostPath] = true
+			_ = os.MkdirAll(r.HostPath, 0755)
 		}
 	}
 	if cfg.T3Code.Enable {
@@ -155,10 +162,13 @@ func ensureAgentPersistDirs(cfg *config.Config, agentDefs map[string]agent.Def) 
 // buildStartOptions constructs consistent vm.StartOptions from config.
 // All VM-creating operations use this to eliminate duplication.
 func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) vm.StartOptions {
-	seenPersist := make(map[string]bool)
+	home, _ := os.UserHomeDir()
+	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+	seenHost := make(map[string]bool)
 	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts))
 	for _, m := range cfg.VM.ParsedMounts {
 		mounts = append(mounts, vm.Mount{HostPath: m.HostPath, Writable: m.Writable})
+		seenHost[m.HostPath] = true
 	}
 	agentNames := make([]string, 0, len(agentDefs))
 	for k := range agentDefs {
@@ -167,12 +177,16 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 	sort.Strings(agentNames)
 	for _, name := range agentNames {
 		def := agentDefs[name]
-		for _, rel := range def.Persist {
-			if seenPersist[rel] {
+		for _, spec := range def.Mounts {
+			r, err := mountspec.Resolve(spec, ctx)
+			if err != nil {
 				continue
 			}
-			seenPersist[rel] = true
-			mounts = append(mounts, vm.Mount{HostPath: filepath.Join(cfg.StateDir, rel), Writable: true})
+			if seenHost[r.HostPath] {
+				continue
+			}
+			seenHost[r.HostPath] = true
+			mounts = append(mounts, vm.Mount{HostPath: r.HostPath, Writable: r.Writable})
 		}
 	}
 	if cfg.T3Code.Enable {
