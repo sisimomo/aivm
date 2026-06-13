@@ -68,6 +68,10 @@ type VMConfig struct {
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
 	RecreatePromptAfter string `mapstructure:"recreate_prompt_after"`
 
+	BaseImageEnable                     bool   `mapstructure:"base_image_enable"`
+	BootstrapRefreshPromptAfter         string `mapstructure:"bootstrap_refresh_prompt_after"`
+	BootstrapRefreshPromptAfterDuration time.Duration `mapstructure:"-"`
+
 	// Parsed fields — populated by validateAndParse, never read from YAML.
 	MemoryBytes                 int64         `mapstructure:"-"`
 	DiskBytes                   int64         `mapstructure:"-"`
@@ -321,6 +325,12 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 		return fmt.Errorf("vm.recreate_prompt_after: %w", err)
 	}
 	vm.RecreatePromptAfterDuration = rpa
+
+	brpa, err := ParsePromptDuration(vm.BootstrapRefreshPromptAfter)
+	if err != nil {
+		return fmt.Errorf("vm.bootstrap_refresh_prompt_after: %w", err)
+	}
+	vm.BootstrapRefreshPromptAfterDuration = brpa
 
 	// --- env ---
 	for name := range vm.Env {

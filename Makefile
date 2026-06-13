@@ -22,7 +22,7 @@ SPEED_END   ?= 85  # end of 15x speed-up segment
 CUT_START   ?= 88  # end of post-speed normal segment → start of cut
 CUT_END     ?= 96  # end of cut → resume normal playback
 
-.PHONY: build install install-test uninstall clean test test-unit test-e2e test-bootstrap fmt vet release-snapshot release-dry-run demo demo-edit
+.PHONY: build install install-test uninstall clean test test-unit test-integration test-e2e test-bootstrap fmt vet release-snapshot release-dry-run demo demo-edit
 
 build:
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/aivm
@@ -54,6 +54,9 @@ clean:
 
 test-unit:
 	go test ./test/unit/...
+
+test-integration:
+	go test ./test/integration/... ./test/testvm/...
 
 test-e2e:
 	@go build $(BUILD_FLAGS) -o bin/aivm-test ./cmd/aivm

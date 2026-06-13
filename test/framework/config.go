@@ -37,6 +37,10 @@ type testConfig struct {
 	// RecreatePromptAfter in ParsePromptDuration format: "-1" or "Nd".
 	RecreatePromptAfter string
 
+	// BootstrapRefreshPromptAfter in ParsePromptDuration format: "-1" or "Nd".
+	// Empty string omits the field from generated YAML (defaults apply).
+	BootstrapRefreshPromptAfter string
+
 	// Provider selects the AI agent provider name (default "claude").
 	Provider string
 
@@ -125,6 +129,18 @@ func WithMaxAgeDays(days int) Option {
 			c.RecreatePromptAfter = "-1"
 		} else {
 			c.RecreatePromptAfter = fmt.Sprintf("%dd", days)
+		}
+	}
+}
+
+// WithBootstrapRefreshDays configures the bootstrap staleness threshold (in days)
+// after which the user is prompted to rerun full bootstrap.
+func WithBootstrapRefreshDays(days int) Option {
+	return func(c *testConfig) {
+		if days == -1 {
+			c.BootstrapRefreshPromptAfter = "-1"
+		} else {
+			c.BootstrapRefreshPromptAfter = fmt.Sprintf("%dd", days)
 		}
 	}
 }
@@ -252,6 +268,9 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 	fmt.Fprintf(&sb, "  docker_image: %q\n", TestImageName)
 	fmt.Fprintf(&sb, "  name: %q\n", profile)
 	fmt.Fprintf(&sb, "  recreate_prompt_after: %q\n", tc.RecreatePromptAfter)
+	if tc.BootstrapRefreshPromptAfter != "" {
+		fmt.Fprintf(&sb, "  bootstrap_refresh_prompt_after: %q\n", tc.BootstrapRefreshPromptAfter)
+	}
 	if tc.DevRoot != "" {
 		fmt.Fprintf(&sb, "  mounts:\n")
 		fmt.Fprintf(&sb, "    - %q\n", tc.DevRoot+":rw")

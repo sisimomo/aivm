@@ -159,7 +159,6 @@ func (l *LimaVM) Destroy(ctx context.Context) error {
 			return fmt.Errorf("delete VM: %w", err)
 		}
 		slog.Info(fmt.Sprintf("VM '%s' destroyed", l.profile))
-		os.Remove(filepath.Join(l.stateDir, VMCreatedAtFile))
 	} else {
 		slog.Debug(fmt.Sprintf("VM '%s' does not exist — nothing to destroy", l.profile))
 	}
@@ -205,8 +204,8 @@ func (l *LimaVM) RunOutput(ctx context.Context, script string, env map[string]st
 	return buf.String(), nil
 }
 
-func (l *LimaVM) SSH(ctx context.Context, env map[string]string) error {
-	return InteractiveSSH(ctx, l.profile, env, "exec bash -l")
+func (l *LimaVM) SSH(ctx context.Context, workDir string, env map[string]string) error {
+	return InteractiveSSH(ctx, l.profile, env, SSHLoginScript(workDir))
 }
 
 func (l *LimaVM) RunStream(ctx context.Context, script string, env map[string]string) (int, error) {

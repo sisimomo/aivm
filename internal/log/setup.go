@@ -95,7 +95,11 @@ func RunCmd(cmd *exec.Cmd, source string) error {
 	defer w.Close()
 	cmd.Stdout = w
 	cmd.Stderr = w
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		w.logTailAtWarn()
+		return err
+	}
+	return nil
 }
 
 // WithWriter captures output written during fn into the unified log for source.

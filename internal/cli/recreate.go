@@ -8,7 +8,7 @@ import (
 )
 
 func RecreateCmd(getApp func() (*App, error)) *cobra.Command {
-	var force bool
+	var force, fast bool
 	cmd := &cobra.Command{
 		Use:   "recreate",
 		Short: "Recreate the VM from scratch by destroying and re-bootstrapping it",
@@ -21,14 +21,15 @@ the recreation proceeds.`,
 			if err != nil {
 				return err
 			}
-			return DoRecreate(cmd.Context(), app, force)
+			return DoRecreate(cmd.Context(), app, force, fast)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompts, stop active sessions")
+	cmd.Flags().BoolVar(&fast, "fast", false, "restore from base image instead of full bootstrap")
 	return cmd
 }
 
 // DoRecreate runs the recreate lifecycle operation for the given app.
-func DoRecreate(ctx context.Context, app *App, force bool) error {
-	return app.Lifecycle.Recreate(ctx, force)
+func DoRecreate(ctx context.Context, app *App, force, fast bool) error {
+	return app.Lifecycle.Recreate(ctx, force, fast)
 }

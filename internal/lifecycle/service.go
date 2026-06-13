@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
@@ -63,6 +62,9 @@ type LifecycleService struct {
 	GetWorkDir func() (string, error)
 	// Log overrides slog.Default() in tests. When nil, slog.Default() is used.
 	Log *slog.Logger
+	// skipConfigChangePrompt suppresses the config-changed prompt in syncBootstrap
+	// after the user already declined it during handleRecreationPrompt.
+	skipConfigChangePrompt bool
 }
 
 func (svc *LifecycleService) logger() *slog.Logger {
@@ -74,25 +76,60 @@ func (svc *LifecycleService) logger() *slog.Logger {
 
 // Start starts the VM and all services, then runs bootstrap if needed.
 func (svc *LifecycleService) Start(ctx context.Context) error {
-	cfg := svc.Config
-
 	svc.logger().Info("Starting aivm")
-
-	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 
 	status, err := svc.VM.Status(ctx)
 	if err != nil {
 		return err
 	}
 
-	if status == vm.StatusStopped && svc.shouldRecreateVM() {
-		svc.logger().Info(fmt.Sprintf("Deleting aged VM profile '%s'", svc.VM.Profile()))
-		if err := svc.VM.Destroy(ctx); err != nil {
-			return err
-		}
-		status = vm.StatusNotFound
+	action, err := svc.decideStartAction(ctx, status)
+	if err != nil {
+		return err
 	}
 
+	switch action {
+	case ActionFullBootstrap:
+		if err := svc.fullBootstrap(ctx); err != nil {
+			return err
+		}
+	case ActionFastRecreate:
+		if err := svc.fastRecreate(ctx); err != nil {
+			return err
+		}
+	case ActionPromptBootstrapRefresh, ActionPromptVMAge, ActionPromptCombined, ActionPromptRuntimeChange, ActionPromptConfigChange:
+		if err := svc.handleRecreationPrompt(ctx, action, status); err != nil {
+			return err
+		}
+	default:
+		if err := svc.resumeOrStartVM(ctx, status); err != nil {
+			return err
+		}
+	}
+
+	return svc.finalizeStart(ctx)
+}
+
+func (svc *LifecycleService) finalizeStart(ctx context.Context) error {
+	cfg := svc.Config
+	if cfg.T3Code.Enable {
+		svc.logger().Info("T3 Code mode — idle monitoring disabled")
+		if err := svc.launchT3Code(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := svc.Monitor.EnsureRunning(); err != nil {
+			svc.logger().Warn(fmt.Sprintf("could not start idle monitor: %v", err))
+		}
+	}
+
+	svc.logger().Info("aivm is ready")
+	return nil
+}
+
+func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Status) error {
+	cfg := svc.Config
+	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
@@ -123,18 +160,6 @@ func (svc *LifecycleService) Start(ctx context.Context) error {
 		}
 	}
 
-	if cfg.T3Code.Enable {
-		svc.logger().Info("T3 Code mode — idle monitoring disabled")
-		if err := svc.launchT3Code(ctx); err != nil {
-			return err
-		}
-	} else {
-		if err := svc.Monitor.EnsureRunning(); err != nil {
-			svc.logger().Warn(fmt.Sprintf("could not start idle monitor: %v", err))
-		}
-	}
-
-	svc.logger().Info("aivm is ready")
 	return nil
 }
 
@@ -150,28 +175,6 @@ func (svc *LifecycleService) ensureBootstrapped(ctx context.Context, wasCreated 
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 	return nil
-}
-
-// shouldRecreateVM prompts the user when the VM has exceeded its configured age threshold.
-func (svc *LifecycleService) shouldRecreateVM() bool {
-	cfg := svc.Config
-	threshold := cfg.VM.RecreatePromptAfterDuration
-	if threshold == config.DisabledDuration || threshold <= 0 {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return false
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return false
-	}
-	age := time.Since(time.Unix(epoch, 0))
-	if age < threshold {
-		return false
-	}
-	return promptVMAge(svc.Confirmer, svc.VM.Profile(), age, threshold) == vmAgeRecreate
 }
 
 // Stop stops the VM and all services.
@@ -205,7 +208,9 @@ func (svc *LifecycleService) Stop(ctx context.Context) error {
 }
 
 // Destroy deletes the VM and stops all services.
-func (svc *LifecycleService) Destroy(ctx context.Context) error {
+// When keepBase is true, the base image and host bootstrap state are preserved
+// so a subsequent start can restore from the base image.
+func (svc *LifecycleService) Destroy(ctx context.Context, keepBase bool) error {
 	svc.Monitor.Stop()
 	if err := svc.T3Code.Stop(); err != nil {
 		svc.logger().Warn(fmt.Sprintf("T3 Code tunnel stop error: %v", err))
@@ -218,6 +223,11 @@ func (svc *LifecycleService) Destroy(ctx context.Context) error {
 	if err := svc.Compose.Down(ctx); err != nil {
 		svc.logger().Warn(fmt.Sprintf("compose destroy error: %v", err))
 		composeErr = err
+	}
+	if !keepBase {
+		svc.deleteBaseImage(ctx)
+		clearBootstrapState(svc.Config.StateDir)
+		vm.ClearHostAgeState(svc.Config.StateDir)
 	}
 	if vmErr != nil || composeErr != nil {
 		if vmErr != nil && composeErr != nil {
@@ -470,87 +480,10 @@ func rewriteIPsToLocalhost(s string) string {
 	return ipRe.ReplaceAllString(s, "localhost")
 }
 
-// checkVMAge prompts the user when the VM is older than the configured
-// recreate_prompt_after threshold. It may recreate the current VM after
-// confirming with the user.
-func (svc *LifecycleService) checkVMAge(ctx context.Context) error {
-	cfg := svc.Config
-
-	if !svc.Confirmer.IsInteractive() {
-		return nil
-	}
-	if vmCreatedRecently(cfg.StateDir) {
-		return nil
-	}
-
-	threshold := cfg.VM.RecreatePromptAfterDuration
-	if threshold == config.DisabledDuration || threshold <= 0 {
-		return nil
-	}
-
-	data, err := os.ReadFile(filepath.Join(cfg.StateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return nil
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return nil
-	}
-	vmAge := time.Since(time.Unix(epoch, 0))
-	if vmAge < threshold {
-		return nil
-	}
-
-	if promptVMAge(svc.Confirmer, svc.VM.Profile(), vmAge, threshold) != vmAgeRecreate {
-		return nil
-	}
-
-	sessions, err := svc.Sessions.List()
-	if err != nil {
-		return fmt.Errorf("listing sessions: %w", err)
-	}
-	if len(sessions) == 0 {
-		return svc.recreateCurrentVM(ctx)
-	}
-
-	fmt.Fprintf(aivmlog.TerminalOut(), "\n  You have %d active session(s).\n", len(sessions))
-	if !PromptYesNo(aivmlog.TerminalOut(), svc.Confirmer, "  Kill all sessions and recreate now? [y/N] ", false) {
-		fmt.Fprintln(aivmlog.TerminalOut(), "\n  VM recreation cancelled.")
-		return nil
-	}
-
-	svc.logger().Info(fmt.Sprintf("Killing %d active session(s)...", len(sessions)))
-	for _, s := range sessions {
-		proc, err := os.FindProcess(s.PID)
-		if err == nil {
-			_ = proc.Signal(syscall.SIGTERM)
-		}
-		s.Remove()
-	}
-	return svc.recreateCurrentVM(ctx)
-}
-
-// recreateCurrentVM destroys the current VM and starts a fresh one.
-func (svc *LifecycleService) recreateCurrentVM(ctx context.Context) error {
-	svc.logger().Info("Stopping current VM...")
-	if err := svc.Stop(ctx); err != nil {
-		svc.logger().Warn(fmt.Sprintf("Stop error (continuing): %v", err))
-	}
-
-	clearBootstrapState(svc.Config.StateDir)
-
-	svc.logger().Info("Destroying VM...")
-	if err := svc.VM.Destroy(ctx); err != nil {
-		return fmt.Errorf("destroying VM: %w", err)
-	}
-
-	svc.logger().Info("Starting fresh VM...")
-	return svc.Start(ctx)
-}
-
 // Recreate destroys the current VM and starts a fresh one, re-running bootstrap.
 // With force=true, active sessions are killed without prompting.
-func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
+// With fast=true, restore from the base image when valid instead of full bootstrap.
+func (svc *LifecycleService) Recreate(ctx context.Context, force, fast bool) error {
 	sessions, err := svc.Sessions.List()
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
@@ -579,16 +512,21 @@ func (svc *LifecycleService) Recreate(ctx context.Context, force bool) error {
 		}
 	}
 
-	// Stop the idle monitor before destroying the VM. If Destroy fails the
+	// Stop the idle monitor before destroying the VM. If recreation fails the
 	// monitor stays stopped; Start will restart it via its normal launch path.
 	svc.Monitor.Stop()
 
-	clearBootstrapState(svc.Config.StateDir)
-
-	svc.logger().Info("Destroying existing VM")
-	if err := svc.VM.Destroy(ctx); err != nil {
-		return fmt.Errorf("destroying VM: %w", err)
+	var recreateErr error
+	if fast && svc.baseImageEnabled() && svc.hasValidBase(ctx) {
+		recreateErr = svc.fastRecreate(ctx)
+	} else {
+		if fast && svc.baseImageEnabled() {
+			svc.logger().Warn("No valid base image — running full bootstrap")
+		}
+		recreateErr = svc.fullBootstrap(ctx)
 	}
-
-	return svc.Start(ctx)
+	if recreateErr != nil {
+		return recreateErr
+	}
+	return svc.finalizeStart(ctx)
 }

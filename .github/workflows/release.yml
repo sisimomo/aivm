@@ -21,6 +21,19 @@ jobs:
       - name: Run unit tests
         run: make test-unit
 
+  test-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        run: make test-integration
+
   test-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -62,7 +75,7 @@ jobs:
         run: go test -tags bootstrap -v -timeout 15m -parallel 7 ./test/bootstrap/
 
   release:
-    needs: [test-unit, test-e2e, test-bootstrap]
+    needs: [test-unit, test-integration, test-e2e, test-bootstrap]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

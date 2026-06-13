@@ -94,10 +94,14 @@ func withLogFileLock(path string, fn func() error) error {
 // subprocessWriter tees external command output into aivm.log at trace level
 // with a [source] tag. No separate per-source log files.
 type subprocessWriter struct {
-	mu     sync.Mutex
-	source string
-	buf    []byte
+	mu      sync.Mutex
+	source  string
+	buf     []byte
+	tail    []string
+	maxTail int
 }
+
+const subprocessTailLines = 8
 
 func (w *subprocessWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
@@ -117,6 +121,7 @@ func (w *subprocessWriter) Write(p []byte) (int, error) {
 		}
 		line := strings.TrimSpace(string(w.buf[:idx]))
 		if line != "" {
+			w.appendTail(line)
 			slog.Log(context.Background(), SlogTrace, line, slog.String("component", w.source))
 		}
 		w.buf = w.buf[idx+1:]
@@ -125,10 +130,32 @@ func (w *subprocessWriter) Write(p []byte) (int, error) {
 		line := strings.TrimSpace(string(w.buf))
 		w.buf = nil
 		if line != "" {
+			w.appendTail(line)
 			slog.Log(context.Background(), SlogTrace, line, slog.String("component", w.source))
 		}
 	}
 	return len(p), nil
+}
+
+func (w *subprocessWriter) appendTail(line string) {
+	if w.maxTail == 0 {
+		w.maxTail = subprocessTailLines
+	}
+	w.tail = append(w.tail, line)
+	if len(w.tail) > w.maxTail {
+		w.tail = w.tail[len(w.tail)-w.maxTail:]
+	}
+}
+
+// logTailAtWarn emits recent subprocess output at WARN on the terminal.
+func (w *subprocessWriter) logTailAtWarn() {
+	w.mu.Lock()
+	tail := append([]string(nil), w.tail...)
+	source := w.source
+	w.mu.Unlock()
+	for _, line := range tail {
+		slog.Warn(line, slog.String("component", source))
+	}
 }
 
 // Close flushes any trailing partial line buffered from subprocess output.
@@ -141,6 +168,7 @@ func (w *subprocessWriter) Close() error {
 	line := strings.TrimSpace(string(w.buf))
 	w.buf = nil
 	if line != "" {
+		w.appendTail(line)
 		slog.Log(context.Background(), SlogTrace, line, slog.String("component", w.source))
 	}
 	return nil

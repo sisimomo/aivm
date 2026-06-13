@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -108,24 +109,29 @@ func BootstrapEnabledPlugins(reg *plugin.Registry, providers []agent.Provider, c
 	return enabled
 }
 
+func effectiveBackend(vm config.VMConfig) string {
+	if vm.Backend == "" {
+		return "lima"
+	}
+	return vm.Backend
+}
+
+func effectiveVMType(vm config.VMConfig) string {
+	if vm.Type != "" {
+		return vm.Type
+	}
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		return "vz"
+	}
+	return "qemu"
+}
+
 func stringSet(items []string) map[string]bool {
 	m := make(map[string]bool, len(items))
 	for _, s := range items {
 		m[s] = true
 	}
 	return m
-}
-
-func vmCreatedRecently(stateDir string) bool {
-	data, err := os.ReadFile(filepath.Join(stateDir, vm.VMCreatedAtFile))
-	if err != nil {
-		return false
-	}
-	epoch, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	if err != nil {
-		return false
-	}
-	return time.Since(time.Unix(epoch, 0)) < 10*time.Minute
 }
 
 // ensureAgentPersistDirs creates the host-side directories that are mounted

@@ -111,8 +111,15 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 		return err
 	}
 
-	workDir, _ := os.Getwd()
-	sess, err := svc.Sessions.Create(workDir)
+	hostCWD, realCWD, err := svc.resolveSessionCWD()
+	if err != nil {
+		return err
+	}
+	if err := AssertUnderMount(realCWD, svc.Config); err != nil {
+		return err
+	}
+
+	sess, err := svc.Sessions.Create(hostCWD)
 	if err != nil {
 		svc.logger().Warn(fmt.Sprintf("could not create session lock: %v", err))
 	} else {
@@ -129,7 +136,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 		os.Exit(0)
 	}()
 
-	return svc.VM.SSH(ctx, svc.Config.VM.ResolvedSessionEnv())
+	return svc.VM.SSH(ctx, realCWD, svc.Config.VM.ResolvedSessionEnv())
 }
 
 // Logs tails the aivm or idle-monitor log file.

@@ -57,7 +57,10 @@ func (s *missingOrStaleStep) applicable(ss *syncState, _ *LifecycleService) bool
 	return ss.state == nil || ss.state.NeedsMigration()
 }
 
-func (s *missingOrStaleStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+func (s *missingOrStaleStep) run(ctx context.Context, ss *syncState, svc *LifecycleService) error {
+	if ss.state != nil && ss.state.NeedsMigration() {
+		svc.deleteBaseImage(ctx)
+	}
 	svc.logger().Warn("bootstrap state missing or outdated — recreating VM")
 	return svc.recreateVM(ctx)
 }
@@ -93,10 +96,14 @@ func (s *envChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleSe
 type configChangedStep struct{}
 
 func (s *configChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {
+	if svc.skipConfigChangePrompt {
+		return false
+	}
 	return ss.state != nil && (ss.state.Provider != svc.Provider.Name() || ss.state.ConfigHash != ss.configHash)
 }
 
 func (s *configChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
+	svc.deleteBaseImage(ctx)
 	return svc.resolveConfigChange(ctx)
 }
 
@@ -125,24 +132,36 @@ func (svc *LifecycleService) resolveConfigChange(ctx context.Context) error {
 	return svc.recreateVM(ctx)
 }
 
+func (svc *LifecycleService) terminateActiveSessions() {
+	if svc.Sessions == nil {
+		return
+	}
+	sessions, _ := svc.Sessions.List()
+	if len(sessions) == 0 {
+		return
+	}
+	svc.logger().Info(fmt.Sprintf("Terminating %d active session(s)", len(sessions)))
+	for _, sess := range sessions {
+		proc, err := os.FindProcess(sess.PID)
+		if err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+		sess.Remove()
+	}
+}
+
+// TerminateActiveSessionsForTest exposes terminateActiveSessions for unit tests.
+func TerminateActiveSessionsForTest(svc *LifecycleService) {
+	svc.terminateActiveSessions()
+}
+
 // recreateVM terminates all active sessions, destroys the VM, and recreates
 // it with a fresh bootstrap.
 func (svc *LifecycleService) recreateVM(ctx context.Context) error {
 	// Stop the idle monitor (if running from a previous 'aivm start') so it
 	// cannot stop or delete the freshly bootstrapped container.
 	svc.Monitor.Stop()
-
-	sessions, _ := svc.Sessions.List()
-	if len(sessions) > 0 {
-		svc.logger().Info(fmt.Sprintf("Terminating %d active session(s)", len(sessions)))
-		for _, sess := range sessions {
-			proc, err := os.FindProcess(sess.PID)
-			if err == nil {
-				_ = proc.Signal(syscall.SIGTERM)
-			}
-			sess.Remove()
-		}
-	}
+	svc.terminateActiveSessions()
 
 	clearBootstrapState(svc.Config.StateDir)
 

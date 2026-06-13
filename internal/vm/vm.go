@@ -66,10 +66,9 @@ type VM interface {
 	// RunStream executes script without a PTY, streaming stdout/stderr to the
 	// host process. Returns the remote exit code.
 	RunStream(ctx context.Context, script string, env map[string]string) (int, error)
-	// SSH opens an interactive shell. env injects host session variables when
-	// non-empty; implementations should preserve their native SSH/exec path when
-	// env is nil or empty.
-	SSH(ctx context.Context, env map[string]string) error
+	// SSH opens an interactive shell in workDir (the host CWD, mirrored in the VM).
+	// env injects host session variables when non-empty.
+	SSH(ctx context.Context, workDir string, env map[string]string) error
 	// CopyTo copies a file or directory from the host at localPath into the VM
 	// at vmPath. When recursive is true, directories are copied recursively.
 	CopyTo(ctx context.Context, localPath, vmPath string, recursive bool) error

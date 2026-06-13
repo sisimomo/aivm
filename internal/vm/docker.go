@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,27 +77,33 @@ func (d *DockerVM) Start(ctx context.Context, opts StartOptions) error {
 		return dockerCmd(ctx, "start", d.containerName)
 
 	default:
-		d.mu.Lock()
-		d.lastStartOpts = opts
-		d.mu.Unlock()
-
-		args := []string{"run", "-d", "--name", d.containerName}
-		if opts.Privileged {
-			args = append(args, "--privileged")
-		}
-		for _, pm := range opts.PortMappings {
-			args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
-		}
-		for _, m := range opts.Mounts {
-			mode := "ro"
-			if m.Writable {
-				mode = "rw"
-			}
-			args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
-		}
-		args = append(args, d.image)
-		return dockerCmd(ctx, args...)
+		return d.startFromImage(ctx, d.image, opts)
 	}
+}
+
+// startFromImage creates and starts a new container from the given image with
+// mounts and port mappings from opts.
+func (d *DockerVM) startFromImage(ctx context.Context, image string, opts StartOptions) error {
+	d.mu.Lock()
+	d.lastStartOpts = opts
+	d.mu.Unlock()
+
+	args := []string{"run", "-d", "--name", d.containerName}
+	if opts.Privileged {
+		args = append(args, "--privileged")
+	}
+	for _, pm := range opts.PortMappings {
+		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
+	}
+	for _, m := range opts.Mounts {
+		mode := "ro"
+		if m.Writable {
+			mode = "rw"
+		}
+		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
+	}
+	args = append(args, image)
+	return dockerCmd(ctx, args...)
 }
 
 // Stop stops the running container without removing it.
@@ -114,7 +119,6 @@ func (d *DockerVM) Stop(ctx context.Context) error {
 func (d *DockerVM) Destroy(ctx context.Context) error {
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 	return nil
 }
 
@@ -123,7 +127,6 @@ func (d *DockerVM) DestroyWithImages() {
 	ctx := context.Background()
 	_ = dockerCmd(ctx, "stop", d.containerName)
 	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
-	os.Remove(filepath.Join(d.stateDir, VMCreatedAtFile))
 }
 
 // Run executes script inside the container as the container user.
@@ -182,12 +185,12 @@ func (d *DockerVM) RunInteractive(ctx context.Context, script string, env map[st
 
 // SSH opens an interactive shell in the container. Session env is exported first;
 // -t is only passed when stdin is a TTY.
-func (d *DockerVM) SSH(ctx context.Context, env map[string]string) error {
+func (d *DockerVM) SSH(ctx context.Context, workDir string, env map[string]string) error {
 	args := []string{"exec", "-i"}
 	if isTTY() {
 		args = append(args, "-t")
 	}
-	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-c", BuildDockerSSHCmd(env))
+	args = append(args, "-u", dockerContainerUser, d.containerName, "bash", "-c", BuildDockerSSHCmd(workDir, env))
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -258,11 +261,14 @@ func (d *DockerVM) GetPublishedPort(containerPort int) (int, error) {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// BuildDockerSSHCmd builds the bash -c script for Docker SSH (export env, then exec bash).
-func BuildDockerSSHCmd(env map[string]string) string {
+// BuildDockerSSHCmd builds the bash -c script for Docker SSH (export env, cd, exec bash).
+func BuildDockerSSHCmd(workDir string, env map[string]string) string {
 	var sb strings.Builder
 	for k, v := range env {
 		fmt.Fprintf(&sb, "export %s=%s; ", k, ShellEscape(v))
+	}
+	if workDir != "" {
+		fmt.Fprintf(&sb, "cd %s; ", ShellEscape(workDir))
 	}
 	sb.WriteString("exec bash")
 	return sb.String()

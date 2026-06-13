@@ -231,7 +231,20 @@ recreation required.
 | Key | Default | Description |
 | --- | --- | --- |
 | `vm.type` | _(auto)_ | Lima hypervisor: `vz`, `qemu`, or omit for auto |
+| `vm.base_image_enable` | `true` | Save and restore VM snapshots for fast recreate |
 | `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this age |
+| `vm.bootstrap_refresh_prompt_after` | `"30d"` | Prompt to rerun full bootstrap after this age |
+
+When base images are enabled (default), aivm saves a snapshot after bootstrap and
+can recreate the VM from it quickly without rerunning plugin install.
+`recreate_prompt_after` nudges you to recreate the VM instance; when the base is
+still valid, that recreate is fast (`aivm recreate --fast`).
+`bootstrap_refresh_prompt_after` nudges you to rerun a full bootstrap so
+installed plugins and tools stay fresh.
+
+By default, `aivm destroy` clears the base image, bootstrap state, and age
+tracking files in `~/.aivm`. Use `aivm destroy --keep-base` to preserve that
+state for a fast `start` or `recreate --fast` (same semantics as idle auto-delete).
 
 ### Idle Management
 
@@ -349,7 +362,7 @@ aivm [directory]       Launch the configured AI agent (default command)
 | `aivm start` | Start VM and services only |
 | `aivm stop` | Stop VM and services (disk preserved) |
 | `aivm restart` | Stop then start VM and services |
-| `aivm destroy` | Delete VM (volumes and `~/.aivm` host state preserved) |
+| `aivm destroy` | Delete VM and clear base image, bootstrap state, and age files (`--keep-base` preserves them for fast recreate) |
 | `aivm recreate` | Destroy VM and re-run full bootstrap (see below) |
 | `aivm status` | Show VM, compose service, and T3 Code status |
 | `aivm ssh` | Open an interactive shell in the VM |
@@ -421,6 +434,7 @@ drifted.
 ```bash
 aivm recreate          # prompts if active sessions exist
 aivm recreate --force  # stop active sessions without prompting
+aivm recreate --fast   # restore from base image when valid (skips full bootstrap)
 ```
 
 **Environment overrides:**

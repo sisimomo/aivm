@@ -52,27 +52,40 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		return nil, fmt.Errorf("agent %q: cli_command is not configured", prov.Name())
 	}
 
-	getCWD := svc.GetWorkDir
-	if getCWD == nil {
-		getCWD = os.Getwd
-	}
-	hostCWD, err := getCWD()
+	hostCWD, realCWD, err := svc.resolveSessionCWD()
 	if err != nil {
-		return nil, fmt.Errorf("getting working directory: %w", err)
-	}
-	realCWD, err := filepath.EvalSymlinks(hostCWD)
-	if err != nil {
-		realCWD = filepath.Clean(hostCWD)
+		return nil, err
 	}
 	if err := AssertUnderMount(realCWD, cfg); err != nil {
 		return nil, err
 	}
 
-	if err := svc.checkVMAge(ctx); err != nil {
+	status, err := svc.VM.Status(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	status, err := svc.VM.Status(ctx)
+	action, err := svc.decideStartAction(ctx, status)
+	if err != nil {
+		return nil, err
+	}
+
+	switch action {
+	case ActionFullBootstrap:
+		if err := svc.fullBootstrap(ctx); err != nil {
+			return nil, err
+		}
+	case ActionFastRecreate:
+		if err := svc.fastRecreate(ctx); err != nil {
+			return nil, err
+		}
+	case ActionPromptBootstrapRefresh, ActionPromptVMAge, ActionPromptCombined, ActionPromptRuntimeChange, ActionPromptConfigChange:
+		if err := svc.handleRecreationPrompt(ctx, action, status); err != nil {
+			return nil, err
+		}
+	}
+
+	status, err = svc.VM.Status(ctx)
 	if err != nil || status != vm.StatusRunning {
 		return nil, fmt.Errorf("VM is not running — run 'aivm start' first")
 	}
@@ -99,6 +112,22 @@ func (svc *LifecycleService) prepareAgentSession(ctx context.Context, agentOverr
 		ctx:     runCtx,
 		cleanup: cleanup,
 	}, nil
+}
+
+func (svc *LifecycleService) resolveSessionCWD() (hostCWD, realCWD string, err error) {
+	getCWD := svc.GetWorkDir
+	if getCWD == nil {
+		getCWD = os.Getwd
+	}
+	hostCWD, err = getCWD()
+	if err != nil {
+		return "", "", fmt.Errorf("getting working directory: %w", err)
+	}
+	realCWD, err = filepath.EvalSymlinks(hostCWD)
+	if err != nil {
+		realCWD = filepath.Clean(hostCWD)
+	}
+	return hostCWD, realCWD, nil
 }
 
 func AssertUnderMount(realCWD string, cfg *config.Config) error {
