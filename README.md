@@ -133,8 +133,12 @@ vm:
   backend: lima
   name: aivm
   mounts:
-    - "~/dev:rw"
-    - "~/.ssh:ro"
+    - location: "{{ .home }}/dev"
+      mountPoint: "{{ .home }}/dev"
+      mode: rw
+    - location: "{{ .home }}/.ssh"
+      mountPoint: "{{ .home }}/.ssh"
+      mode: ro
   # session_env:
   #   MY_TOOL_SESSION_ID: "${MY_TOOL_SESSION_ID}"
   #   CI_JOB_ID: "${CI_JOB_ID}"
@@ -172,17 +176,46 @@ At the default `info` level the terminal shows milestones and warnings; use
 
 ### Mounts
 
-Directories listed under `vm.mounts` are bind-mounted into the VM. Format:
-`<host_path>:<mode>` where mode is `rw` (read-write) or `ro` (read-only). `~`
-expands to your home directory.
+Directories listed under `vm.mounts` are bind-mounted into the VM. Each entry
+is a structured `MountSpec` with three required fields:
+
+| Field | Description |
+| --- | --- |
+| `location` | Host path to bind (source) |
+| `mountPoint` | Guest path inside the VM (target) |
+| `mode` | `rw` (read-write) or `ro` (read-only) |
+
+Paths support `{{ .home }}` and `{{ .state_dir }}` templates (same engine as
+plugin setup scripts). After template rendering, a leading `~` expands to your
+home directory. Both paths must be absolute before the mount is accepted.
+
+**Identity mount** — host and guest paths match (most common for dev trees):
 
 ```yaml
 vm:
   mounts:
-    - "~/dev:rw"
-    - "~/.ssh:ro"
-    - "~/work:rw"
+    - location: "{{ .home }}/dev"
+      mountPoint: "{{ .home }}/dev"
+      mode: rw
+    - location: "{{ .home }}/.ssh"
+      mountPoint: "{{ .home }}/.ssh"
+      mode: ro
 ```
+
+**Remapped mount** — host path differs from guest path:
+
+```yaml
+vm:
+  mounts:
+    - location: "{{ .home }}/company-secrets"
+      mountPoint: "/secrets"
+      mode: ro
+```
+
+When `location` and `mountPoint` differ, only the guest path is visible inside
+the VM. `aivm ssh` and `aivm` (agent launch) translate your host current working
+directory to the matching guest path automatically. `aivm cp vm:/path` is
+unchanged — VM paths stay explicit via the `vm:` prefix.
 
 ### Session host environment
 
@@ -757,6 +790,11 @@ registered automatically based on `agents.enabled`.
 Built-in agent definitions live in
 [`internal/agent/defaults.yaml`](internal/agent/defaults.yaml).
 
+Agent-specific mounts are defined under `mounts` in each agent definition.
+These bind host state directories into the VM at the paths tools expect. Mount
+data lives on the host under `~/.aivm/` (or `AIVM_STATE_DIR`) and is **not**
+stored on the VM disk — it survives `aivm recreate` and VM deletion.
+
 ### Customizing agents
 
 | Field | Purpose |
@@ -766,6 +804,7 @@ Built-in agent definitions live in
 | `setup` | Override the agent's install script |
 | `dependencies` | Plugins/toolchains required before install |
 | `path_entries` | Directories added to VM `PATH` |
+| `mounts` | Host→guest bind mounts for agent state (see per-agent sections) |
 
 ```yaml
 agents:
@@ -785,8 +824,10 @@ agents:
     - claude
 ```
 
-SSH in the VM and runs `claude --dangerously-skip-permissions`. Claude's project
-history is persisted to `~/.aivm/.claude/projects/` on the host.
+SSH in the VM and runs `claude --dangerously-skip-permissions`. Claude project
+history and image cache are persisted on the host at
+`~/.aivm/.claude/projects/` and `~/.aivm/.claude/image-cache/`, mounted into
+the VM at `~/.claude/projects` and `~/.claude/image-cache`.
 
 Authenticate inside the VM once:
 
@@ -804,8 +845,9 @@ agents:
     - copilot
 ```
 
-SSH in the VM and runs `copilot --yolo`. Session state is persisted to
-`~/.aivm/.copilot/session-state/`.
+SSH in the VM and runs `copilot --yolo`. Session state is persisted on the host
+at `~/.aivm/.copilot/session-state/`, mounted into the VM at
+`~/.copilot/session-state/`.
 
 Authenticate inside the VM once:
 
@@ -825,7 +867,8 @@ agents:
 
 SSH in the VM and runs `agent`. aivm installs Cursor with the upstream `curl
 https://cursor.com/install -fsS | bash` flow, keeps `~/.local/bin` on PATH for
-login shells, and persists Cursor CLI state in `~/.aivm/.cursor/`.
+login shells, and persists Cursor CLI state on the host at `~/.aivm/.cursor/`,
+mounted into the VM at `~/.cursor/`.
 
 Authenticate inside the VM once:
 
