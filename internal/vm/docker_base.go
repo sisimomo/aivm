@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -35,6 +36,23 @@ func (d *DockerVM) DeleteBaseImage(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+// PromoteWithEphemeralCommit commits the live container to a temporary image,
+// recreates the container with runtime start options, then removes the image.
+func (d *DockerVM) PromoteWithEphemeralCommit(ctx context.Context, opts StartOptions) error {
+	imageID, err := dockerOutput(ctx, "commit", d.containerName)
+	if err != nil {
+		return fmt.Errorf("promote commit: %w", err)
+	}
+	imageID = strings.TrimSpace(imageID)
+	_ = dockerCmd(ctx, "stop", d.containerName)
+	_ = dockerCmd(ctx, "rm", "-f", d.containerName)
+	if err := d.startFromImage(ctx, imageID, opts); err != nil {
+		return err
+	}
+	_ = dockerCmd(ctx, "rmi", "-f", imageID)
+	return nil
 }
 
 // HasBaseImage reports whether the committed base image tag exists locally.
