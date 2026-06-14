@@ -17,10 +17,11 @@ format (`~/dev:rw`) or the old agent `persist` field.
   write to the correct VM paths without per-agent symlink boilerplate
 - Make `vm.mounts` more powerful: host `source` and guest `target` can differ
 - Preserve same-path mounts as a first-class case (`source` and `target` resolve
-  to the same logical path, e.g. both `~/dev`)
-- Support `{{ .state_dir }}`, `{{ .home }}`, and `{{ .guest_home }}` templates
-  in path fields (same engine as plugin setup scripts)
-- Expand `~` in `source` to host home and in `target` to guest home
+  to the same logical path; on Lima/macOS use `{{ .host_home }}` in `target` so
+  the VM sees the same absolute path as on the host)
+- Support `{{ .state_dir }}` and `{{ .host_home }}` templates in path fields
+  (same engine as plugin setup scripts)
+- Expand `~` in `source` to host home and in `target` to VM user home
 - Translate host CWD to guest path for `aivm ssh` and agent launch
 - Hard cut from old config formats (alpha)
 
@@ -29,8 +30,9 @@ format (`~/dev:rw`) or the old agent `persist` field.
 - Backward compatibility for string `vm.mounts` or agent `persist`
 - File-level bind mounts (directories only)
 - Path translation for `aivm cp` (VM paths stay explicit via `vm:` prefix)
-- Agent-specific or user-defined template variables beyond `state_dir`, `home`,
-  and `guest_home`
+- Agent-specific or user-defined template variables beyond `state_dir` and
+  `host_home`
+- User-configurable VM home override (`vm.guest_home` is rejected at load)
 - Optional/default `target` (always required, fully explicit)
 - Linux/Windows host support changes
 
@@ -60,10 +62,10 @@ aivm.yaml / agent defaults
   MountSpec[]  (source, target, mode)
         │
         ▼
-  Template render  ({{ .state_dir }}, {{ .home }}, {{ .guest_home }})
+  Template render  ({{ .state_dir }}, {{ .host_home }})
         │
         ▼
-  ~ expansion (host home in source, guest home in target) + validation
+  ~ expansion (host home in source, VM home in target) + validation
         │
         ▼
   ResolvedMount[]  (absolute host + guest paths)
@@ -101,43 +103,49 @@ mode: rw | ro    # required
 | Variable | Value |
 | --- | --- |
 | `state_dir` | Resolved aivm state dir (`~/.aivm` or `AIVM_STATE_DIR`) |
-| `home` | Host home directory |
-| `guest_home` | Resolved guest home (see `vm.guest_home` below) |
+| `host_home` | Host home directory |
+
+Use `~` in `target` for VM-user-home-relative paths (agent state mounts).
+There is no `{{ .guest_home }}` template — VM home is not a template variable.
 
 After template render, `~` prefix expansion is applied:
 
 - In `source`: `~` → host home
-- In `target`: `~` → guest home
+- In `target`: `~` → VM user home (derived from backend; see below)
 
 Both must be absolute paths before the mount is accepted.
 
-### `vm.guest_home`
+### VM user home (derived, not configurable)
 
-Optional override for the guest user home used when expanding `~` in mount
-`target` paths and when resolving `{{ .guest_home }}`.
+VM user home is determined automatically from the VM backend and stored as
+`VMConfig.ParsedVMHome` at config load. It is used when expanding `~` in mount
+`target` paths. Users cannot override it — `vm.guest_home` in YAML is rejected
+with a clear error.
 
-When omitted, defaults apply:
-
-| Backend | Default guest home |
+| Backend | Default VM home |
 | --- | --- |
 | `docker` | `/home/user` |
 | `lima` on Linux | `/home/$USER` |
-| `lima` on macOS | `/home/$USER.linux` |
+| `lima` on macOS | `/home/$USER.guest` |
 
-Supports `~/` prefix (expanded with host home) for convenience in config.
+Implemented in `mountspec.DefaultVMHome()`.
 
 ### `vm.mounts` (user config)
 
 ```yaml
 vm:
-  # guest_home: "/home/myuser"   # optional override
   mounts:
-    # Same-path mount — ~/ expands per side (host home → guest home)
+    # Same-path mount (recommended on Lima/macOS) — VM sees host absolute path
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
+      mode: rw
+    # Parallel mount — both sides use ~; VM path lands under VM $HOME
+    # (e.g. /home/you.guest/dev on Lima macOS)
+    - source: "~/scratch"
+      target: "~/scratch"
       mode: rw
     # Remapped mount — host path differs from guest path
-    - source: "{{ .home }}/company-secrets"
+    - source: "{{ .host_home }}/company-secrets"
       target: "/secrets"
       mode: ro
 ```
@@ -195,7 +203,7 @@ Agent `setup` scripts return to install-only. Remove symlink workarounds:
 | --- | --- |
 | t3code plugin setup | `ln -sfn "$T3_DIR" "$HOME/.t3"` block |
 
-T3 persistence becomes an internal `MountSpec` in `buildStartOptions`:
+T3 persistence becomes an internal `MountSpec` in `ResolvedMountsForStart`:
 
 ```yaml
 source: "{{ .state_dir }}/.t3"
@@ -216,19 +224,21 @@ type Mount struct {
 
 **Lima** (at `limactl create`):
 
-```text
---mount type=bind,source=<HostPath>,target=<GuestPath>[,readonly]
-```
+Remapped mounts are written into the Lima instance template YAML (not
+`limactl --mount`, which only supports same guest path as host):
 
-Replaces the current `path:w` / `path:r` same-path shorthand.
+```yaml
+mounts:
+  - location: "<HostPath>"
+    mountPoint: "<GuestPath>"   # omitted when HostPath == GuestPath
+    writable: true
+```
 
 **Docker** (at `docker run`):
 
 ```text
 -v <HostPath>:<GuestPath>:<ro|rw>
 ```
-
-Already supports distinct source/target; today both sides are the same path.
 
 ### Config load validation
 
@@ -237,23 +247,28 @@ Already supports distinct source/target; today both sides are the same path.
 | `source`, `target`, `mode` all required | Config load error |
 | `mode` is `rw` or `ro` | Config load error |
 | Paths absolute after render + `~` expand | Config load error |
-| No duplicate `target` across all mounts | Config load error |
+| No duplicate `target` among `vm.mounts` | Config load error |
 | No overlapping `source` prefixes among `vm.mounts` | Config load error |
 | Template render failure | Config load error with field path |
+| `vm.guest_home` key present | Config load error (not supported) |
 
 Overlapping `source` prefixes among `vm.mounts` are rejected because they
 make host→guest translation ambiguous. Agent `mounts` and internal mounts are
 not checked for source overlap with `vm.mounts` (different purpose).
 
+At VM start, `ResolvedMountsForStart` validates duplicate `target` across
+user, agent, and internal mounts (agent duplicates are skipped with a trace
+log during assembly).
+
 ### Host directory creation
 
-`ensureAgentPersistDirs` is renamed to reflect mounts (e.g.
-`ensureAgentMountDirs`). It `MkdirAll`s each agent mount's rendered `source`
-on the host before VM start. Only agent `mounts` — not user `vm.mounts`.
+`ensureAgentPersistDirs` is renamed to `ensureAgentMountDirs`. It `MkdirAll`s
+each agent mount's rendered `source` on the host before VM start, and the T3
+mount source when T3 is enabled. User `vm.mounts` sources are not auto-created.
 
 ## Path translation
 
-### `GuestPathForHost(hostPath, vmMounts) → (guestPath, error)`
+### `GuestPathForHost(hostPath, cfg) → (guestPath, error)`
 
 Used by `aivm ssh` and agent launch (`aivm`, `aivm agent`).
 
@@ -268,11 +283,13 @@ Algorithm:
 
 | Host CWD | Mount | Guest path |
 | --- | --- | --- |
-| `/Users/you/dev/myapp` | `source: /Users/you/dev` → `target: /home/you.linux/dev` | `/home/you.linux/dev/myapp` |
+| `/Users/you/dev/myapp` | `source: /Users/you/dev` → `target: /Users/you/dev` | `/Users/you/dev/myapp` |
+| `/Users/you/dev/myapp` | `source: /Users/you/dev` → `target: /home/you.guest/dev` | `/home/you.guest/dev/myapp` |
 | `/Users/you/secrets/keys` | `source: /Users/you/secrets` → `target: /secrets` | `/secrets/keys` |
 
-When resolved `source` and `target` use a same-path mount (e.g. both
-`~/dev` with matching homes), translation preserves the relative suffix.
+When resolved `source` and `target` use a same-path mount (e.g.
+`{{ .host_home }}/dev` on both sides on macOS), translation preserves the
+relative suffix.
 
 ### Call sites
 
@@ -324,8 +341,9 @@ launched from the same project directory.
 | --- | --- |
 | Old string mount in YAML | Parse/validate error at load |
 | Old agent `persist` key in YAML | Rejected as unknown key (strict validation) |
+| `vm.guest_home` in YAML | Config load error (not supported) |
 | Template render fails | Config load error |
-| Duplicate `target` | Config load error |
+| Duplicate `target` among `vm.mounts` | Config load error |
 | Overlapping `vm.mounts` sources | Config load error |
 | CWD not under any `vm.mounts` source | Existing `AssertUnderMount` error |
 | `GuestPathForHost` no match after assert | Should not occur; treat as internal error |
@@ -334,17 +352,18 @@ launched from the same project directory.
 
 | Area | Change |
 | --- | --- |
-| `internal/config/` | `MountSpec` struct, template renderer, validation; remove `ParseMount` string parser |
-| `internal/config/config.go` | `VMConfig.Mounts` as `[]MountSpec`; `vm.guest_home`; update `AgentDefine` |
-| `internal/mountspec/` | Contextual `~` expansion; `DefaultGuestHome` |
+| `internal/mountspec/` | `MountSpec`, template renderer, contextual `~` expansion, `DefaultVMHome`, validation |
+| `internal/config/config.go` | `VMConfig.Mounts` as `[]MountSpec`; `ParsedVMHome`; update `AgentDefine` |
+| `internal/config/parse.go` | Reject `vm.guest_home`; remove `ParseMount` string parser |
 | `internal/agent/def.go` | Rename `Persist` → `Mounts []MountSpec` |
 | `internal/agent/defaults.yaml` | Structured `mounts` for claude, copilot, cursor |
 | `internal/vm/vm.go` | Add `GuestPath` to `Mount` |
-| `internal/vm/lima.go` | Bind mount with explicit `source`/`target` |
+| `internal/vm/lima.go` | Lima template YAML mounts with `location` / `mountPoint` |
+| `internal/vm/mountflag.go` | `LimaMountYAML`, `DockerVolumeFlag` helpers |
 | `internal/vm/docker.go` | `-v host:guest:mode` (distinct paths) |
 | `internal/vm/ssh.go` | Update comment; `workDir` is guest path |
-| `internal/lifecycle/helpers.go` | Mount assembly; rename persist dir helper |
-| `internal/lifecycle/mountpath.go` | `GuestPathForHost`, validation helpers |
+| `internal/lifecycle/helpers.go` | `ResolvedMountsForStart`; `ensureAgentMountDirs` |
+| `internal/lifecycle/mountpath.go` | `GuestPathForHost` |
 | `internal/lifecycle/agent_session.go` | Translate CWD before agent launch |
 | `internal/lifecycle/commands.go` | Translate CWD before SSH |
 | `internal/plugin/defaults.yaml` | Remove t3 symlink block |
@@ -355,11 +374,12 @@ launched from the same project directory.
 
 ### Unit
 
-- Template rendering (`state_dir`, `home`, `guest_home`, contextual `~`)
+- Template rendering (`state_dir`, `host_home`, contextual `~`)
 - Validation: duplicate `target`, overlapping sources, missing fields
 - `GuestPathForHost`: same-path, remapped, nested subdirs, longest-prefix match
 - Lima/Docker mount flag generation with distinct `GuestPath`
 - Agent defaults parse with `mounts` (not `persist`)
+- Reject `vm.guest_home` at config load
 
 ### E2E
 
@@ -370,8 +390,9 @@ launched from the same project directory.
 
 ## Documentation updates
 
-- `README.md` mounts section: `source`/`target`, contextual `~`, `vm.guest_home`,
-  template variables, remapped mount example, path translation note for ssh/agent
+- `README.md` mounts section: `source`/`target`, contextual `~`, derived VM home,
+  `{{ .host_home }}` template, remapped mount example, path translation note for
+  ssh/agent
 - Agent sections: `mounts` replaces `persist` language; Claude persistence
   scope (`projects`, `image-cache` on host under `~/.aivm/.claude/`)
 - `aivm.example.yaml`: update `vm.mounts` example
@@ -386,11 +407,11 @@ vm:
   mounts:
     - "~/dev:rw"
 
-# After
+# After (recommended on Lima/macOS — same absolute path in VM)
 vm:
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
 ```
 

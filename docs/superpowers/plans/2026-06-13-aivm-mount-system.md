@@ -11,18 +11,20 @@ support host→guest path remapping, template variables, and CWD translation for
 
 **Architecture:** YAML `MountSpec` objects (`source`, `target`, `mode`)
 are template-rendered and validated at config load (user `vm.mounts`) or VM-start
-assembly (agent + internal mounts). Resolved mounts flow into `vm.Mount` with
-distinct `HostPath`/`GuestPath` for Lima/Docker bind mounts. `GuestPathForHost`
-translates the host CWD using longest-prefix match on `vm.mounts` sources only.
+assembly (agent + internal mounts). Template variables are `{{ .state_dir }}` and
+`{{ .host_home }}`. A leading `~` in `source` expands to host home; in `target`
+it expands to VM user home (`ParsedVMHome`, derived per backend by
+`mountspec.DefaultVMHome` — not overridable in config). Resolved mounts flow into
+`vm.Mount` with distinct `HostPath`/`GuestPath`. On Lima/macOS, same-path mounts
+use `target: "{{ .host_home }}/…"` so the VM sees the host absolute path; Lima
+remapped mounts are written to the instance template YAML (`location` /
+`mountPoint`), not `limactl --mount`. `GuestPathForHost` translates the host CWD
+using longest-prefix match on `vm.mounts` sources only.
 
-**Tech Stack:** Go, Viper/mapstructure, `text/template` (same variable names as
-plugin setup scripts), Lima `limactl`, Docker `-v`
+**Tech Stack:** Go, Viper/mapstructure, `text/template`, Lima instance template
+YAML, Docker `-v`
 
 **Spec:** `docs/superpowers/specs/2026-06-12-aivm-mount-system-design.md`
-
-> **Update:** Mount YAML fields are `source` / `target`. `~` in `source` expands
-> to host home; `~` in `target` expands to guest home (`vm.guest_home` to
-> override). Some code snippets below predate that rename — the spec is canonical.
 
 ---
 
@@ -33,22 +35,23 @@ plugin setup scripts), Lima `limactl`, Docker `-v`
 | `internal/mountspec/spec.go` | `MountSpec` YAML struct (shared by config + agent; avoids import cycle) |
 | `internal/mountspec/resolve.go` | Template render, `~` expansion, mode parsing → `ResolvedMount` |
 | `internal/mountspec/validate.go` | Duplicate `target`, overlapping `vm.mounts` sources |
-| `internal/mountspec/guesthome.go` | Default guest home per backend |
-| `internal/config/config.go` | `VMConfig.Mounts []mountspec.MountSpec`; `Mount` gains `GuestPath` |
+| `internal/mountspec/vmhome.go` | `DefaultVMHome` per backend (`ParsedVMHome`) |
+| `internal/config/config.go` | `VMConfig.Mounts []mountspec.MountSpec`; `ParsedVMHome`; `Mount` gains `GuestPath` |
+| `internal/config/parse.go` | Reject `vm.guest_home`; delete `ParseMount` |
 | `internal/config/defaults.yaml` | Structured default `vm.mounts` |
 | `internal/agent/def.go` | `Mounts []mountspec.MountSpec` (replaces `Persist`) |
 | `internal/agent/defaults.yaml` | Structured agent `mounts` incl. Claude `image-cache` |
 | `internal/vm/vm.go` | `Mount.GuestPath` field |
-| `internal/vm/lima.go` | `limactl create --mount type=bind,source=…,target=…` |
+| `internal/vm/lima.go` | `LimaTemplatePath` — template YAML with `location` / `mountPoint` |
+| `internal/vm/template.go` | Embed base `lima.yaml`; append resolved mounts |
 | `internal/vm/docker.go` | `-v host:guest:mode` with distinct paths |
 | `internal/vm/ssh.go` | Comment: `workDir` is guest path |
-| `internal/vm/mountflag.go` | `LimaMountFlag`, `DockerVolumeFlag` (testable helpers) |
+| `internal/vm/mountflag.go` | `LimaMountYAML`, `DockerVolumeFlag` (testable helpers) |
 | `internal/lifecycle/mountpath.go` | `GuestPathForHost` |
 | `internal/lifecycle/helpers.go` | Mount assembly, `ensureAgentMountDirs` |
 | `internal/lifecycle/agent_session.go` | Translate CWD before setting `vmDir` |
 | `internal/lifecycle/commands.go` | Translate CWD before `VM.SSH` |
 | `internal/plugin/defaults.yaml` | Remove T3 `ln -sfn` block |
-| `internal/config/parse.go` | Delete `ParseMount` |
 | `aivm.example.yaml`, `demo/configs/aivm.yaml`, `README.md` | New format docs |
 | `test/framework/config.go` | Emit structured mounts in generated YAML |
 | `test/lifecycle/harness/harness.go` | Set `GuestPath` on harness `ParsedMounts` |
@@ -80,8 +83,8 @@ func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
  home := "/Users/you"
  state := "/Users/you/.aivm"
  spec := mountspec.MountSpec{
-  Location:   `{{ .home }}/dev`,
-  Target: `{{ .home }}/dev`,
+  Source:   `{{ .host_home }}/dev`,
+  Target: `{{ .host_home }}/dev`,
   Mode:       "rw",
  }
  got, err := mountspec.Resolve(spec, mountspec.Context{Home: home, StateDir: state})
@@ -100,7 +103,7 @@ func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 func TestResolveMountSpec_RemappedReadOnly(t *testing.T) {
  t.Parallel()
  spec := mountspec.MountSpec{
-  Location:   "/Users/you/secrets",
+  Source:   "/Users/you/secrets",
   Target: "/secrets",
   Mode:       "ro",
  }
@@ -120,7 +123,7 @@ func TestResolveMountSpec_RemappedReadOnly(t *testing.T) {
 func TestResolveMountSpec_TildeExpansion(t *testing.T) {
  t.Parallel()
  spec := mountspec.MountSpec{
-  Location:   "~/dev",
+  Source:   "~/dev",
   Target: "~/dev",
   Mode:       "rw",
  }
@@ -140,7 +143,7 @@ func TestResolveMountSpec_MissingField(t *testing.T) {
  ctx := mountspec.Context{Home: "/h", StateDir: "/s"}
  _, err := mountspec.Resolve(spec, ctx)
  if err == nil {
-  t.Fatal("expected error for missing location")
+  t.Fatal("expected error for missing source")
  }
 }
 ```
@@ -175,7 +178,7 @@ type ResolvedMount struct {
 // Context supplies template variables for path rendering.
 type Context struct {
  Home      string
- GuestHome string
+ VMHome string
  StateDir  string
 }
 ```
@@ -220,12 +223,12 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
   return ResolvedMount{}, err
  }
 
- source = expandTilde(source, ctx.Home)
- target = expandTilde(target, ctx.GuestHome)
+ source := expandTilde(location, ctx.Home)
+ target = expandTilde(target, ctx.VMHome)
 
- if !filepath.IsAbs(location) {
+ if !filepath.IsAbs(source) {
   return ResolvedMount{}, fmt.Errorf(
-   "location %q must be absolute after expansion", location)
+   "source %q must be absolute after expansion", source)
  }
  if !filepath.IsAbs(target) {
   return ResolvedMount{}, fmt.Errorf(
@@ -233,7 +236,7 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
  }
 
  return ResolvedMount{
-  HostPath:  filepath.Clean(location),
+  HostPath:  filepath.Clean(source),
   GuestPath: filepath.Clean(target),
   Writable:  writable,
  }, nil
@@ -246,7 +249,7 @@ func renderPath(src string, ctx Context) (string, error) {
  }
  data := map[string]string{
   "state_dir": ctx.StateDir,
-  "home":      ctx.Home,
+  "host_home": ctx.Home,
  }
  var buf bytes.Buffer
  if err := t.Execute(&buf, data); err != nil {
@@ -256,6 +259,9 @@ func renderPath(src string, ctx Context) (string, error) {
 }
 
 func expandTilde(path, home string) string {
+ if path == "~" {
+  return home
+ }
  if strings.HasPrefix(path, "~/") {
   return filepath.Join(home, path[2:])
  }
@@ -328,7 +334,7 @@ func TestValidateOverlappingSources(t *testing.T) {
  }
  err := mountspec.ValidateOverlappingSources(mounts)
  if err == nil {
-  t.Fatal("expected overlapping location error")
+  t.Fatal("expected overlapping vm.mounts sources error")
  }
 }
 
@@ -385,7 +391,7 @@ func ValidateOverlappingSources(mounts []ResolvedMount) error {
  for i := 0; i < len(paths); i++ {
   for j := i + 1; j < len(paths); j++ {
    if paths[i] == paths[j] {
-    return fmt.Errorf("duplicate vm.mounts location %q", paths[i])
+    return fmt.Errorf("duplicate vm.mounts source %q", paths[i])
    }
    if strings.HasPrefix(paths[j], paths[i]+sep) {
     return fmt.Errorf("overlapping vm.mounts sources %q and %q", paths[i], paths[j])
@@ -445,8 +451,8 @@ agents:
 vm:
   name: testvm
   mounts:
-    - source: "{{ .home }}/dev"
-      target: "{{ .home }}/dev"
+    - source: "{{ .host_home }}/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
 `
  if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -501,11 +507,11 @@ In `internal/config/config.go`:
 1. Add import `"github.com/sisimomo/aivm/internal/mountspec"`.
 2. Change `VMConfig.Mounts` from `[]string` to `[]mountspec.MountSpec`.
 3. Add `GuestPath string` to `Mount`.
-4. Replace the mounts block in `validateAndParse`:
+4. Replace the mounts block in `validateAndParse` (derive `ParsedVMHome` first):
 
 ```go
- home, _ := os.UserHomeDir()
- ctx := mountspec.Context{Home: home, StateDir: stateDir}
+ vm.ParsedVMHome = defaultVMHomeFor(vm, home)
+ ctx := MountResolveContext(cfg.StateDir, home, vm.ParsedVMHome)
  parsed := make([]Mount, 0, len(vm.Mounts))
  for i, spec := range vm.Mounts {
   resolved, err := mountspec.Resolve(spec, ctx)
@@ -522,12 +528,31 @@ In `internal/config/config.go`:
   toResolved(parsed)); err != nil {
   return fmt.Errorf("vm.mounts: %w", err)
  }
+ if err := mountspec.ValidateDuplicateTargets(
+  toResolved(parsed)); err != nil {
+  return fmt.Errorf("vm.mounts: %w", err)
+ }
  vm.ParsedMounts = parsed
 ```
 
-Add helper in `config.go`:
+In `internal/config/parse.go`, add `rejectUnsupportedVMFields` to reject
+`vm.guest_home` at load time.
+
+Add helpers in `config.go`:
 
 ```go
+func MountResolveContext(stateDir, hostHome, vmHome string) mountspec.Context {
+ return mountspec.Context{Home: hostHome, VMHome: vmHome, StateDir: stateDir}
+}
+
+func defaultVMHomeFor(vmCfg *VMConfig, hostHome string) string {
+ backend := vmCfg.Backend
+ if backend == "" {
+  backend = "lima"
+ }
+ return mountspec.DefaultVMHome(backend, hostHome)
+}
+
 func toResolved(mounts []Mount) []mountspec.ResolvedMount {
  out := make([]mountspec.ResolvedMount, len(mounts))
  for i, m := range mounts {
@@ -543,12 +568,13 @@ Update `internal/config/defaults.yaml`:
 
 ```yaml
   mounts:
-    - source: "{{ .home }}/dev"
-      target: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
 ```
 
 Remove `ParseMount` and its tests from `internal/config/parse.go`.
+Add `TestLoad_RejectsVMGuestHomeKey` in `test/unit/config/mounts_test.go`.
 
 - [ ] **Step 4: Run tests**
 
@@ -590,10 +616,10 @@ func TestLoadDefs_ClaudeMounts(t *testing.T) {
   t.Fatalf("claude mounts len = %d, want 2", len(claude.Mounts))
  }
  if claude.Mounts[0].Source != `{{ .state_dir }}/.claude/projects` {
-  t.Fatalf("projects location = %q", claude.Mounts[0].Source)
+  t.Fatalf("projects source = %q", claude.Mounts[0].Source)
  }
  if claude.Mounts[1].Source != `{{ .state_dir }}/.claude/image-cache` {
-  t.Fatalf("image-cache location = %q", claude.Mounts[1].Source)
+  t.Fatalf("image-cache source = %q", claude.Mounts[1].Source)
  }
 }
 ```
@@ -622,8 +648,8 @@ Import `github.com/sisimomo/aivm/internal/mountspec`. Update `MergeDef`:
 ```
 
 `internal/agent/defaults.yaml` — replace all `persist` blocks per spec (claude gets
-`projects` + `image-cache`; copilot and cursor get remapped mounts to
-`{{ .home }}/…`).
+`projects` + `image-cache`; copilot and cursor use `~/.…` targets for VM-home-relative
+guest paths).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -646,65 +672,17 @@ git commit -m "feat: replace agent persist with structured mounts in defaults"
 
 - Modify: `internal/vm/vm.go`
 - Create: `internal/vm/mountflag.go`
+- Create: `internal/vm/template.go`
 - Create: `test/unit/vm/mountflag_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
-```go
-package vm_test
-
-import (
- "strings"
- "testing"
-
- "github.com/sisimomo/aivm/internal/vm"
-)
-
-func TestLimaMountFlag_SamePath(t *testing.T) {
- m := vm.Mount{
-  HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,
- }
- flag := vm.LimaMountFlag(m)
- if !strings.Contains(flag, "source=/Users/you/dev") {
-  t.Fatalf("flag = %q", flag)
- }
- if !strings.Contains(flag, "target=/Users/you/dev") {
-  t.Fatalf("flag = %q", flag)
- }
- if strings.Contains(flag, "readonly") {
-  t.Fatal("writable mount should not be readonly")
- }
-}
-
-func TestLimaMountFlag_RemappedReadOnly(t *testing.T) {
- m := vm.Mount{
-  HostPath: "/Users/you/secrets", GuestPath: "/secrets", Writable: false,
- }
- flag := vm.LimaMountFlag(m)
- if !strings.Contains(flag, "source=/Users/you/secrets") {
-  t.Fatalf("flag = %q", flag)
- }
- if !strings.Contains(flag, "target=/secrets") {
-  t.Fatalf("flag = %q", flag)
- }
- if !strings.Contains(flag, "readonly") {
-  t.Fatal("want readonly")
- }
-}
-
-func TestDockerVolumeFlag_Remapped(t *testing.T) {
- m := vm.Mount{HostPath: "/host", GuestPath: "/guest", Writable: true}
- got := vm.DockerVolumeFlag(m)
- want := "/host:/guest:rw"
- if got != want {
-  t.Fatalf("got %q want %q", got, want)
- }
-}
-```
+`test/unit/vm/mountflag_test.go` — tests `LimaMountYAML` (template
+YAML entries with `location` / `mountPoint`) and `DockerVolumeFlag`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./test/unit/vm/... -run 'Test(Lima|Docker)Mount' -v`
+Run: `go test ./test/unit/vm/... -run 'TestLima|TestDocker' -v`
 
 Expected: FAIL
 
@@ -717,14 +695,21 @@ Expected: FAIL
 ```go
 package vm
 
-import "fmt"
+import (
+ "fmt"
+ "strings"
+)
 
-func LimaMountFlag(m Mount) string {
- flag := fmt.Sprintf("type=bind,source=%s,target=%s", m.HostPath, m.GuestPath)
- if !m.Writable {
-  flag += ",readonly"
+// LimaMountYAML returns one Lima mounts[] entry as YAML lines.
+// limactl --mount only supports same guest path; remapped mounts use mountPoint.
+func LimaMountYAML(m Mount) string {
+ var sb strings.Builder
+ fmt.Fprintf(&sb, "- location: %q\n", m.HostPath)
+ if m.GuestPath != "" && m.GuestPath != m.HostPath {
+  fmt.Fprintf(&sb, "  mountPoint: %q\n", m.GuestPath)
  }
- return flag
+ fmt.Fprintf(&sb, "  writable: %t\n", m.Writable)
+ return sb.String()
 }
 
 func DockerVolumeFlag(m Mount) string {
@@ -738,15 +723,16 @@ func DockerVolumeFlag(m Mount) string {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `go test ./test/unit/vm/... -run 'Test(Lima|Docker)Mount' -v`
+Run: `go test ./test/unit/vm/... -run 'TestLima|TestDocker' -v`
 
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/vm/vm.go internal/vm/mountflag.go test/unit/vm/mountflag_test.go
-git commit -m "feat: add GuestPath and mount flag helpers for Lima and Docker"
+git add internal/vm/vm.go internal/vm/mountflag.go internal/vm/template.go \
+  test/unit/vm/mountflag_test.go
+git commit -m "feat: add GuestPath and mount helpers for Lima template and Docker"
 ```
 
 ---
@@ -759,14 +745,19 @@ git commit -m "feat: add GuestPath and mount flag helpers for Lima and Docker"
 - Modify: `internal/vm/docker.go`
 - Modify: `internal/vm/ssh.go` (comment only)
 
-- [ ] **Step 1: Update Lima create args**
+- [ ] **Step 1: Update Lima create to use template mounts**
 
-In `internal/vm/lima.go`, replace the mount loop:
+In `internal/vm/lima.go`, write mounts into a temp Lima instance template via
+`LimaTemplatePath(opts.Mounts)` instead of `limactl --mount` (which cannot remap
+guest paths):
 
 ```go
-  for _, m := range opts.Mounts {
-   args = append(args, "--mount", LimaMountFlag(m))
+  templatePath, err := LimaTemplatePath(opts.Mounts)
+  if err != nil {
+   return err
   }
+  defer os.Remove(templatePath)
+  args := []string{"create", templatePath, "--name", l.profile, ...}
 ```
 
 - [ ] **Step 2: Update Docker volume args**
@@ -828,20 +819,22 @@ import (
 
 func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
  home := "/Users/you"
+ vmHome := "/home/you"
  state := filepath.Join(home, ".aivm")
  cfg := &config.Config{
   StateDir: state,
   VM: config.VMConfig{
+   ParsedVMHome: vmHome,
    ParsedMounts: []config.Mount{{
-    HostPath: filepath.Join(home, "dev"),
-    GuestPath: filepath.Join(home, "dev"),
-    Writable: true,
+    HostPath:  filepath.Join(home, "dev"),
+    GuestPath: filepath.Join(vmHome, "dev"),
+    Writable:  true,
    }},
   },
  }
  agentDefs := map[string]agent.Def{
   "claude": {Mounts: []mountspec.MountSpec{{
-   Location: "{{ .state_dir }}/.claude/projects",
+   Source: "{{ .state_dir }}/.claude/projects",
    Target: "~/.claude/projects",
    Mode: "rw",
   }}},
@@ -854,7 +847,7 @@ func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
  if len(mounts) != 2 {
   t.Fatalf("len = %d", len(mounts))
  }
- if mounts[1].GuestPath != filepath.Join(home, ".claude/projects") {
+ if mounts[1].GuestPath != filepath.Join(vmHome, ".claude/projects") {
   t.Fatalf("guest = %q", mounts[1].GuestPath)
  }
 }
@@ -882,7 +875,7 @@ func ResolvedMountsForStart(
  t3Enabled bool,
 ) ([]vm.Mount, error) {
  home, _ := os.UserHomeDir()
- ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+ ctx := cfg.VM.MountContext(cfg.StateDir, home)
 
  mounts := make([]vm.Mount, 0, 16)
  resolved := make([]mountspec.ResolvedMount, 0, 16)
@@ -925,7 +918,7 @@ func ResolvedMountsForStart(
 
  if t3Enabled {
   t3Spec := mountspec.MountSpec{
-   Location:   "{{ .state_dir }}/.t3",
+   Source:   "{{ .state_dir }}/.t3",
    Target: "~/.t3",
    Mode:       "rw",
   }
@@ -955,7 +948,7 @@ Update `ensureAgentMountDirs`:
 ```go
 func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
  home, _ := os.UserHomeDir()
- ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+ ctx := cfg.VM.MountContext(cfg.StateDir, home)
  seen := make(map[string]bool)
  for _, def := range agentDefs {
   for _, spec := range def.Mounts {
@@ -972,7 +965,7 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
  }
  if cfg.T3Code.Enable {
   r, _ := mountspec.Resolve(mountspec.MountSpec{
-   Location:   "{{ .state_dir }}/.t3",
+   Source:   "{{ .state_dir }}/.t3",
    Target: "~/.t3",
    Mode:       "rw",
   }, ctx)
@@ -1104,7 +1097,7 @@ func GuestPathForHost(hostPath string, cfg *config.Config) (string, error) {
  }
  if len(matches) == 0 {
   return "", fmt.Errorf(
-   "internal error: host path %q is not under any vm.mounts location",
+   "internal error: host path %q is not under any vm.mounts source",
    hostPath)
  }
  sort.Slice(matches, func(i, j int) bool {
@@ -1302,8 +1295,8 @@ example comment).
 
 ```yaml
   mounts:
-    - source: "{{ .home }}/dev"
-      target: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
 ```
 
@@ -1386,8 +1379,9 @@ git commit -m "test: e2e coverage for remapped mounts and Claude state persisten
 - [ ] **Step 1: Update Mounts section**
 
 Replace string format docs with structured `MountSpec` format, template variables
-(`state_dir`, `home`), remapped mount example, and note that `aivm ssh` and
-`aivm` translate host CWD to guest path. `aivm cp vm:/path` unchanged.
+(`state_dir`, `host_home`), derived VM home (no `vm.guest_home`), remapped mount
+example, and note that `aivm ssh` and `aivm` translate host CWD to guest path.
+`aivm cp vm:/path` unchanged.
 
 - [ ] **Step 2: Update agent persistence sections**
 
@@ -1450,15 +1444,17 @@ git commit -m "chore: mount system verification fixups"
 | Requirement | Task |
 | --- | --- |
 | `MountSpec` schema | Task 1 |
-| Template `state_dir` / `home` | Task 1 |
+| Template `state_dir` / `host_home` | Task 1 |
+| Contextual `~` + `ParsedVMHome` | Task 1, 3 |
+| Reject `vm.guest_home` | Task 3 |
 | `vm.mounts` structured only (hard cut) | Task 3 |
 | Agent `persist` → `mounts` | Task 4 |
 | Claude `projects` + `image-cache` | Task 4 |
 | `vm.Mount` GuestPath | Task 5–6 |
-| Lima/Docker distinct bind paths | Task 6 |
-| Duplicate `target` validation | Task 2, 7 |
-| Overlapping `vm.mounts` locations | Task 2, 3 |
-| `ensureAgentMountDirs` | Task 7 |
+| Lima template YAML / Docker distinct bind paths | Task 5–6 |
+| Duplicate `target` validation | Task 2, 3, 7 |
+| Overlapping `vm.mounts` sources | Task 2, 3 |
+| `ensureAgentMountDirs` (+ T3 when enabled) | Task 7 |
 | T3 internal mount, no symlink | Task 7, 10 |
 | `GuestPathForHost` | Task 8 |
 | SSH + agent CWD translation | Task 9 |
@@ -1477,4 +1473,4 @@ No TBD/TODO/similar-to tasks. All steps include concrete code and commands.
 
 - `mountspec.MountSpec` in YAML → `mountspec.Resolve` → `config.Mount` / `vm.Mount`
 - `GuestPath` used consistently from config through VM backends and `GuestPathForHost`
-- `ensureAgentMountDirs` uses resolved `HostPath` (location), not relative strings
+- `ensureAgentMountDirs` uses resolved `HostPath` (source), not relative strings
