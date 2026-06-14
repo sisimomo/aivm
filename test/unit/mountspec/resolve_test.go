@@ -13,7 +13,7 @@ func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 	guestHome := "/home/you"
 	state := "/Users/you/.aivm"
 	spec := mountspec.MountSpec{
-		Source: `{{ .home }}/dev`,
+		Source: `{{ .host_home }}/dev`,
 		Target: `~/dev`,
 		Mode:   "rw",
 	}

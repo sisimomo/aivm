@@ -136,7 +136,7 @@ vm:
     - source: "~/dev"
       target: "~/dev"
       mode: rw
-    - source: "{{ .home }}/.ssh"
+    - source: "{{ .host_home }}/.ssh"
       target: "~/.ssh"
       mode: ro
   # session_env:
@@ -185,11 +185,11 @@ is a structured `MountSpec` with three required fields:
 | `target` | Guest path inside the VM |
 | `mode` | `rw` (read-write) or `ro` (read-only) |
 
-Paths support `{{ .home }}`, `{{ .guest_home }}`, and `{{ .state_dir }}`
-templates (same engine as plugin setup scripts). After template rendering, a
-leading `~` expands to the **host** home in `source` and the **guest** home in
-`target`. Override the guest home with `vm.guest_home` when the default does
-not match your VM user. Both paths must be absolute before the mount is accepted.
+Paths support `{{ .host_home }}` and `{{ .state_dir }}` templates (same engine
+as plugin setup scripts). After template rendering, a leading `~` expands to the
+**host** home in `source` and the **guest** home in `target`. Override the guest
+home with `vm.guest_home` when the default does not match your VM user. Both
+paths must be absolute before the mount is accepted.
 
 Default guest home (when `vm.guest_home` is omitted):
 
@@ -208,7 +208,7 @@ vm:
     - source: "~/dev"
       target: "~/dev"
       mode: rw
-    - source: "{{ .home }}/.ssh"
+    - source: "{{ .host_home }}/.ssh"
       target: "~/.ssh"
       mode: ro
 ```
@@ -218,7 +218,7 @@ vm:
 ```yaml
 vm:
   mounts:
-    - source: "{{ .home }}/company-secrets"
+    - source: "{{ .host_home }}/company-secrets"
       target: "/secrets"
       mode: ro
 ```

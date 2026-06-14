@@ -63,9 +63,8 @@ func renderPath(src string, ctx Context) (string, error) {
 		return "", err
 	}
 	data := map[string]string{
-		"state_dir":  ctx.StateDir,
-		"home":       ctx.Home,
-		"guest_home": ctx.GuestHome,
+		"state_dir": ctx.StateDir,
+		"host_home": ctx.Home,
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
