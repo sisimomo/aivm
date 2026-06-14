@@ -7,35 +7,47 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-func TestLimaMountFlag_SamePath(t *testing.T) {
+func TestLimaMountYAML_SamePath(t *testing.T) {
 	m := vm.Mount{
 		HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,
 	}
-	flag := vm.LimaMountFlag(m)
-	if !strings.Contains(flag, "source=/Users/you/dev") {
-		t.Fatalf("flag = %q", flag)
+	got := vm.LimaMountYAML(m)
+	if !strings.Contains(got, `location: "/Users/you/dev"`) {
+		t.Fatalf("got %q", got)
 	}
-	if !strings.Contains(flag, "target=/Users/you/dev") {
-		t.Fatalf("flag = %q", flag)
+	if strings.Contains(got, "mountPoint:") {
+		t.Fatal("same absolute path should omit mountPoint")
 	}
-	if strings.Contains(flag, "readonly") {
-		t.Fatal("writable mount should not be readonly")
+	if !strings.Contains(got, "writable: true") {
+		t.Fatal("want writable: true")
 	}
 }
 
-func TestLimaMountFlag_RemappedReadOnly(t *testing.T) {
+func TestLimaMountYAML_RemappedReadOnly(t *testing.T) {
 	m := vm.Mount{
 		HostPath: "/Users/you/secrets", GuestPath: "/secrets", Writable: false,
 	}
-	flag := vm.LimaMountFlag(m)
-	if !strings.Contains(flag, "source=/Users/you/secrets") {
-		t.Fatalf("flag = %q", flag)
+	got := vm.LimaMountYAML(m)
+	if !strings.Contains(got, `location: "/Users/you/secrets"`) {
+		t.Fatalf("got %q", got)
 	}
-	if !strings.Contains(flag, "target=/secrets") {
-		t.Fatalf("flag = %q", flag)
+	if !strings.Contains(got, `mountPoint: "/secrets"`) {
+		t.Fatalf("got %q", got)
 	}
-	if !strings.Contains(flag, "readonly") {
-		t.Fatal("want readonly")
+	if !strings.Contains(got, "writable: false") {
+		t.Fatal("want writable: false")
+	}
+}
+
+func TestLimaMountsYAML_Multiple(t *testing.T) {
+	got := vm.LimaMountsYAML([]vm.Mount{
+		{HostPath: "/host", GuestPath: "/guest", Writable: true},
+	})
+	if !strings.HasPrefix(got, "mounts:\n") {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.Contains(got, `mountPoint: "/guest"`) {
+		t.Fatalf("got %q", got)
 	}
 }
 

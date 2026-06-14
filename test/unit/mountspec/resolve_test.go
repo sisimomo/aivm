@@ -33,6 +33,27 @@ func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 	}
 }
 
+func TestResolveMountSpec_LiteralHostPathTarget(t *testing.T) {
+	t.Parallel()
+	home := "/Users/you"
+	guestHome := "/home/you.guest"
+	spec := mountspec.MountSpec{
+		Source: "~/dev",
+		Target: `{{ .host_home }}/dev`,
+		Mode:   "rw",
+	}
+	ctx := mountspec.Context{Home: home, GuestHome: guestHome, StateDir: home + "/.aivm"}
+	got, err := mountspec.Resolve(spec, ctx)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := filepath.Join(home, "dev")
+	if got.HostPath != want || got.GuestPath != want {
+		t.Fatalf("got host=%q guest=%q, want both %q",
+			got.HostPath, got.GuestPath, want)
+	}
+}
+
 func TestResolveMountSpec_RemappedReadOnly(t *testing.T) {
 	t.Parallel()
 	spec := mountspec.MountSpec{

@@ -1,13 +1,34 @@
 package vm
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
-func LimaMountFlag(m Mount) string {
-	flag := fmt.Sprintf("type=bind,source=%s,target=%s", m.HostPath, m.GuestPath)
-	if !m.Writable {
-		flag += ",readonly"
+// LimaMountYAML returns one Lima mounts[] entry as YAML lines.
+// limactl --mount only supports host paths (same guest path); remapped mounts
+// must be written into the instance template with mountPoint.
+func LimaMountYAML(m Mount) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "- location: %q\n", m.HostPath)
+	if m.GuestPath != "" && m.GuestPath != m.HostPath {
+		fmt.Fprintf(&sb, "  mountPoint: %q\n", m.GuestPath)
 	}
-	return flag
+	fmt.Fprintf(&sb, "  writable: %t\n", m.Writable)
+	return sb.String()
+}
+
+// LimaMountsYAML returns a full mounts: section for a Lima instance template.
+func LimaMountsYAML(mounts []Mount) string {
+	if len(mounts) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("mounts:\n")
+	for _, m := range mounts {
+		sb.WriteString(LimaMountYAML(m))
+	}
+	return sb.String()
 }
 
 func DockerVolumeFlag(m Mount) string {

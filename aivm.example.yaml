@@ -31,18 +31,24 @@ vm:
 
   # Directories to mount into the VM. Each entry has source (host path),
   # target (guest path), and mode (rw or ro). In source, ~ expands to the host
-  # home; in target, ~ expands to the guest home (override with vm.guest_home).
-  # Templates: {{ .host_home }}, {{ .state_dir }}.
-  # Same-path mount: source and target use the same path expression (e.g. both
-  # "~/dev") so aivm ssh and agent launch translate your host CWD automatically.
-  # Remapped mount: when source and target differ, only the target path is
-  # visible in the VM.
+  # home. Templates: {{ .host_home }}, {{ .state_dir }}.
+  #
+  # Same-path mount (host path = guest path): use ~/… in source and
+  # {{ .host_home }}/… in target so the VM sees the same absolute path as on
+  # macOS (e.g. /Users/you/dev). aivm ssh and agent launch translate your host
+  # CWD automatically.
+  #
+  # Parallel mount (optional): both source and target use ~/… — the guest path
+  # lands under guest $HOME instead (e.g. /home/you.guest/dev on Lima macOS).
+  #
+  # Remapped mount: source and target resolve to different paths; only the
+  # target path is visible in the VM.
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
     # Remapped mount — host path differs from guest path
-    # - source: "{{ .host_home }}/company-secrets"
+    # - source: "~/company-secrets"
     #   target: "/secrets"
     #   mode: ro
   # guest_home: "/home/myuser"   # optional: override default guest $HOME for ~ in targets

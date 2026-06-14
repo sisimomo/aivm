@@ -20,7 +20,8 @@ func DefaultGuestHome(backend, hostHome string) string {
 			return hostHome
 		}
 		if runtime.GOOS == "darwin" {
-			return filepath.Join("/home", u+".linux")
+			// Lima's instance user home is /home/$USER.guest (not .linux).
+			return filepath.Join("/home", u+".guest")
 		}
 		return filepath.Join("/home", u)
 	}

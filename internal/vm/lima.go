@@ -78,7 +78,7 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 		slog.Debug(fmt.Sprintf("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
 			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType))
 
-		templatePath, err := LimaTemplatePath()
+		templatePath, err := LimaTemplatePath(opts.Mounts)
 		if err != nil {
 			return err
 		}
@@ -92,9 +92,6 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 			"--disk", strconv.Itoa(int(opts.DiskBytes >> 30)),
 		}
 		args = append(args, l.vmTypeFlags(opts.VMType)...)
-		for _, m := range opts.Mounts {
-			args = append(args, "--mount", LimaMountFlag(m))
-		}
 		cmd := exec.CommandContext(ctx, "limactl", args...)
 		if err := aivmlog.RunCmd(cmd, "lima"); err != nil {
 			return err

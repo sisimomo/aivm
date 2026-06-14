@@ -15,7 +15,9 @@ func TestLimaTemplate_ValidatesWithLimactl(t *testing.T) {
 		t.Skip("limactl not installed")
 	}
 
-	path, err := vm.LimaTemplatePath()
+	path, err := vm.LimaTemplatePath([]vm.Mount{
+		{HostPath: "/tmp/aivm-host", GuestPath: "/work", Writable: true},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
