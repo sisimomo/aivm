@@ -5,7 +5,7 @@ vm:
   disk: "40GB"
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
 
 agents:

@@ -136,7 +136,9 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	ensureAgentMountDirs(cfg, svc.AgentDefs)
+	if err := ensureAgentMountDirs(cfg, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)

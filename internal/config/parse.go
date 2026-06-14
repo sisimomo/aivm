@@ -147,6 +147,27 @@ func ValidateAgentsDefine(cfgPath string) error {
 	)
 }
 
+// rejectUnsupportedVMFields rejects vm keys that are not part of the public config surface.
+func rejectUnsupportedVMFields(cfgPath string) error {
+	if cfgPath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil
+	}
+	var raw struct {
+		VM map[string]any `yaml:"vm"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("vm: %w", err)
+	}
+	if _, ok := raw.VM["guest_home"]; ok {
+		return fmt.Errorf("vm.guest_home: not supported — vm home is determined automatically from the VM backend")
+	}
+	return nil
+}
+
 func agentDefineYAMLKeys() map[string]struct{} {
 	var d AgentDefine
 	t := reflect.TypeOf(d)

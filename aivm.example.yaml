@@ -30,16 +30,16 @@ vm:
   bootstrap_refresh_prompt_after: "30d"
 
   # Directories to mount into the VM. Each entry has source (host path),
-  # target (guest path), and mode (rw or ro). In source, ~ expands to the host
+  # target (VM path), and mode (rw or ro). In source, ~ expands to the host
   # home. Templates: {{ .host_home }}, {{ .state_dir }}.
   #
-  # Same-path mount (host path = guest path): use ~/… in source and
+  # Same-path mount (host path = VM path): use ~/… in source and
   # {{ .host_home }}/… in target so the VM sees the same absolute path as on
   # macOS (e.g. /Users/you/dev). aivm ssh and agent launch translate your host
   # CWD automatically.
   #
-  # Parallel mount (optional): both source and target use ~/… — the guest path
-  # lands under guest $HOME instead (e.g. /home/you.guest/dev on Lima macOS).
+  # Parallel mount (optional): both source and target use ~/… — the VM path
+  # lands under the VM user's $HOME instead (e.g. /home/you.guest/dev on Lima macOS).
   #
   # Remapped mount: source and target resolve to different paths; only the
   # target path is visible in the VM.
@@ -47,11 +47,10 @@ vm:
     - source: "~/dev"
       target: "{{ .host_home }}/dev"
       mode: rw
-    # Remapped mount — host path differs from guest path
+    # Remapped mount — host path differs from VM path
     # - source: "~/company-secrets"
     #   target: "/secrets"
     #   mode: ro
-  # guest_home: "/home/myuser"   # optional: override default guest $HOME for ~ in targets
   # Arbitrary environment variables injected into every VM session.
   # Values support ${HOST_VAR} expansion from the host shell environment.
   # Changes are applied in-place the next time you run aivm — no VM recreation needed.

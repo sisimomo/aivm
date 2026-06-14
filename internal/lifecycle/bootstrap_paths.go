@@ -20,7 +20,9 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
-	ensureAgentMountDirs(svc.Config, svc.AgentDefs)
+	if err := ensureAgentMountDirs(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return err
 	}
@@ -51,7 +53,9 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
-	ensureAgentMountDirs(svc.Config, svc.AgentDefs)
+	if err := ensureAgentMountDirs(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, vm.BaseImageOpTimeout)
 	defer cancel()
 	if err := store.RestoreFromBaseImage(ctx, opts); err != nil {

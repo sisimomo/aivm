@@ -6,14 +6,14 @@ import (
 	"runtime"
 )
 
-const dockerGuestHome = "/home/user"
+const dockerVMHome = "/home/user"
 
-// DefaultGuestHome returns the default guest user home directory for mount
-// target expansion when vm.guest_home is not set.
-func DefaultGuestHome(backend, hostHome string) string {
+// DefaultVMHome returns the VM user home directory used when expanding ~ in
+// mount target paths.
+func DefaultVMHome(backend, hostHome string) string {
 	switch backend {
 	case "docker":
-		return dockerGuestHome
+		return dockerVMHome
 	default:
 		u := os.Getenv("USER")
 		if u == "" {

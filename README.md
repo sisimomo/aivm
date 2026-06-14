@@ -134,9 +134,9 @@ vm:
   name: aivm
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
-    - source: "{{ .host_home }}/.ssh"
+    - source: "~/.ssh"
       target: "~/.ssh"
       mode: ro
   # session_env:
@@ -182,38 +182,28 @@ is a structured `MountSpec` with three required fields:
 | Field | Description |
 | --- | --- |
 | `source` | Host path to bind |
-| `target` | Guest path inside the VM |
+| `target` | VM path inside the VM |
 | `mode` | `rw` (read-write) or `ro` (read-only) |
 
 Paths support `{{ .host_home }}` and `{{ .state_dir }}` templates (same engine
 as plugin setup scripts). After template rendering, a leading `~` expands to the
-**host** home in `source` and the **guest** home in `target`. Override the guest
-home with `vm.guest_home` when the default does not match your VM user. Both
-paths must be absolute before the mount is accepted.
+**host** home in `source` and the **VM user** home in `target`. Both paths must
+be absolute before the mount is accepted.
 
-Default guest home (when `vm.guest_home` is omitted):
-
-| Backend | Default guest home |
-| --- | --- |
-| `docker` | `/home/user` |
-| `lima` on Linux | `/home/$USER` |
-| `lima` on macOS | `/home/$USER.guest` |
-
-**Same-path mount** — host and guest paths resolve to the same logical location
-(use `~/…` on both sides so each expands in its own context):
+**Same-path mount** — host and VM paths resolve to the same logical location.
+On Lima/macOS, `~/…` in `source` and `target` expands to *different* absolute paths
+(host `/Users/you/…` vs VM `/home/you.guest/…`), so use `{{ .host_home }}` in
+`target` to keep paths aligned (recommended on macOS):
 
 ```yaml
 vm:
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
-    - source: "{{ .host_home }}/.ssh"
-      target: "~/.ssh"
-      mode: ro
 ```
 
-**Remapped mount** — host path differs from guest path:
+**Remapped mount** — host path differs from VM path:
 
 ```yaml
 vm:
@@ -223,9 +213,9 @@ vm:
       mode: ro
 ```
 
-When `source` and `target` differ, only the guest path is visible inside
+When `source` and `target` differ, only the VM path is visible inside
 the VM. `aivm ssh` and `aivm` (agent launch) translate your host current working
-directory to the matching guest path automatically. `aivm cp vm:/path` is
+directory to the matching VM path automatically. `aivm cp vm:/path` is
 unchanged — VM paths stay explicit via the `vm:` prefix.
 
 ### Session host environment
@@ -274,7 +264,7 @@ recreation required.
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `vm.type` | _(auto)_ | Lima hypervisor: `vz`, `qemu`, or omit for auto |
+| `vm.type` | *(auto)* | Lima hypervisor: `vz`, `qemu`, or omit for auto |
 | `vm.base_image_enable` | `true` | Save and restore VM snapshots for fast recreate |
 | `vm.recreate_prompt_after` | `"7d"` | Prompt to recreate VM after this age |
 | `vm.bootstrap_refresh_prompt_after` | `"30d"` | Prompt to rerun full bootstrap after this age |
@@ -815,7 +805,7 @@ stored on the VM disk — it survives `aivm recreate` and VM deletion.
 | `setup` | Override the agent's install script |
 | `dependencies` | Plugins/toolchains required before install |
 | `path_entries` | Directories added to VM `PATH` |
-| `mounts` | Host→guest bind mounts for agent state (see per-agent sections) |
+| `mounts` | Host→VM bind mounts for agent state (see per-agent sections) |
 
 ```yaml
 agents:

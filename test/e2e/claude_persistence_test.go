@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,8 +21,8 @@ func TestClaudeProjectsPersistAcrossRecreate(t *testing.T) {
 	t.Parallel()
 	skipUnlessDocker(t)
 
-	guestHome := "/home/user"
-	guestProjects := filepath.Join(guestHome, ".claude", "projects")
+	vmHome := "/home/user"
+	guestProjects := filepath.Join(vmHome, ".claude", "projects")
 	markerName := "persist-marker.txt"
 
 	h := framework.New(t, framework.WithProvider("claude"))

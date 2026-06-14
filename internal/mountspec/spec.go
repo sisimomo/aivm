@@ -16,7 +16,7 @@ type ResolvedMount struct {
 
 // Context supplies template variables for path rendering.
 type Context struct {
-	Home      string // host home directory
-	GuestHome string // guest VM user home directory
-	StateDir  string
+	Home     string // host home directory
+	VMHome   string // VM user home directory
+	StateDir string
 }

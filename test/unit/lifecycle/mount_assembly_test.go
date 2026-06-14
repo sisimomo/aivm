@@ -12,16 +12,16 @@ import (
 
 func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
 	home := "/Users/you"
-	guestHome := "/home/you"
+	vmHome := "/home/you"
 	t.Setenv("HOME", home)
 	state := filepath.Join(home, ".aivm")
 	cfg := &config.Config{
 		StateDir: state,
 		VM: config.VMConfig{
-			ParsedGuestHome: guestHome,
+			ParsedVMHome: vmHome,
 			ParsedMounts: []config.Mount{{
 				HostPath:  filepath.Join(home, "dev"),
-				GuestPath: filepath.Join(guestHome, "dev"),
+				GuestPath: filepath.Join(vmHome, "dev"),
 				Writable:  true,
 			}},
 		},
@@ -41,7 +41,7 @@ func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
 	if len(mounts) != 2 {
 		t.Fatalf("len = %d", len(mounts))
 	}
-	if mounts[1].GuestPath != filepath.Join(guestHome, ".claude/projects") {
+	if mounts[1].GuestPath != filepath.Join(vmHome, ".claude/projects") {
 		t.Fatalf("guest = %q", mounts[1].GuestPath)
 	}
 }

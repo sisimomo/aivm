@@ -173,6 +173,9 @@ func ResolvedMountsForStart(
 				return nil, fmt.Errorf("agent %q mounts: %w", name, err)
 			}
 			if seenGuest[r.GuestPath] {
+				slog.Log(context.Background(), aivmlog.SlogTrace,
+					fmt.Sprintf("agent %q mount source %q: guest target %q already mounted, skipping",
+						name, spec.Source, r.GuestPath))
 				continue
 			}
 			seenGuest[r.GuestPath] = true
@@ -209,33 +212,39 @@ func ResolvedMountsForStart(
 
 // ensureAgentMountDirs creates the host-side directories that are mounted
 // into the VM for persistence.
-func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
+func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) error {
 	home, _ := os.UserHomeDir()
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
 	seen := make(map[string]bool)
-	for _, def := range agentDefs {
+	for name, def := range agentDefs {
 		for _, spec := range def.Mounts {
 			r, err := mountspec.Resolve(spec, ctx)
 			if err != nil {
-				continue
+				return fmt.Errorf("agent %q mounts: %w", name, err)
 			}
 			if seen[r.HostPath] {
 				continue
 			}
 			seen[r.HostPath] = true
-			_ = os.MkdirAll(r.HostPath, 0755)
+			if err := os.MkdirAll(r.HostPath, 0755); err != nil {
+				return fmt.Errorf("creating mount dir %q: %w", r.HostPath, err)
+			}
 		}
 	}
 	if cfg.T3Code.Enable {
-		r, _ := mountspec.Resolve(mountspec.MountSpec{
+		r, err := mountspec.Resolve(mountspec.MountSpec{
 			Source: "{{ .state_dir }}/.t3",
 			Target: "~/.t3",
 			Mode:   "rw",
 		}, ctx)
-		if r.HostPath != "" {
-			_ = os.MkdirAll(r.HostPath, 0755)
+		if err != nil {
+			return fmt.Errorf("t3 mount: %w", err)
+		}
+		if err := os.MkdirAll(r.HostPath, 0755); err != nil {
+			return fmt.Errorf("creating t3 mount dir %q: %w", r.HostPath, err)
 		}
 	}
+	return nil
 }
 
 // buildStartOptions constructs consistent vm.StartOptions from config.

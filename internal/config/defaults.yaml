@@ -4,7 +4,7 @@ vm:
   disk: "60GB"
   mounts:
     - source: "~/dev"
-      target: "~/dev"
+      target: "{{ .host_home }}/dev"
       mode: rw
   name: aivm
   backend: lima

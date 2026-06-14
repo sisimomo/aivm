@@ -20,8 +20,8 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 	if strings.TrimSpace(spec.Mode) == "" {
 		return ResolvedMount{}, fmt.Errorf("mount mode is required")
 	}
-	if ctx.GuestHome == "" {
-		return ResolvedMount{}, fmt.Errorf("guest home is required for mount resolution")
+	if ctx.VMHome == "" {
+		return ResolvedMount{}, fmt.Errorf("vm home is required for mount resolution")
 	}
 
 	source, err := renderPath(spec.Source, ctx)
@@ -39,7 +39,7 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 	}
 
 	source = expandTilde(source, ctx.Home)
-	target = expandTilde(target, ctx.GuestHome)
+	target = expandTilde(target, ctx.VMHome)
 
 	if !filepath.IsAbs(source) {
 		return ResolvedMount{}, fmt.Errorf(
@@ -74,6 +74,9 @@ func renderPath(src string, ctx Context) (string, error) {
 }
 
 func expandTilde(path, home string) string {
+	if path == "~" {
+		return home
+	}
 	if strings.HasPrefix(path, "~/") {
 		return filepath.Join(home, path[2:])
 	}

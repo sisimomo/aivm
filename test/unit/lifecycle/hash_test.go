@@ -82,7 +82,7 @@ func writeMinimalAgentConfig(t *testing.T, path, agentName string) {
 func defaultVMMounts() []mountspec.MountSpec {
 	return []mountspec.MountSpec{{
 		Source: "~/dev",
-		Target: "~/dev",
+		Target: "{{ .host_home }}/dev",
 		Mode:   "rw",
 	}}
 }

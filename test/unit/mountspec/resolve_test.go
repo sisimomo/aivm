@@ -10,23 +10,23 @@ import (
 func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 	t.Parallel()
 	home := "/Users/you"
-	guestHome := "/home/you"
+	vmHome := "/home/you"
 	state := "/Users/you/.aivm"
 	spec := mountspec.MountSpec{
 		Source: `{{ .host_home }}/dev`,
 		Target: `~/dev`,
 		Mode:   "rw",
 	}
-	ctx := mountspec.Context{Home: home, GuestHome: guestHome, StateDir: state}
+	ctx := mountspec.Context{Home: home, VMHome: vmHome, StateDir: state}
 	got, err := mountspec.Resolve(spec, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	wantHost := filepath.Join(home, "dev")
-	wantGuest := filepath.Join(guestHome, "dev")
-	if got.HostPath != wantHost || got.GuestPath != wantGuest {
+	wantVM := filepath.Join(vmHome, "dev")
+	if got.HostPath != wantHost || got.GuestPath != wantVM {
 		t.Fatalf("got host=%q guest=%q, want host=%q guest=%q",
-			got.HostPath, got.GuestPath, wantHost, wantGuest)
+			got.HostPath, got.GuestPath, wantHost, wantVM)
 	}
 	if !got.Writable {
 		t.Fatal("want writable")
@@ -36,13 +36,13 @@ func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 func TestResolveMountSpec_LiteralHostPathTarget(t *testing.T) {
 	t.Parallel()
 	home := "/Users/you"
-	guestHome := "/home/you.guest"
+	vmHome := "/home/you.guest"
 	spec := mountspec.MountSpec{
 		Source: "~/dev",
 		Target: `{{ .host_home }}/dev`,
 		Mode:   "rw",
 	}
-	ctx := mountspec.Context{Home: home, GuestHome: guestHome, StateDir: home + "/.aivm"}
+	ctx := mountspec.Context{Home: home, VMHome: vmHome, StateDir: home + "/.aivm"}
 	got, err := mountspec.Resolve(spec, ctx)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -62,7 +62,7 @@ func TestResolveMountSpec_RemappedReadOnly(t *testing.T) {
 		Mode:   "ro",
 	}
 	ctx := mountspec.Context{
-		Home: "/Users/you", GuestHome: "/home/you", StateDir: "/Users/you/.aivm",
+		Home: "/Users/you", VMHome: "/home/you", StateDir: "/Users/you/.aivm",
 	}
 	got, err := mountspec.Resolve(spec, ctx)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestResolveMountSpec_TildeExpansionSource(t *testing.T) {
 		Mode:   "rw",
 	}
 	ctx := mountspec.Context{
-		Home: "/Users/you", GuestHome: "/home/you", StateDir: "/Users/you/.aivm",
+		Home: "/Users/you", VMHome: "/home/you", StateDir: "/Users/you/.aivm",
 	}
 	got, err := mountspec.Resolve(spec, ctx)
 	if err != nil {
@@ -92,6 +92,25 @@ func TestResolveMountSpec_TildeExpansionSource(t *testing.T) {
 	}
 	if got.HostPath != "/Users/you/dev" {
 		t.Fatalf("HostPath = %q", got.HostPath)
+	}
+}
+
+func TestResolveMountSpec_BareTilde(t *testing.T) {
+	t.Parallel()
+	spec := mountspec.MountSpec{
+		Source: "/Users/you/dev",
+		Target: "~",
+		Mode:   "rw",
+	}
+	ctx := mountspec.Context{
+		Home: "/Users/you", VMHome: "/home/you", StateDir: "/Users/you/.aivm",
+	}
+	got, err := mountspec.Resolve(spec, ctx)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.GuestPath != "/home/you" {
+		t.Fatalf("GuestPath = %q", got.GuestPath)
 	}
 }
 
@@ -103,7 +122,7 @@ func TestResolveMountSpec_TildeExpansionTarget(t *testing.T) {
 		Mode:   "rw",
 	}
 	ctx := mountspec.Context{
-		Home: "/Users/you", GuestHome: "/home/you", StateDir: "/Users/you/.aivm",
+		Home: "/Users/you", VMHome: "/home/you", StateDir: "/Users/you/.aivm",
 	}
 	got, err := mountspec.Resolve(spec, ctx)
 	if err != nil {
@@ -117,7 +136,7 @@ func TestResolveMountSpec_TildeExpansionTarget(t *testing.T) {
 func TestResolveMountSpec_MissingField(t *testing.T) {
 	t.Parallel()
 	spec := mountspec.MountSpec{Target: "/x", Mode: "rw"}
-	ctx := mountspec.Context{Home: "/h", GuestHome: "/g", StateDir: "/s"}
+	ctx := mountspec.Context{Home: "/h", VMHome: "/g", StateDir: "/s"}
 	_, err := mountspec.Resolve(spec, ctx)
 	if err == nil {
 		t.Fatal("expected error for missing source")
