@@ -11,20 +11,16 @@ correctly even when paths differ.
 This is an alpha hard cut — no backward compatibility for the old string mount
 format (`~/dev:rw`) or the old agent `persist` field.
 
-This design **supersedes** the symlink-based approach in
-`2026-06-12-claude-chat-history-persistence-design.md`. Claude history
-persistence is achieved via agent `mounts` with explicit `mountPoint` values
-instead of setup-script symlinks.
-
 ## Goals
 
 - Fix agent state persistence so YAML-defined agents (Claude, Cursor, Copilot)
   write to the correct VM paths without per-agent symlink boilerplate
-- Make `vm.mounts` more powerful: host `location` and guest `mountPoint` can
-  differ
-- Preserve identity mounts as a first-class case (`location == mountPoint`)
-- Support `{{ .state_dir }}` and `{{ .home }}` templates in path fields (same
-  engine as plugin setup scripts)
+- Make `vm.mounts` more powerful: host `source` and guest `target` can differ
+- Preserve identity mounts as a first-class case (`source` and `target` resolve
+  to the same logical path, e.g. both `~/dev`)
+- Support `{{ .state_dir }}`, `{{ .home }}`, and `{{ .guest_home }}` templates
+  in path fields (same engine as plugin setup scripts)
+- Expand `~` in `source` to host home and in `target` to guest home
 - Translate host CWD to guest path for `aivm ssh` and agent launch
 - Hard cut from old config formats (alpha)
 
@@ -33,8 +29,9 @@ instead of setup-script symlinks.
 - Backward compatibility for string `vm.mounts` or agent `persist`
 - File-level bind mounts (directories only)
 - Path translation for `aivm cp` (VM paths stay explicit via `vm:` prefix)
-- Agent-specific or user-defined template variables beyond `state_dir` and `home`
-- Optional/default `mountPoint` (always required, fully explicit)
+- Agent-specific or user-defined template variables beyond `state_dir`, `home`,
+  and `guest_home`
+- Optional/default `target` (always required, fully explicit)
 - Linux/Windows host support changes
 
 ## Background: current behavior
@@ -60,19 +57,19 @@ Claude has no equivalent wiring.
 aivm.yaml / agent defaults
         │
         ▼
-  MountSpec[]  (location, mountPoint, mode)
+  MountSpec[]  (source, target, mode)
         │
         ▼
-  Template render  ({{ .state_dir }}, {{ .home }})
+  Template render  ({{ .state_dir }}, {{ .home }}, {{ .guest_home }})
         │
         ▼
-  ~ expansion + validation
+  ~ expansion (host home in source, guest home in target) + validation
         │
         ▼
   ResolvedMount[]  (absolute host + guest paths)
         │
         ├─► VM create: Lima/Docker bind mounts (host → guest)
-        ├─► AssertUnderMount: check host CWD under vm.mounts location
+        ├─► AssertUnderMount: check host CWD under vm.mounts source
         └─► GuestPathForHost: translate CWD for ssh / agent launch
 ```
 
@@ -81,8 +78,8 @@ aivm.yaml / agent defaults
 `buildStartOptions` assembles mounts in order:
 
 1. User `vm.mounts`
-2. Enabled agent `mounts` (deduped by `mountPoint`)
-3. Internal mounts (T3: `{{ .state_dir }}/.t3` → `{{ .home }}/.t3`)
+2. Enabled agent `mounts` (deduped by `target`)
+3. Internal mounts (T3: `{{ .state_dir }}/.t3` → `~/.t3`)
 
 All become `vm.Mount{HostPath, GuestPath, Writable}`.
 
@@ -94,9 +91,9 @@ Used by `vm.mounts`, agent `mounts` (defaults and `agents.define`), and
 internal mounts.
 
 ```yaml
-location: string    # host-side bind source (required)
-mountPoint: string  # guest-side path (required)
-mode: rw | ro       # required
+source: string   # host-side bind source (required)
+target: string   # guest-side path (required)
+mode: rw | ro    # required
 ```
 
 **Template support** (Go `text/template`, rendered on the host at config load):
@@ -105,22 +102,43 @@ mode: rw | ro       # required
 | --- | --- |
 | `state_dir` | Resolved aivm state dir (`~/.aivm` or `AIVM_STATE_DIR`) |
 | `home` | Host home directory |
+| `guest_home` | Resolved guest home (see `vm.guest_home` below) |
 
-After template render, `~` prefix expansion is applied to both path fields.
+After template render, `~` prefix expansion is applied:
+
+- In `source`: `~` → host home
+- In `target`: `~` → guest home
+
 Both must be absolute paths before the mount is accepted.
+
+### `vm.guest_home`
+
+Optional override for the guest user home used when expanding `~` in mount
+`target` paths and when resolving `{{ .guest_home }}`.
+
+When omitted, defaults apply:
+
+| Backend | Default guest home |
+| --- | --- |
+| `docker` | `/home/user` |
+| `lima` on Linux | `/home/$USER` |
+| `lima` on macOS | `/home/$USER.linux` |
+
+Supports `~/` prefix (expanded with host home) for convenience in config.
 
 ### `vm.mounts` (user config)
 
 ```yaml
 vm:
+  # guest_home: "/home/myuser"   # optional override
   mounts:
-    # Identity mount — same path on host and guest
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    # Identity mount — ~/ expands per side (host home → guest home)
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
     # Remapped mount — host path differs from guest path
-    - location: "{{ .home }}/company-secrets"
-      mountPoint: "/secrets"
+    - source: "{{ .home }}/company-secrets"
+      target: "/secrets"
       mode: ro
 ```
 
@@ -139,23 +157,23 @@ Rename `persist` → `mounts` everywhere:
 # internal/agent/defaults.yaml (bundled)
 claude:
   mounts:
-    - location: "{{ .state_dir }}/.claude/projects"
-      mountPoint: "{{ .home }}/.claude/projects"
+    - source: "{{ .state_dir }}/.claude/projects"
+      target: "~/.claude/projects"
       mode: rw
-    - location: "{{ .state_dir }}/.claude/image-cache"
-      mountPoint: "{{ .home }}/.claude/image-cache"
+    - source: "{{ .state_dir }}/.claude/image-cache"
+      target: "~/.claude/image-cache"
       mode: rw
 
 copilot:
   mounts:
-    - location: "{{ .state_dir }}/.copilot/session-state"
-      mountPoint: "{{ .home }}/.copilot/session-state"
+    - source: "{{ .state_dir }}/.copilot/session-state"
+      target: "~/.copilot/session-state"
       mode: rw
 
 cursor:
   mounts:
-    - location: "{{ .state_dir }}/.cursor"
-      mountPoint: "{{ .home }}/.cursor"
+    - source: "{{ .state_dir }}/.cursor"
+      target: "~/.cursor"
       mode: rw
 ```
 
@@ -166,8 +184,8 @@ agents:
   define:
     claude:
       mounts:
-        - location: "{{ .state_dir }}/.claude/projects"
-          mountPoint: "{{ .home }}/.claude/projects"
+        - source: "{{ .state_dir }}/.claude/projects"
+          target: "~/.claude/projects"
           mode: rw
 ```
 
@@ -176,10 +194,13 @@ Agent `setup` scripts return to install-only. Remove symlink workarounds:
 | Component | Remove |
 | --- | --- |
 | t3code plugin setup | `ln -sfn "$T3_DIR" "$HOME/.t3"` block |
-| Claude setup (if added) | any symlink block |
 
-T3 persistence becomes an internal `MountSpec` in `buildStartOptions`, same as
-today but with explicit `mountPoint`.
+T3 persistence becomes an internal `MountSpec` in `buildStartOptions`:
+
+```yaml
+source: "{{ .state_dir }}/.t3"
+target: "~/.t3"
+```
 
 ## Runtime model
 
@@ -187,15 +208,15 @@ today but with explicit `mountPoint`.
 
 ```go
 type Mount struct {
-    HostPath  string // rendered location
-    GuestPath string // rendered mountPoint
+    HostPath  string // rendered source
+    GuestPath string // rendered target
     Writable  bool
 }
 ```
 
 **Lima** (at `limactl create`):
 
-```
+```text
 --mount type=bind,source=<HostPath>,target=<GuestPath>[,readonly]
 ```
 
@@ -203,7 +224,7 @@ Replaces the current `path:w` / `path:r` identity shorthand.
 
 **Docker** (at `docker run`):
 
-```
+```text
 -v <HostPath>:<GuestPath>:<ro|rw>
 ```
 
@@ -213,21 +234,21 @@ Already supports distinct source/target; today both sides are the same path.
 
 | Rule | On violation |
 | --- | --- |
-| `location`, `mountPoint`, `mode` all required | Config load error |
+| `source`, `target`, `mode` all required | Config load error |
 | `mode` is `rw` or `ro` | Config load error |
 | Paths absolute after render + `~` expand | Config load error |
-| No duplicate `mountPoint` across all mounts | Config load error |
-| No overlapping `location` prefixes among `vm.mounts` | Config load error |
+| No duplicate `target` across all mounts | Config load error |
+| No overlapping `source` prefixes among `vm.mounts` | Config load error |
 | Template render failure | Config load error with field path |
 
-Overlapping `location` prefixes among `vm.mounts` are rejected because they
+Overlapping `source` prefixes among `vm.mounts` are rejected because they
 make host→guest translation ambiguous. Agent `mounts` and internal mounts are
-not checked for location overlap with `vm.mounts` (different purpose).
+not checked for source overlap with `vm.mounts` (different purpose).
 
 ### Host directory creation
 
 `ensureAgentPersistDirs` is renamed to reflect mounts (e.g.
-`ensureAgentMountDirs`). It `MkdirAll`s each agent mount's rendered `location`
+`ensureAgentMountDirs`). It `MkdirAll`s each agent mount's rendered `source`
 on the host before VM start. Only agent `mounts` — not user `vm.mounts`.
 
 ## Path translation
@@ -239,18 +260,19 @@ Used by `aivm ssh` and agent launch (`aivm`, `aivm agent`).
 Algorithm:
 
 1. `hostPath` is already symlink-resolved (`resolveSessionCWD`)
-2. Find the **longest matching** `location` prefix among **`vm.mounts` only**
-3. `relative = hostPath[len(location):]` (empty string if exact match)
-4. Return `mountPoint + relative`
+2. Find the **longest matching** `source` prefix among **`vm.mounts` only**
+3. `relative = hostPath[len(source):]` (empty string if exact match)
+4. Return `target + relative`
 
 **Examples:**
 
 | Host CWD | Mount | Guest path |
 | --- | --- | --- |
-| `/Users/you/dev/myapp` | `location: /Users/you/dev` → `mountPoint: /Users/you/dev` | `/Users/you/dev/myapp` |
-| `/Users/you/secrets/keys` | `location: /Users/you/secrets` → `mountPoint: /secrets` | `/secrets/keys` |
+| `/Users/you/dev/myapp` | `source: /Users/you/dev` → `target: /home/you.linux/dev` | `/home/you.linux/dev/myapp` |
+| `/Users/you/secrets/keys` | `source: /Users/you/secrets` → `target: /secrets` | `/secrets/keys` |
 
-When `location == mountPoint`, translation is a no-op.
+When resolved `source` and `target` represent the same logical path (e.g. both
+`~/dev` with matching homes), translation preserves the relative suffix.
 
 ### Call sites
 
@@ -258,27 +280,43 @@ When `location == mountPoint`, translation is a no-op.
 | --- | --- |
 | `aivm ssh` | `VM.SSH(ctx, guestPath, env)` |
 | `aivm` / `aivm agent` | `agentSession.vmDir = guestPath` |
-| `AssertUnderMount` | **Unchanged** — validates host CWD under `vm.mounts` `location` |
+| `AssertUnderMount` | **Unchanged** — validates host CWD under `vm.mounts` `source` |
 | `aivm cp` | **Unchanged** — `vm:/path` is explicit guest path |
 
 Agent `mounts` are for agent state directories, not workspace entry. Users
 launch `aivm` from code under `vm.mounts`, not from `~/.aivm/`.
 
-## Claude chat history (superseded spec)
+## Claude agent mounts
 
-Full-fidelity Claude history persistence is a **consumer** of this design:
+Claude Code conversation history must survive `aivm destroy` and `aivm recreate`
+with full fidelity (main transcripts, subagents, large tool outputs, pasted
+images). Skills, MCP config, and other Claude settings stay ephemeral in the VM.
 
-| Data | location | mountPoint |
-| --- | --- | --- |
-| Session transcripts, subagents, tool-results | `{{ .state_dir }}/.claude/projects` | `{{ .home }}/.claude/projects` |
-| Pasted images | `{{ .state_dir }}/.claude/image-cache` | `{{ .home }}/.claude/image-cache` |
+Bundled defaults in `internal/agent/defaults.yaml`:
 
-Not mounted (ephemeral in VM): skills, MCP config, settings, `history.jsonl`,
-`paste-cache/`.
+```yaml
+claude:
+  mounts:
+    - source: "{{ .state_dir }}/.claude/projects"
+      target: "~/.claude/projects"
+      mode: rw
+    - source: "{{ .state_dir }}/.claude/image-cache"
+      target: "~/.claude/image-cache"
+      mode: rw
+```
 
-Because project paths use sanitized absolute paths and identity `vm.mounts`
-preserve host paths, resume works across VM recreations when launched from the
-same project directory.
+| Mount | Covers |
+| --- | --- |
+| `projects` | Session transcripts, `subagents/`, `tool-results/` |
+| `image-cache` | Pasted images per session |
+
+Host data lives under `~/.aivm/.claude/` and survives VM lifecycle. Guest
+paths use `~` so data appears at `$HOME/.claude/…` inside the VM. Not mounted
+(ephemeral): `settings.json`, skills, MCP config, `history.jsonl`, `paste-cache/`.
+
+Because Claude groups sessions by sanitized absolute project path and identity
+`vm.mounts` preserve host paths, resume works across VM recreations when
+launched from the same project directory.
 
 ## Error handling
 
@@ -287,9 +325,9 @@ same project directory.
 | Old string mount in YAML | Parse/validate error at load |
 | Old agent `persist` key in YAML | Rejected as unknown key (strict validation) |
 | Template render fails | Config load error |
-| Duplicate `mountPoint` | Config load error |
-| Overlapping `vm.mounts` locations | Config load error |
-| CWD not under any `vm.mounts` location | Existing `AssertUnderMount` error |
+| Duplicate `target` | Config load error |
+| Overlapping `vm.mounts` sources | Config load error |
+| CWD not under any `vm.mounts` source | Existing `AssertUnderMount` error |
 | `GuestPathForHost` no match after assert | Should not occur; treat as internal error |
 
 ## Code changes
@@ -297,7 +335,8 @@ same project directory.
 | Area | Change |
 | --- | --- |
 | `internal/config/` | `MountSpec` struct, template renderer, validation; remove `ParseMount` string parser |
-| `internal/config/config.go` | `VMConfig.Mounts` as `[]MountSpec`; update `AgentDefine` |
+| `internal/config/config.go` | `VMConfig.Mounts` as `[]MountSpec`; `vm.guest_home`; update `AgentDefine` |
+| `internal/mountspec/` | Contextual `~` expansion; `DefaultGuestHome` |
 | `internal/agent/def.go` | Rename `Persist` → `Mounts []MountSpec` |
 | `internal/agent/defaults.yaml` | Structured `mounts` for claude, copilot, cursor |
 | `internal/vm/vm.go` | Add `GuestPath` to `Mount` |
@@ -316,8 +355,8 @@ same project directory.
 
 ### Unit
 
-- Template rendering (`state_dir`, `home`, `~` expansion)
-- Validation: duplicate `mountPoint`, overlapping locations, missing fields
+- Template rendering (`state_dir`, `home`, `guest_home`, contextual `~`)
+- Validation: duplicate `target`, overlapping sources, missing fields
 - `GuestPathForHost`: identity, remapped, nested subdirs, longest-prefix match
 - Lima/Docker mount flag generation with distinct `GuestPath`
 - Agent defaults parse with `mounts` (not `persist`)
@@ -331,12 +370,11 @@ same project directory.
 
 ## Documentation updates
 
-- `README.md` mounts section: structured format, template variables, remapped
-  mount example, path translation note for ssh/agent
-- Agent sections: `mounts` replaces `persist` language
+- `README.md` mounts section: `source`/`target`, contextual `~`, `vm.guest_home`,
+  template variables, remapped mount example, path translation note for ssh/agent
+- Agent sections: `mounts` replaces `persist` language; Claude persistence
+  scope (`projects`, `image-cache` on host under `~/.aivm/.claude/`)
 - `aivm.example.yaml`: update `vm.mounts` example
-- Note in `2026-06-12-claude-chat-history-persistence-design.md` header:
-  superseded by this spec
 
 ## Migration (alpha hard cut)
 
@@ -351,8 +389,8 @@ vm:
 # After
 vm:
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
 ```
 

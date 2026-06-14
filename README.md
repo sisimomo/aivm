@@ -133,11 +133,11 @@ vm:
   backend: lima
   name: aivm
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
-    - location: "{{ .home }}/.ssh"
-      mountPoint: "{{ .home }}/.ssh"
+    - source: "{{ .home }}/.ssh"
+      target: "~/.ssh"
       mode: ro
   # session_env:
   #   MY_TOOL_SESSION_ID: "${MY_TOOL_SESSION_ID}"
@@ -181,24 +181,35 @@ is a structured `MountSpec` with three required fields:
 
 | Field | Description |
 | --- | --- |
-| `location` | Host path to bind (source) |
-| `mountPoint` | Guest path inside the VM (target) |
+| `source` | Host path to bind |
+| `target` | Guest path inside the VM |
 | `mode` | `rw` (read-write) or `ro` (read-only) |
 
-Paths support `{{ .home }}` and `{{ .state_dir }}` templates (same engine as
-plugin setup scripts). After template rendering, a leading `~` expands to your
-home directory. Both paths must be absolute before the mount is accepted.
+Paths support `{{ .home }}`, `{{ .guest_home }}`, and `{{ .state_dir }}`
+templates (same engine as plugin setup scripts). After template rendering, a
+leading `~` expands to the **host** home in `source` and the **guest** home in
+`target`. Override the guest home with `vm.guest_home` when the default does
+not match your VM user. Both paths must be absolute before the mount is accepted.
 
-**Identity mount** — host and guest paths match (most common for dev trees):
+Default guest home (when `vm.guest_home` is omitted):
+
+| Backend | Default guest home |
+| --- | --- |
+| `docker` | `/home/user` |
+| `lima` on Linux | `/home/$USER` |
+| `lima` on macOS | `/home/$USER.linux` |
+
+**Identity mount** — host and guest paths resolve to the same logical location
+(use `~/…` on both sides so each expands in its own context):
 
 ```yaml
 vm:
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
-    - location: "{{ .home }}/.ssh"
-      mountPoint: "{{ .home }}/.ssh"
+    - source: "{{ .home }}/.ssh"
+      target: "~/.ssh"
       mode: ro
 ```
 
@@ -207,12 +218,12 @@ vm:
 ```yaml
 vm:
   mounts:
-    - location: "{{ .home }}/company-secrets"
-      mountPoint: "/secrets"
+    - source: "{{ .home }}/company-secrets"
+      target: "/secrets"
       mode: ro
 ```
 
-When `location` and `mountPoint` differ, only the guest path is visible inside
+When `source` and `target` differ, only the guest path is visible inside
 the VM. `aivm ssh` and `aivm` (agent launch) translate your host current working
 directory to the matching guest path automatically. `aivm cp vm:/path` is
 unchanged — VM paths stay explicit via the `vm:` prefix.
