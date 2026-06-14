@@ -5,7 +5,7 @@
 > superpowers:executing-plans to implement this plan task-by-task.
 > Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace identity-only mounts with structured `MountSpec` entries that
+**Goal:** Replace same-path-only mounts with structured `MountSpec` entries that
 support host→guest path remapping, template variables, and CWD translation for
 `aivm ssh` and agent launch.
 
@@ -75,7 +75,7 @@ import (
  "github.com/sisimomo/aivm/internal/mountspec"
 )
 
-func TestResolveMountSpec_IdentityWithTemplates(t *testing.T) {
+func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
  t.Parallel()
  home := "/Users/you"
  state := "/Users/you/.aivm"
@@ -660,7 +660,7 @@ import (
  "github.com/sisimomo/aivm/internal/vm"
 )
 
-func TestLimaMountFlag_Identity(t *testing.T) {
+func TestLimaMountFlag_SamePath(t *testing.T) {
  m := vm.Mount{
   HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,
  }
@@ -1021,7 +1021,7 @@ import (
  "github.com/sisimomo/aivm/internal/lifecycle"
 )
 
-func TestGuestPathForHost_Identity(t *testing.T) {
+func TestGuestPathForHost_SamePath(t *testing.T) {
  cfg := &config.Config{VM: config.VMConfig{ParsedMounts: []config.Mount{{
   HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,
  }}}}
@@ -1353,7 +1353,7 @@ func TestSSH_RemappedMountWorkDir(t *testing.T) {
 }
 ```
 
-If `WithDevRoot` only supports identity mounts, add
+If `WithDevRoot` only supports same-path mounts, add
 `framework.WithRemappedMount(host, guest string)` that emits structured YAML.
 
 - [ ] **Step 2: Write Claude persistence test sketch**

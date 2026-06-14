@@ -33,9 +33,10 @@ vm:
   # target (guest path), and mode (rw or ro). In source, ~ expands to the host
   # home; in target, ~ expands to the guest home (override with vm.guest_home).
   # Templates: {{ .home }}, {{ .guest_home }}, {{ .state_dir }}.
-  # When source and target resolve to the same path, aivm ssh and agent launch
-  # translate your host CWD automatically. When they differ, only the target
-  # path is visible in the VM.
+  # Same-path mount: source and target use the same path expression (e.g. both
+  # "~/dev") so aivm ssh and agent launch translate your host CWD automatically.
+  # Remapped mount: when source and target differ, only the target path is
+  # visible in the VM.
   mounts:
     - source: "~/dev"
       target: "~/dev"

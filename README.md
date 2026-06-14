@@ -199,7 +199,7 @@ Default guest home (when `vm.guest_home` is omitted):
 | `lima` on Linux | `/home/$USER` |
 | `lima` on macOS | `/home/$USER.linux` |
 
-**Identity mount** — host and guest paths resolve to the same logical location
+**Same-path mount** — host and guest paths resolve to the same logical location
 (use `~/…` on both sides so each expands in its own context):
 
 ```yaml

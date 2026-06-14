@@ -7,7 +7,7 @@ import (
 	"github.com/sisimomo/aivm/internal/mountspec"
 )
 
-func TestResolveMountSpec_IdentityWithTemplates(t *testing.T) {
+func TestResolveMountSpec_SamePathWithTemplates(t *testing.T) {
 	t.Parallel()
 	home := "/Users/you"
 	guestHome := "/home/you"

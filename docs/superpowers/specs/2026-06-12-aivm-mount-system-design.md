@@ -2,7 +2,7 @@
 
 ## Summary
 
-Replace aivm's identity-only mount model with a unified, structured mount
+Replace aivm's same-path-only mount model with a unified, structured mount
 system. Agent state mounts directly to the paths tools expect inside the VM
 (no setup-script symlinks). User `vm.mounts` can remap host paths to different
 guest paths. Host→guest path translation makes `aivm ssh` and agent launch work
@@ -16,7 +16,7 @@ format (`~/dev:rw`) or the old agent `persist` field.
 - Fix agent state persistence so YAML-defined agents (Claude, Cursor, Copilot)
   write to the correct VM paths without per-agent symlink boilerplate
 - Make `vm.mounts` more powerful: host `source` and guest `target` can differ
-- Preserve identity mounts as a first-class case (`source` and `target` resolve
+- Preserve same-path mounts as a first-class case (`source` and `target` resolve
   to the same logical path, e.g. both `~/dev`)
 - Support `{{ .state_dir }}`, `{{ .home }}`, and `{{ .guest_home }}` templates
   in path fields (same engine as plugin setup scripts)
@@ -36,7 +36,7 @@ format (`~/dev:rw`) or the old agent `persist` field.
 
 ## Background: current behavior
 
-Today both `vm.mounts` and agent `persist` use **identity mounts**:
+Today both `vm.mounts` and agent `persist` use **same-path mounts**:
 
 | Config | Parsed as | VM bind |
 | --- | --- | --- |
@@ -132,7 +132,7 @@ Supports `~/` prefix (expanded with host home) for convenience in config.
 vm:
   # guest_home: "/home/myuser"   # optional override
   mounts:
-    # Identity mount — ~/ expands per side (host home → guest home)
+    # Same-path mount — ~/ expands per side (host home → guest home)
     - source: "~/dev"
       target: "~/dev"
       mode: rw
@@ -220,7 +220,7 @@ type Mount struct {
 --mount type=bind,source=<HostPath>,target=<GuestPath>[,readonly]
 ```
 
-Replaces the current `path:w` / `path:r` identity shorthand.
+Replaces the current `path:w` / `path:r` same-path shorthand.
 
 **Docker** (at `docker run`):
 
@@ -271,7 +271,7 @@ Algorithm:
 | `/Users/you/dev/myapp` | `source: /Users/you/dev` → `target: /home/you.linux/dev` | `/home/you.linux/dev/myapp` |
 | `/Users/you/secrets/keys` | `source: /Users/you/secrets` → `target: /secrets` | `/secrets/keys` |
 
-When resolved `source` and `target` represent the same logical path (e.g. both
+When resolved `source` and `target` use a same-path mount (e.g. both
 `~/dev` with matching homes), translation preserves the relative suffix.
 
 ### Call sites
@@ -314,7 +314,7 @@ Host data lives under `~/.aivm/.claude/` and survives VM lifecycle. Guest
 paths use `~` so data appears at `$HOME/.claude/…` inside the VM. Not mounted
 (ephemeral): `settings.json`, skills, MCP config, `history.jsonl`, `paste-cache/`.
 
-Because Claude groups sessions by sanitized absolute project path and identity
+Because Claude groups sessions by sanitized absolute project path and same-path
 `vm.mounts` preserve host paths, resume works across VM recreations when
 launched from the same project directory.
 
@@ -357,7 +357,7 @@ launched from the same project directory.
 
 - Template rendering (`state_dir`, `home`, `guest_home`, contextual `~`)
 - Validation: duplicate `target`, overlapping sources, missing fields
-- `GuestPathForHost`: identity, remapped, nested subdirs, longest-prefix match
+- `GuestPathForHost`: same-path, remapped, nested subdirs, longest-prefix match
 - Lima/Docker mount flag generation with distinct `GuestPath`
 - Agent defaults parse with `mounts` (not `persist`)
 

@@ -7,7 +7,7 @@ import (
 	"github.com/sisimomo/aivm/internal/lifecycle"
 )
 
-func TestGuestPathForHost_Identity(t *testing.T) {
+func TestGuestPathForHost_SamePath(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{VM: config.VMConfig{ParsedMounts: []config.Mount{{
 		HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,

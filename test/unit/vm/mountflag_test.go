@@ -7,7 +7,7 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-func TestLimaMountFlag_Identity(t *testing.T) {
+func TestLimaMountFlag_SamePath(t *testing.T) {
 	m := vm.Mount{
 		HostPath: "/Users/you/dev", GuestPath: "/Users/you/dev", Writable: true,
 	}
