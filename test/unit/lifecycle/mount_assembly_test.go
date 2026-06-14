@@ -33,9 +33,9 @@ func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
 			Mode:   "rw",
 		}}},
 	}
-	mounts, err := lifecycle.ResolvedMountsForStart(cfg, agentDefs, false)
+	mounts, err := lifecycle.ResolvedMountsForRuntime(cfg, agentDefs, false)
 	if err != nil {
-		t.Fatalf("ResolvedMountsForStart: %v", err)
+		t.Fatalf("ResolvedMountsForRuntime: %v", err)
 	}
 	// expect vm mount + 1 agent mount
 	if len(mounts) != 2 {
@@ -43,5 +43,40 @@ func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
 	}
 	if mounts[1].GuestPath != filepath.Join(vmHome, ".claude/projects") {
 		t.Fatalf("guest = %q", mounts[1].GuestPath)
+	}
+}
+
+func TestResolvedMountsForBootstrap_ExcludesAgentAndT3(t *testing.T) {
+	home := "/Users/you"
+	vmHome := "/home/user"
+	t.Setenv("HOME", home)
+	state := filepath.Join(home, ".aivm")
+	cfg := &config.Config{
+		StateDir: state,
+		VM: config.VMConfig{
+			ParsedVMHome: vmHome,
+			ParsedMounts: []config.Mount{{
+				HostPath:  filepath.Join(home, "dev"),
+				GuestPath: filepath.Join(vmHome, "dev"),
+				Writable:  true,
+			}},
+		},
+	}
+	agentDefs := map[string]agent.Def{
+		"claude": {Mounts: []mountspec.MountSpec{{
+			Source: "{{ .state_dir }}/.claude/projects",
+			Target: "~/.claude/projects",
+			Mode:   "rw",
+		}}},
+	}
+	mounts, err := lifecycle.ResolvedMountsForBootstrap(cfg, agentDefs, true)
+	if err != nil {
+		t.Fatalf("ResolvedMountsForBootstrap: %v", err)
+	}
+	if len(mounts) != 1 {
+		t.Fatalf("len = %d, want 1 (vm mount only)", len(mounts))
+	}
+	if mounts[0].GuestPath != filepath.Join(vmHome, "dev") {
+		t.Fatalf("guest = %q", mounts[0].GuestPath)
 	}
 }

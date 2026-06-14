@@ -135,8 +135,27 @@ func stringSet(items []string) map[string]bool {
 	return m
 }
 
-// ResolvedMountsForStart assembles VM, agent, and optional T3 mounts for VM start.
-func ResolvedMountsForStart(
+func resolvedVMMounts(cfg *config.Config) []vm.Mount {
+	mounts := make([]vm.Mount, 0, len(cfg.VM.ParsedMounts))
+	for _, m := range cfg.VM.ParsedMounts {
+		mounts = append(mounts, vm.Mount{
+			HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable,
+		})
+	}
+	return mounts
+}
+
+// ResolvedMountsForBootstrap returns only vm.mounts for bootstrap VM creation.
+func ResolvedMountsForBootstrap(
+	cfg *config.Config,
+	_ map[string]agent.Def,
+	_ bool,
+) ([]vm.Mount, error) {
+	return resolvedVMMounts(cfg), nil
+}
+
+// ResolvedMountsForRuntime assembles VM, agent, and optional T3 mounts for VM start.
+func ResolvedMountsForRuntime(
 	cfg *config.Config,
 	agentDefs map[string]agent.Def,
 	t3Enabled bool,
@@ -144,13 +163,9 @@ func ResolvedMountsForStart(
 	home, _ := os.UserHomeDir()
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
 
-	mounts := make([]vm.Mount, 0, 16)
+	mounts := resolvedVMMounts(cfg)
 	resolved := make([]mountspec.ResolvedMount, 0, 16)
-
-	for _, m := range cfg.VM.ParsedMounts {
-		mounts = append(mounts, vm.Mount{
-			HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable,
-		})
+	for _, m := range mounts {
 		resolved = append(resolved, mountspec.ResolvedMount{
 			HostPath: m.HostPath, GuestPath: m.GuestPath, Writable: m.Writable,
 		})
@@ -247,10 +262,27 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) er
 	return nil
 }
 
-// buildStartOptions constructs consistent vm.StartOptions from config.
-// All VM-creating operations use this to eliminate duplication.
-func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
-	mounts, err := ResolvedMountsForStart(cfg, agentDefs, cfg.T3Code.Enable)
+// buildBootstrapStartOptions constructs vm.StartOptions with bootstrap mounts only.
+func buildBootstrapStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	mounts, err := ResolvedMountsForBootstrap(cfg, agentDefs, cfg.T3Code.Enable)
+	if err != nil {
+		return vm.StartOptions{}, err
+	}
+
+	return vm.StartOptions{
+		CPUs:        cfg.VM.CPUs,
+		MemoryBytes: cfg.VM.MemoryBytes,
+		DiskBytes:   cfg.VM.DiskBytes,
+		VMType:      cfg.VM.Type,
+		Mounts:      mounts,
+	}, nil
+}
+
+var _ func(vm.VM, *config.Config, map[string]agent.Def) (vm.StartOptions, error) = buildBootstrapStartOptions
+
+// buildRuntimeStartOptions constructs vm.StartOptions with full runtime mounts.
+func buildRuntimeStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	mounts, err := ResolvedMountsForRuntime(cfg, agentDefs, cfg.T3Code.Enable)
 	if err != nil {
 		return vm.StartOptions{}, err
 	}
@@ -275,6 +307,12 @@ func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.D
 		Mounts:       mounts,
 		PortMappings: portMappings,
 	}, nil
+}
+
+// buildStartOptions constructs consistent vm.StartOptions from config.
+// All VM-creating operations use this to eliminate duplication.
+func buildStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	return buildRuntimeStartOptions(v, cfg, agentDefs)
 }
 
 // applyVMEnv writes vm.env as shell exports to /etc/profile.d/aivm-user-env.sh
