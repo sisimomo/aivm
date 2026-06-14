@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-func ValidateDuplicateMountPoints(mounts []ResolvedMount) error {
+func ValidateDuplicateTargets(mounts []ResolvedMount) error {
 	seen := make(map[string]string, len(mounts))
 	for _, m := range mounts {
 		if prev, ok := seen[m.GuestPath]; ok {
 			return fmt.Errorf(
-				"duplicate mountPoint %q (from %q and %q)",
+				"duplicate target %q (from %q and %q)",
 				m.GuestPath, prev, m.HostPath)
 		}
 		seen[m.GuestPath] = m.HostPath
@@ -20,7 +20,7 @@ func ValidateDuplicateMountPoints(mounts []ResolvedMount) error {
 	return nil
 }
 
-func ValidateOverlappingLocations(mounts []ResolvedMount) error {
+func ValidateOverlappingSources(mounts []ResolvedMount) error {
 	paths := make([]string, len(mounts))
 	for i, m := range mounts {
 		paths[i] = m.HostPath
@@ -30,10 +30,10 @@ func ValidateOverlappingLocations(mounts []ResolvedMount) error {
 	for i := 0; i < len(paths); i++ {
 		for j := i + 1; j < len(paths); j++ {
 			if paths[i] == paths[j] {
-				return fmt.Errorf("duplicate vm.mounts location %q", paths[i])
+				return fmt.Errorf("duplicate vm.mounts source %q", paths[i])
 			}
 			if strings.HasPrefix(paths[j], paths[i]+sep) {
-				return fmt.Errorf("overlapping vm.mounts locations %q and %q", paths[i], paths[j])
+				return fmt.Errorf("overlapping vm.mounts sources %q and %q", paths[i], paths[j])
 			}
 		}
 	}

@@ -80,11 +80,14 @@ func TestLoadDefs_ClaudeMounts(t *testing.T) {
 	if len(claude.Mounts) != 2 {
 		t.Fatalf("claude mounts len = %d, want 2", len(claude.Mounts))
 	}
-	if claude.Mounts[0].Location != `{{ .state_dir }}/.claude/projects` {
-		t.Fatalf("projects location = %q", claude.Mounts[0].Location)
+	if claude.Mounts[0].Source != `{{ .state_dir }}/.claude/projects` {
+		t.Fatalf("projects source = %q", claude.Mounts[0].Source)
 	}
-	if claude.Mounts[1].Location != `{{ .state_dir }}/.claude/image-cache` {
-		t.Fatalf("image-cache location = %q", claude.Mounts[1].Location)
+	if claude.Mounts[0].Target != `~/.claude/projects` {
+		t.Fatalf("projects target = %q", claude.Mounts[0].Target)
+	}
+	if claude.Mounts[1].Source != `{{ .state_dir }}/.claude/image-cache` {
+		t.Fatalf("image-cache source = %q", claude.Mounts[1].Source)
 	}
 }
 

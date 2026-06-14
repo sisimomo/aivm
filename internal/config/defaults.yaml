@@ -3,8 +3,8 @@ vm:
   memory: "8GB"
   disk: "60GB"
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
   name: aivm
   backend: lima
@@ -26,4 +26,3 @@ plugins:
     - system
 
 log_level: info
-

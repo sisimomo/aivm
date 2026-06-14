@@ -81,9 +81,9 @@ func writeMinimalAgentConfig(t *testing.T, path, agentName string) {
 // defaultVMMounts matches the structured default in internal/config/defaults.yaml.
 func defaultVMMounts() []mountspec.MountSpec {
 	return []mountspec.MountSpec{{
-		Location:   "{{ .home }}/dev",
-		MountPoint: "{{ .home }}/dev",
-		Mode:       "rw",
+		Source: "~/dev",
+		Target: "~/dev",
+		Mode:   "rw",
 	}}
 }
 

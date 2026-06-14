@@ -22,13 +22,8 @@ func TestClaudeProjectsPersistAcrossRecreate(t *testing.T) {
 	t.Parallel()
 	skipUnlessDocker(t)
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Agent mounts use {{ .home }} as guest mountPoint; on Docker e2e that is the
-	// host home path inside the container, not the container user's $HOME.
-	guestProjects := filepath.Join(home, ".claude", "projects")
+	guestHome := "/home/user"
+	guestProjects := filepath.Join(guestHome, ".claude", "projects")
 	markerName := "persist-marker.txt"
 
 	h := framework.New(t, framework.WithProvider("claude"))

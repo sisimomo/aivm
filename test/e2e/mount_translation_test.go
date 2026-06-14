@@ -14,7 +14,7 @@ import (
 )
 
 // TestSSH_RemappedMountWorkDir verifies that aivm ssh translates the host CWD
-// to the guest mountPoint when location and mountPoint differ.
+// to the guest target when source and target differ.
 func TestSSH_RemappedMountWorkDir(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")

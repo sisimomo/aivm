@@ -66,6 +66,10 @@ type VMConfig struct {
 	// DockerImage is the Docker image used when backend is "docker".
 	DockerImage string `mapstructure:"docker_image"`
 
+	// GuestHome overrides the default guest user home directory used when
+	// expanding ~ in mount targets. Supports ~/ prefix (host home).
+	GuestHome string `mapstructure:"guest_home"`
+
 	// RecreatePromptAfter is the staleness threshold after which the user is
 	// prompted to recreate the VM. Format: "7d", "12h", or "-1" to disable.
 	RecreatePromptAfter string `mapstructure:"recreate_prompt_after"`
@@ -78,6 +82,7 @@ type VMConfig struct {
 	MemoryBytes                 int64         `mapstructure:"-"`
 	DiskBytes                   int64         `mapstructure:"-"`
 	RecreatePromptAfterDuration time.Duration `mapstructure:"-"` // DisabledDuration = prompt off
+	ParsedGuestHome             string        `mapstructure:"-"`
 	ParsedMounts                []Mount       `mapstructure:"-"`
 }
 
@@ -346,8 +351,15 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 		}
 	}
 
+	// --- guest home ---
+	guestHome, err := resolveGuestHome(vm, home)
+	if err != nil {
+		return fmt.Errorf("vm.guest_home: %w", err)
+	}
+	vm.ParsedGuestHome = guestHome
+
 	// --- mounts ---
-	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+	ctx := MountResolveContext(cfg.StateDir, home, guestHome)
 	parsed := make([]Mount, 0, len(vm.Mounts))
 	for i, spec := range vm.Mounts {
 		resolved, err := mountspec.Resolve(spec, ctx)
@@ -360,12 +372,49 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 			Writable:  resolved.Writable,
 		})
 	}
-	if err := mountspec.ValidateOverlappingLocations(toResolved(parsed)); err != nil {
+	if err := mountspec.ValidateOverlappingSources(toResolved(parsed)); err != nil {
 		return fmt.Errorf("vm.mounts: %w", err)
 	}
 	vm.ParsedMounts = parsed
 
 	return nil
+}
+
+// MountResolveContext builds template/tilde expansion context for mount specs.
+func MountResolveContext(stateDir, hostHome, guestHome string) mountspec.Context {
+	return mountspec.Context{
+		Home:      hostHome,
+		GuestHome: guestHome,
+		StateDir:  stateDir,
+	}
+}
+
+// MountContext returns mount resolution context for this VM config.
+func (vmCfg *VMConfig) MountContext(stateDir, hostHome string) mountspec.Context {
+	guestHome := vmCfg.ParsedGuestHome
+	if guestHome == "" {
+		backend := vmCfg.Backend
+		if backend == "" {
+			backend = "lima"
+		}
+		guestHome = mountspec.DefaultGuestHome(backend, hostHome)
+	}
+	return MountResolveContext(stateDir, hostHome, guestHome)
+}
+
+func resolveGuestHome(vmCfg *VMConfig, hostHome string) (string, error) {
+	if vmCfg.GuestHome != "" {
+		expanded := expandPath(vmCfg.GuestHome, hostHome)
+		if !filepath.IsAbs(expanded) {
+			return "", fmt.Errorf("%q must be absolute after expansion", vmCfg.GuestHome)
+		}
+		return filepath.Clean(expanded), nil
+	}
+	backend := vmCfg.Backend
+	if backend == "" {
+		backend = "lima"
+	}
+	return mountspec.DefaultGuestHome(backend, hostHome), nil
 }
 
 func toResolved(mounts []Mount) []mountspec.ResolvedMount {

@@ -10,25 +10,27 @@ import (
 	"github.com/sisimomo/aivm/internal/mountspec"
 )
 
-func TestResolvedMountsForStart_DedupesAgentMountPoint(t *testing.T) {
+func TestResolvedMountsForStart_DedupesAgentTarget(t *testing.T) {
 	home := "/Users/you"
+	guestHome := "/home/you"
 	t.Setenv("HOME", home)
 	state := filepath.Join(home, ".aivm")
 	cfg := &config.Config{
 		StateDir: state,
 		VM: config.VMConfig{
+			ParsedGuestHome: guestHome,
 			ParsedMounts: []config.Mount{{
 				HostPath:  filepath.Join(home, "dev"),
-				GuestPath: filepath.Join(home, "dev"),
+				GuestPath: filepath.Join(guestHome, "dev"),
 				Writable:  true,
 			}},
 		},
 	}
 	agentDefs := map[string]agent.Def{
 		"claude": {Mounts: []mountspec.MountSpec{{
-			Location:   "{{ .state_dir }}/.claude/projects",
-			MountPoint: "{{ .home }}/.claude/projects",
-			Mode:       "rw",
+			Source: "{{ .state_dir }}/.claude/projects",
+			Target: "~/.claude/projects",
+			Mode:   "rw",
 		}}},
 	}
 	mounts, err := lifecycle.ResolvedMountsForStart(cfg, agentDefs, false)
@@ -39,7 +41,7 @@ func TestResolvedMountsForStart_DedupesAgentMountPoint(t *testing.T) {
 	if len(mounts) != 2 {
 		t.Fatalf("len = %d", len(mounts))
 	}
-	if mounts[1].GuestPath != filepath.Join(home, ".claude/projects") {
+	if mounts[1].GuestPath != filepath.Join(guestHome, ".claude/projects") {
 		t.Fatalf("guest = %q", mounts[1].GuestPath)
 	}
 }

@@ -5,11 +5,11 @@ claude:
   path_entries:
     - "$HOME/.claude/local/bin"
   mounts:
-    - location: "{{ .state_dir }}/.claude/projects"
-      mountPoint: "{{ .home }}/.claude/projects"
+    - source: "{{ .state_dir }}/.claude/projects"
+      target: "~/.claude/projects"
       mode: rw
-    - location: "{{ .state_dir }}/.claude/image-cache"
-      mountPoint: "{{ .home }}/.claude/image-cache"
+    - source: "{{ .state_dir }}/.claude/image-cache"
+      target: "~/.claude/image-cache"
       mode: rw
   cli_command: claude
   launch_args: --dangerously-skip-permissions
@@ -19,8 +19,8 @@ claude:
 copilot:
   description: "GitHub Copilot CLI (copilot cli)"
   mounts:
-    - location: "{{ .state_dir }}/.copilot/session-state"
-      mountPoint: "{{ .home }}/.copilot/session-state"
+    - source: "{{ .state_dir }}/.copilot/session-state"
+      target: "~/.copilot/session-state"
       mode: rw
   cli_command: copilot
   launch_args: --yolo
@@ -34,8 +34,8 @@ cursor:
   path_entries:
     - "$HOME/.local/bin"
   mounts:
-    - location: "{{ .state_dir }}/.cursor"
-      mountPoint: "{{ .home }}/.cursor"
+    - source: "{{ .state_dir }}/.cursor"
+      target: "~/.cursor"
       mode: rw
   cli_command: agent
   launch_args: --yolo

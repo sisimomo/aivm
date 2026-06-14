@@ -142,7 +142,7 @@ func ResolvedMountsForStart(
 	t3Enabled bool,
 ) ([]vm.Mount, error) {
 	home, _ := os.UserHomeDir()
-	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+	ctx := cfg.VM.MountContext(cfg.StateDir, home)
 
 	mounts := make([]vm.Mount, 0, 16)
 	resolved := make([]mountspec.ResolvedMount, 0, 16)
@@ -185,9 +185,9 @@ func ResolvedMountsForStart(
 
 	if t3Enabled {
 		t3Spec := mountspec.MountSpec{
-			Location:   "{{ .state_dir }}/.t3",
-			MountPoint: "{{ .home }}/.t3",
-			Mode:       "rw",
+			Source: "{{ .state_dir }}/.t3",
+			Target: "~/.t3",
+			Mode:   "rw",
 		}
 		r, err := mountspec.Resolve(t3Spec, ctx)
 		if err != nil {
@@ -201,7 +201,7 @@ func ResolvedMountsForStart(
 		}
 	}
 
-	if err := mountspec.ValidateDuplicateMountPoints(resolved); err != nil {
+	if err := mountspec.ValidateDuplicateTargets(resolved); err != nil {
 		return nil, err
 	}
 	return mounts, nil
@@ -211,7 +211,7 @@ func ResolvedMountsForStart(
 // into the VM for persistence.
 func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
 	home, _ := os.UserHomeDir()
-	ctx := mountspec.Context{Home: home, StateDir: cfg.StateDir}
+	ctx := cfg.VM.MountContext(cfg.StateDir, home)
 	seen := make(map[string]bool)
 	for _, def := range agentDefs {
 		for _, spec := range def.Mounts {
@@ -228,9 +228,9 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) {
 	}
 	if cfg.T3Code.Enable {
 		r, _ := mountspec.Resolve(mountspec.MountSpec{
-			Location:   "{{ .state_dir }}/.t3",
-			MountPoint: "{{ .home }}/.t3",
-			Mode:       "rw",
+			Source: "{{ .state_dir }}/.t3",
+			Target: "~/.t3",
+			Mode:   "rw",
 		}, ctx)
 		if r.HostPath != "" {
 			_ = os.MkdirAll(r.HostPath, 0755)

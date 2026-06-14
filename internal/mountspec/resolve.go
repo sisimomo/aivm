@@ -11,23 +11,26 @@ import (
 )
 
 func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
-	if strings.TrimSpace(spec.Location) == "" {
-		return ResolvedMount{}, fmt.Errorf("mount location is required")
+	if strings.TrimSpace(spec.Source) == "" {
+		return ResolvedMount{}, fmt.Errorf("mount source is required")
 	}
-	if strings.TrimSpace(spec.MountPoint) == "" {
-		return ResolvedMount{}, fmt.Errorf("mount mountPoint is required")
+	if strings.TrimSpace(spec.Target) == "" {
+		return ResolvedMount{}, fmt.Errorf("mount target is required")
 	}
 	if strings.TrimSpace(spec.Mode) == "" {
 		return ResolvedMount{}, fmt.Errorf("mount mode is required")
 	}
-
-	location, err := renderPath(spec.Location, ctx)
-	if err != nil {
-		return ResolvedMount{}, fmt.Errorf("location: %w", err)
+	if ctx.GuestHome == "" {
+		return ResolvedMount{}, fmt.Errorf("guest home is required for mount resolution")
 	}
-	mountPoint, err := renderPath(spec.MountPoint, ctx)
+
+	source, err := renderPath(spec.Source, ctx)
 	if err != nil {
-		return ResolvedMount{}, fmt.Errorf("mountPoint: %w", err)
+		return ResolvedMount{}, fmt.Errorf("source: %w", err)
+	}
+	target, err := renderPath(spec.Target, ctx)
+	if err != nil {
+		return ResolvedMount{}, fmt.Errorf("target: %w", err)
 	}
 
 	writable, err := parseMode(spec.Mode)
@@ -35,21 +38,21 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 		return ResolvedMount{}, err
 	}
 
-	location = expandTilde(location, ctx.Home)
-	mountPoint = expandTilde(mountPoint, ctx.Home)
+	source = expandTilde(source, ctx.Home)
+	target = expandTilde(target, ctx.GuestHome)
 
-	if !filepath.IsAbs(location) {
+	if !filepath.IsAbs(source) {
 		return ResolvedMount{}, fmt.Errorf(
-			"location %q must be absolute after expansion", location)
+			"source %q must be absolute after expansion", source)
 	}
-	if !filepath.IsAbs(mountPoint) {
+	if !filepath.IsAbs(target) {
 		return ResolvedMount{}, fmt.Errorf(
-			"mountPoint %q must be absolute after expansion", mountPoint)
+			"target %q must be absolute after expansion", target)
 	}
 
 	return ResolvedMount{
-		HostPath:  filepath.Clean(location),
-		GuestPath: filepath.Clean(mountPoint),
+		HostPath:  filepath.Clean(source),
+		GuestPath: filepath.Clean(target),
 		Writable:  writable,
 	}, nil
 }
@@ -60,8 +63,9 @@ func renderPath(src string, ctx Context) (string, error) {
 		return "", err
 	}
 	data := map[string]string{
-		"state_dir": ctx.StateDir,
-		"home":      ctx.Home,
+		"state_dir":  ctx.StateDir,
+		"home":       ctx.Home,
+		"guest_home": ctx.GuestHome,
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {

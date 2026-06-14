@@ -29,7 +29,7 @@ func GuestPathForHost(hostPath string, cfg *config.Config) (string, error) {
 	}
 	if len(matches) == 0 {
 		return "", fmt.Errorf(
-			"internal error: host path %q is not under any vm.mounts location",
+			"internal error: host path %q is not under any vm.mounts source",
 			hostPath)
 	}
 	sort.Slice(matches, func(i, j int) bool {

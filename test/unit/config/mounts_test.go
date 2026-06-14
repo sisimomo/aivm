@@ -20,8 +20,8 @@ agents:
 vm:
   name: testvm
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -35,9 +35,10 @@ vm:
 		t.Fatalf("ParsedMounts len = %d", len(cfg.VM.ParsedMounts))
 	}
 	m := cfg.VM.ParsedMounts[0]
-	want := filepath.Join(home, "dev")
-	if m.HostPath != want || m.GuestPath != want || !m.Writable {
-		t.Fatalf("got %+v, want host/guest %q rw", m, want)
+	wantHost := filepath.Join(home, "dev")
+	wantGuest := filepath.Join(cfg.VM.ParsedGuestHome, "dev")
+	if m.HostPath != wantHost || m.GuestPath != wantGuest || !m.Writable {
+		t.Fatalf("got %+v, want host %q guest %q rw", m, wantHost, wantGuest)
 	}
 }
 

@@ -30,8 +30,8 @@ type testConfig struct {
 	Disk    string // "10GB"
 	DevRoot string // convenience: creates a single rw mount
 
-	// RemappedMountGuest, when non-empty, sets mountPoint for the DevRoot mount
-	// (host location stays DevRoot). Use WithRemappedMount.
+	// RemappedMountGuest, when non-empty, sets target for the DevRoot mount
+	// (host source stays DevRoot). Use WithRemappedMount.
 	RemappedMountGuest string
 
 	IdleTimeout   time.Duration
@@ -109,13 +109,13 @@ func WithDiskGiB(n int) Option { return func(c *testConfig) { c.Disk = fmt.Sprin
 // WithDevRoot sets the dev root directory mounted into the VM.
 func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
 
-// WithRemappedMount sets a read-write mount where host location and guest
-// mountPoint differ. location is bound on the host; mountPoint is the path
+// WithRemappedMount sets a read-write mount where host source and guest
+// target differ. source is bound on the host; target is the path
 // inside the VM (e.g. host devRoot → guest /work).
-func WithRemappedMount(hostLocation, guestMountPoint string) Option {
+func WithRemappedMount(hostSource, guestTarget string) Option {
 	return func(c *testConfig) {
-		c.DevRoot = hostLocation
-		c.RemappedMountGuest = guestMountPoint
+		c.DevRoot = hostSource
+		c.RemappedMountGuest = guestTarget
 	}
 }
 
@@ -286,13 +286,13 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  bootstrap_refresh_prompt_after: %q\n", tc.BootstrapRefreshPromptAfter)
 	}
 	if tc.DevRoot != "" {
-		mountPoint := tc.DevRoot
+		target := tc.DevRoot
 		if tc.RemappedMountGuest != "" {
-			mountPoint = tc.RemappedMountGuest
+			target = tc.RemappedMountGuest
 		}
 		fmt.Fprintf(&sb, "  mounts:\n")
-		fmt.Fprintf(&sb, "    - location: %q\n", tc.DevRoot)
-		fmt.Fprintf(&sb, "      mountPoint: %q\n", mountPoint)
+		fmt.Fprintf(&sb, "    - source: %q\n", tc.DevRoot)
+		fmt.Fprintf(&sb, "      target: %q\n", target)
 		fmt.Fprintf(&sb, "      mode: rw\n")
 	}
 	if len(tc.VMEnv) > 0 {

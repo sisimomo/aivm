@@ -4,8 +4,8 @@ vm:
   memory: "6GB"
   disk: "40GB"
   mounts:
-    - location: "{{ .home }}/dev"
-      mountPoint: "{{ .home }}/dev"
+    - source: "~/dev"
+      target: "~/dev"
       mode: rw
 
 agents:
