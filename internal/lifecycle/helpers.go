@@ -278,8 +278,6 @@ func buildBootstrapStartOptions(v vm.VM, cfg *config.Config, agentDefs map[strin
 	}, nil
 }
 
-var _ func(vm.VM, *config.Config, map[string]agent.Def) (vm.StartOptions, error) = buildBootstrapStartOptions
-
 // buildRuntimeStartOptions constructs vm.StartOptions with full runtime mounts.
 func buildRuntimeStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
 	mounts, err := ResolvedMountsForRuntime(cfg, agentDefs, cfg.T3Code.Enable)

@@ -43,11 +43,6 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := svc.runIntegrationsFromState(ctx, targetVM); err != nil {
 		return err
 	}
-	opts, err := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
-	if err != nil {
-		return fmt.Errorf("building start options: %w", err)
-	}
-	_ = svc.SaveBaseImageBestEffort(ctx, opts)
 	return nil
 }
 

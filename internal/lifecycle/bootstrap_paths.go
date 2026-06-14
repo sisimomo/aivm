@@ -16,7 +16,13 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroy VM: %w", err)
 	}
-	opts, err := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	var opts vm.StartOptions
+	var err error
+	if effectiveBackend(svc.Config.VM) == "docker" {
+		opts, err = buildBootstrapStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	} else {
+		opts, err = buildRuntimeStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	}
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
@@ -34,7 +40,11 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.bootstrap(ctx, svc.VM); err != nil {
 		return err
 	}
-	// bootstrap() saves the base image; no second save here.
+	if effectiveBackend(svc.Config.VM) == "docker" {
+		if err := svc.promoteDockerToRuntimeMounts(ctx); err != nil {
+			return fmt.Errorf("promote docker to runtime mounts: %w", err)
+		}
+	}
 	if err := svc.Compose.Up(ctx); err != nil {
 		return fmt.Errorf("compose up: %w", err)
 	}
