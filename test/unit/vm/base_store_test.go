@@ -50,6 +50,16 @@ func (s *stubBaseStore) WaitReady(_ context.Context, _ time.Duration) error { re
 
 func (s *stubBaseStore) GetPublishedPort(_ int) (int, error) { return 0, nil }
 
+func (s *stubBaseStore) UsesBootstrapOnlyMounts() bool { return false }
+
+func (s *stubBaseStore) PrepareHostMountDir(_ string) error { return nil }
+
+func (s *stubBaseStore) AfterBootstrapPlugins(_ context.Context) error { return nil }
+
+func (s *stubBaseStore) FinalizeAfterBootstrap(_ context.Context, _ vm.StartOptions) error {
+	return nil
+}
+
 func (s *stubBaseStore) SaveBaseImage(_ context.Context, _ vm.StartOptions) error { return nil }
 
 func (s *stubBaseStore) RestoreFromBaseImage(_ context.Context, _ vm.StartOptions) error {

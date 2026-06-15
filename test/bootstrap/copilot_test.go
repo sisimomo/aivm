@@ -9,6 +9,6 @@ import "testing"
 func TestAgent_Copilot(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
-	h.Install("copilot", nil) // installs system + gh first (dependencies)
+	h.Install("copilot", nil) // installs mise-copilot (mise + system)
 	h.AssertCommand("copilot --version 2>&1", "Copilot")
 }

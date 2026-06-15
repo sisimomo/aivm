@@ -9,9 +9,9 @@ import (
 //go:embed lima.yaml
 var limaTemplate []byte
 
-// LimaTemplatePath writes the embedded template to a temp file for limactl.
-// Caller may remove the file after limactl create completes.
-func LimaTemplatePath() (string, error) {
+// LimaTemplatePath writes the embedded template plus mount entries to a temp file
+// for limactl create. Caller may remove the file after limactl create completes.
+func LimaTemplatePath(mounts []Mount) (string, error) {
 	f, err := os.CreateTemp("", "aivm-lima-*.yaml")
 	if err != nil {
 		return "", fmt.Errorf("create lima template temp file: %w", err)
@@ -20,6 +20,13 @@ func LimaTemplatePath() (string, error) {
 		_ = f.Close()
 		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("write lima template: %w", err)
+	}
+	if yaml := LimaMountsYAML(mounts); yaml != "" {
+		if _, err := f.WriteString("\n" + yaml); err != nil {
+			_ = f.Close()
+			_ = os.Remove(f.Name())
+			return "", fmt.Errorf("write lima mounts: %w", err)
+		}
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(f.Name())

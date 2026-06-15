@@ -6,7 +6,7 @@ minimumLimaVersion: 2.0.0
 base:
   - template:_images/ubuntu-25.10
   # Do not include template:_default/mounts — it bind-mounts the entire host
-  # home (~). aivm only mounts paths from vm.mounts and agent persist dirs.
+  # home (~). aivm only mounts paths from vm.mounts and agent mount dirs.
 
 ssh:
   forwardAgent: false

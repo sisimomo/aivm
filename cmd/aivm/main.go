@@ -18,7 +18,7 @@ import (
 	"github.com/sisimomo/aivm/internal/providers/generic"
 	"github.com/sisimomo/aivm/internal/session"
 	"github.com/sisimomo/aivm/internal/t3code"
-	"github.com/sisimomo/aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/vmfactory"
 )
 
 var version = "dev"
@@ -88,7 +88,7 @@ func buildApp(cfgPath string) (*cli.App, error) {
 		return nil, fmt.Errorf("initializing logs: %w", err)
 	}
 
-	vmInst, err := vm.NewFromConfig(&cfg.VM, cfg.StateDir)
+	vmInst, err := vmfactory.NewFromConfig(&cfg.VM, cfg.StateDir)
 	if err != nil {
 		return nil, fmt.Errorf("vm backend: %w", err)
 	}

@@ -30,6 +30,10 @@ type testConfig struct {
 	Disk    string // "10GB"
 	DevRoot string // convenience: creates a single rw mount
 
+	// RemappedMountGuest, when non-empty, sets target for the DevRoot mount
+	// (host source stays DevRoot). Use WithRemappedMount.
+	RemappedMountGuest string
+
 	IdleTimeout   time.Duration
 	DeleteTimeout time.Duration
 	PollInterval  time.Duration
@@ -103,7 +107,22 @@ func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.Memory = fmt.S
 func WithDiskGiB(n int) Option { return func(c *testConfig) { c.Disk = fmt.Sprintf("%dGB", n) } }
 
 // WithDevRoot sets the dev root directory mounted into the VM.
-func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
+func WithDevRoot(p string) Option {
+	return func(c *testConfig) {
+		c.DevRoot = p
+		c.RemappedMountGuest = ""
+	}
+}
+
+// WithRemappedMount sets a read-write mount where host source and guest
+// target differ. source is bound on the host; target is the path
+// inside the VM (e.g. host devRoot → guest /work).
+func WithRemappedMount(hostSource, guestTarget string) Option {
+	return func(c *testConfig) {
+		c.DevRoot = hostSource
+		c.RemappedMountGuest = guestTarget
+	}
+}
 
 // WithIdleTimeout sets the idle-stop timeout for the monitor.
 func WithIdleTimeout(d time.Duration) Option { return func(c *testConfig) { c.IdleTimeout = d } }
@@ -272,8 +291,14 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  bootstrap_refresh_prompt_after: %q\n", tc.BootstrapRefreshPromptAfter)
 	}
 	if tc.DevRoot != "" {
+		target := tc.DevRoot
+		if tc.RemappedMountGuest != "" {
+			target = tc.RemappedMountGuest
+		}
 		fmt.Fprintf(&sb, "  mounts:\n")
-		fmt.Fprintf(&sb, "    - %q\n", tc.DevRoot+":rw")
+		fmt.Fprintf(&sb, "    - source: %q\n", tc.DevRoot)
+		fmt.Fprintf(&sb, "      target: %q\n", target)
+		fmt.Fprintf(&sb, "      mode: rw\n")
 	}
 	if len(tc.VMEnv) > 0 {
 		keys := make([]string, 0, len(tc.VMEnv))

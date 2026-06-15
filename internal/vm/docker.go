@@ -22,29 +22,55 @@ const dockerContainerUser = "user"
 // the vm.VM interface. Scripts execute via docker exec, so bootstrap scripts
 // run in a real Linux environment.
 type DockerVM struct {
-	mu            sync.Mutex
-	profile       string
-	stateDir      string
-	image         string
-	containerName string
-	lastStartOpts StartOptions
+	mu              sync.Mutex
+	profile         string
+	stateDir        string
+	image           string
+	containerName   string
+	lastStartOpts   StartOptions
+	baseImageEnable bool
 }
 
 var _ VM = (*DockerVM)(nil)
 
 // NewDocker returns a DockerVM for the given profile, state directory, and
 // base image. The container is not started — call Start to create or resume it.
-func NewDocker(profile, stateDir, image string) *DockerVM {
+func NewDocker(profile, stateDir, image string, baseImageEnable bool) *DockerVM {
 	return &DockerVM{
-		profile:       profile,
-		stateDir:      stateDir,
-		image:         image,
-		containerName: profile,
+		profile:         profile,
+		stateDir:        stateDir,
+		image:           image,
+		containerName:   profile,
+		baseImageEnable: baseImageEnable,
 	}
 }
 
 func (d *DockerVM) Profile() string              { return d.profile }
 func (d *DockerVM) NeedsPortBindingAtBoot() bool { return true }
+
+func (d *DockerVM) UsesBootstrapOnlyMounts() bool { return true }
+
+func (d *DockerVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
+
+func (d *DockerVM) PrepareHostMountDir(hostPath string) error {
+	info, err := os.Stat(hostPath)
+	if err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("mount path %q exists and is not a directory", hostPath)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat mount dir %q: %w", hostPath, err)
+	}
+	if err := os.MkdirAll(hostPath, 0o755); err != nil {
+		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
+	}
+	if err := os.Chmod(hostPath, 0o777); err != nil {
+		return fmt.Errorf("chmod mount dir %q: %w", hostPath, err)
+	}
+	return nil
+}
 
 // Status reports whether the container exists and its current state.
 func (d *DockerVM) Status(ctx context.Context) (Status, error) {
@@ -96,11 +122,7 @@ func (d *DockerVM) startFromImage(ctx context.Context, image string, opts StartO
 		args = append(args, "-p", fmt.Sprintf("%d:%d", pm.HostPort, pm.ContainerPort))
 	}
 	for _, m := range opts.Mounts {
-		mode := "ro"
-		if m.Writable {
-			mode = "rw"
-		}
-		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", m.HostPath, m.HostPath, mode))
+		args = append(args, "-v", DockerVolumeFlag(m))
 	}
 	args = append(args, image)
 	return dockerCmd(ctx, args...)
@@ -304,6 +326,13 @@ func dockerCmd(ctx context.Context, args ...string) error {
 // dockerOutput runs a docker command and returns combined stdout, or an error
 // that includes stderr for debugging.
 func dockerOutput(ctx context.Context, args ...string) (string, error) {
+	if hook := currentDockerExecHook(); hook != nil {
+		return hook(ctx, args...)
+	}
+	return runDockerOutput(ctx, args...)
+}
+
+func runDockerOutput(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

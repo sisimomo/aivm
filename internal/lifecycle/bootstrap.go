@@ -25,8 +25,8 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := exec.Run(ctx); err != nil {
 		return err
 	}
-	if _, ok := targetVM.(*vm.LimaVM); ok {
-		vm.CloseSSHControlMaster(ctx, targetVM.Profile())
+	if err := targetVM.AfterBootstrapPlugins(ctx); err != nil {
+		return err
 	}
 	svc.logger().Info("Bootstrap complete!")
 	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
@@ -43,8 +43,6 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := svc.runIntegrationsFromState(ctx, targetVM); err != nil {
 		return err
 	}
-	opts := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
-	_ = svc.SaveBaseImageBestEffort(ctx, opts)
 	return nil
 }
 

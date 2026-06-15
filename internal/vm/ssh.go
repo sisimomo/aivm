@@ -30,7 +30,7 @@ func LimaSSHEndpoint(profile string) (sshConfig, sshHost string) {
 }
 
 // SSHLoginScript returns a bash login-shell command that cds to workDir first.
-// Mounts use the same host path inside the VM, so workDir is the host CWD.
+// workDir is the guest path (translated from the host CWD by lifecycle).
 func SSHLoginScript(workDir string) string {
 	if workDir == "" {
 		return "exec bash -l"

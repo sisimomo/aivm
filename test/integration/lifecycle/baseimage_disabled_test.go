@@ -19,7 +19,7 @@ func TestRecreate_FastIgnoredWhenBaseImageDisabled(t *testing.T) {
 	if err := h.SVC().Recreate(ctx, true, true); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("--fast must be ignored when base images disabled")
 	}
 	if !h.VM().HasCall("Destroy") {
@@ -55,7 +55,7 @@ func TestStart_BaseImageDisabled_WithArtifact_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("must not restore when base images disabled")
 	}
 	if !h.VM().HasCall("Destroy") {

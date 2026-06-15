@@ -129,11 +129,23 @@ func (svc *LifecycleService) finalizeStart(ctx context.Context) error {
 
 func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Status) error {
 	cfg := svc.Config
-	opts := buildStartOptions(svc.VM, cfg, svc.AgentDefs)
 	wasCreated := status == vm.StatusNotFound
 	needsStart := status != vm.StatusRunning
 
-	ensureAgentPersistDirs(cfg, svc.AgentDefs)
+	var opts vm.StartOptions
+	var err error
+	if wasCreated && svc.VM.UsesBootstrapOnlyMounts() {
+		opts, err = buildBootstrapStartOptions(svc.VM, cfg, svc.AgentDefs)
+	} else {
+		opts, err = buildStartOptions(svc.VM, cfg, svc.AgentDefs)
+	}
+	if err != nil {
+		return fmt.Errorf("building start options: %w", err)
+	}
+
+	if err := ensureAgentMountDirs(svc.VM, cfg, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return fmt.Errorf("starting VM: %w", err)
@@ -152,6 +164,12 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 
 	if err := svc.ensureBootstrapped(ctx, wasCreated); err != nil {
 		return err
+	}
+
+	if wasCreated {
+		if err := finalizeAfterBootstrap(ctx, svc); err != nil {
+			return err
+		}
 	}
 
 	if needsStart {

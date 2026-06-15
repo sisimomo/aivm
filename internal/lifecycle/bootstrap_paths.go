@@ -16,8 +16,19 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.VM.Destroy(ctx); err != nil {
 		return fmt.Errorf("destroy VM: %w", err)
 	}
-	opts := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
-	ensureAgentPersistDirs(svc.Config, svc.AgentDefs)
+	var opts vm.StartOptions
+	var err error
+	if svc.VM.UsesBootstrapOnlyMounts() {
+		opts, err = buildBootstrapStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	} else {
+		opts, err = buildRuntimeStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	}
+	if err != nil {
+		return fmt.Errorf("building start options: %w", err)
+	}
+	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 	if err := svc.VM.Start(ctx, opts); err != nil {
 		return err
 	}
@@ -29,7 +40,9 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.bootstrap(ctx, svc.VM); err != nil {
 		return err
 	}
-	// bootstrap() saves the base image; no second save here.
+	if err := finalizeAfterBootstrap(ctx, svc); err != nil {
+		return err
+	}
 	if err := svc.Compose.Up(ctx); err != nil {
 		return fmt.Errorf("compose up: %w", err)
 	}
@@ -44,8 +57,13 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 		svc.logger().Warn("No valid base image — falling back to full bootstrap")
 		return svc.fullBootstrap(ctx)
 	}
-	opts := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
-	ensureAgentPersistDirs(svc.Config, svc.AgentDefs)
+	opts, err := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	if err != nil {
+		return fmt.Errorf("building start options: %w", err)
+	}
+	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("agent mount dirs: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, vm.BaseImageOpTimeout)
 	defer cancel()
 	if err := store.RestoreFromBaseImage(ctx, opts); err != nil {

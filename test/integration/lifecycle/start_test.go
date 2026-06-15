@@ -19,7 +19,7 @@ func TestStart_NonInteractive_VMMissing_ValidBase_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate when VM missing and base valid")
 	}
 }
@@ -34,7 +34,7 @@ func TestStart_NonInteractive_VMMissing_NoBase_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected full bootstrap, not restore")
 	}
 	if !h.VM().HasCall("Destroy") {

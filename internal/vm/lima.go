@@ -22,21 +22,49 @@ const stopContainersScript = `command -v docker >/dev/null 2>&1 && \
   docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true`
 
 type LimaVM struct {
-	profile  string
-	stateDir string
-	lock     *LifecycleLock
+	profile         string
+	stateDir        string
+	lock            *LifecycleLock
+	baseImageEnable bool
 }
 
-func NewLima(profile, stateDir string) *LimaVM {
+func NewLima(profile, stateDir string, baseImageEnable bool) *LimaVM {
 	return &LimaVM{
-		profile:  profile,
-		stateDir: stateDir,
-		lock:     NewLifecycleLock(stateDir),
+		profile:         profile,
+		stateDir:        stateDir,
+		lock:            NewLifecycleLock(stateDir),
+		baseImageEnable: baseImageEnable,
 	}
 }
 
 func (l *LimaVM) Profile() string              { return l.profile }
 func (l *LimaVM) NeedsPortBindingAtBoot() bool { return false }
+
+func (l *LimaVM) UsesBootstrapOnlyMounts() bool { return false }
+
+func (l *LimaVM) PrepareHostMountDir(hostPath string) error {
+	if err := os.MkdirAll(hostPath, 0o755); err != nil {
+		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
+	}
+	return nil
+}
+
+func (l *LimaVM) AfterBootstrapPlugins(ctx context.Context) error {
+	CloseSSHControlMaster(ctx, l.profile)
+	return nil
+}
+
+func (l *LimaVM) FinalizeAfterBootstrap(
+	ctx context.Context, runtimeOpts StartOptions,
+) error {
+	if !l.baseImageEnable {
+		return nil
+	}
+	if err := l.SaveBaseImage(ctx, runtimeOpts); err != nil {
+		slog.Warn(fmt.Sprintf("save base image failed (VM still usable): %v", err))
+	}
+	return nil
+}
 
 // GetPublishedPort returns containerPort unchanged. Lima uses an SSH tunnel so
 // the host port always matches the container port; there is no Docker-style
@@ -78,7 +106,7 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 		slog.Debug(fmt.Sprintf("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
 			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType))
 
-		templatePath, err := LimaTemplatePath()
+		templatePath, err := LimaTemplatePath(opts.Mounts)
 		if err != nil {
 			return err
 		}
@@ -92,13 +120,6 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 			"--disk", strconv.Itoa(int(opts.DiskBytes >> 30)),
 		}
 		args = append(args, l.vmTypeFlags(opts.VMType)...)
-		for _, m := range opts.Mounts {
-			flag := m.HostPath + ":r"
-			if m.Writable {
-				flag = m.HostPath + ":w"
-			}
-			args = append(args, "--mount", flag)
-		}
 		cmd := exec.CommandContext(ctx, "limactl", args...)
 		if err := aivmlog.RunCmd(cmd, "lima"); err != nil {
 			return err

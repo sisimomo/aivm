@@ -74,7 +74,7 @@ func newBootstrapHarnessWithOptions(t *testing.T, opts bootstrapHarnessOptions) 
 		t.Fatalf("harness: create state dir: %v", err)
 	}
 
-	dockerVM := vm.NewDocker(profile, stateDir, framework.TestImageName)
+	dockerVM := vm.NewDocker(profile, stateDir, framework.TestImageName, false)
 
 	ctx := context.Background()
 	if err := dockerVM.Start(ctx, vm.StartOptions{Privileged: opts.privileged}); err != nil {

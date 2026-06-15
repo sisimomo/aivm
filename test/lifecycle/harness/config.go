@@ -16,7 +16,7 @@ type harnessConfig struct {
 
 func defaultHarnessConfig() harnessConfig {
 	return harnessConfig{
-		backend:                     "docker",
+		backend:                     "lima",
 		vmType:                      "",
 		baseImageEnable:             true,
 		recreatePromptAfter:         "-1",

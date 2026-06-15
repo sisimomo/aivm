@@ -130,6 +130,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 
 	fake := testvm.New()
+	fake.SetBaseImageEnable(cfg.baseImageEnable)
 	sessions := session.NewStore(stateDir)
 	composeMgr := noopCompose{}
 	mon := monitor.NewIdleMonitor(
@@ -357,7 +358,9 @@ func (h *Harness) VMCallLogHasRunSubstr(substr string) bool {
 // can resolve a working directory under a configured mount.
 func (h *Harness) SetLaunchWorkDir(workDir string) {
 	h.t.Helper()
-	h.svc.Config.VM.ParsedMounts = []config.Mount{{HostPath: workDir, Writable: true}}
+	h.svc.Config.VM.ParsedMounts = []config.Mount{{
+		HostPath: workDir, GuestPath: workDir, Writable: true,
+	}}
 	h.svc.GetWorkDir = func() (string, error) { return workDir, nil }
 }
 

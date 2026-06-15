@@ -53,7 +53,7 @@ func TestFullBootstrap_UpdatesBootstrapAt_SavesBaseImage(t *testing.T) {
 	if !h.VM().HasCall("SaveBaseImage") {
 		t.Fatal("full bootstrap must save base image")
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("full recreate must not restore from base")
 	}
 }

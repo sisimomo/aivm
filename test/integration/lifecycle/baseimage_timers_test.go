@@ -55,7 +55,7 @@ func TestStart_VMAgeOnly_VMMissing_Interactive_SilentFastRecreate(t *testing.T) 
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("VM age due with missing VM should silently fast recreate when base valid")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -79,7 +79,7 @@ func TestStart_BootstrapRefreshOnly_VMMissing_Declined_FastRecreate(t *testing.T
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("declined bootstrap refresh on missing VM should fast restore")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -104,7 +104,7 @@ func TestStart_TimersDisabled_Interactive_NoRecreation(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("disabled timers must not trigger recreation")
 	}
 	if h.VM().HasCall("Destroy") {
@@ -124,7 +124,7 @@ func TestStart_NonInteractive_VMMissing_OnlyVMAgeDue_FastRecreate(t *testing.T) 
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("non-interactive missing VM should fast restore when base valid")
 	}
 }

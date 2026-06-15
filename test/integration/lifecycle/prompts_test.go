@@ -48,7 +48,7 @@ func TestStart_BootstrapRefreshDeclined_StoppedVM_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate when refresh declined on stopped VM")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -96,7 +96,7 @@ func TestStart_CombinedPrompt_Option2_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("option 2 should fast recreate")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -120,7 +120,7 @@ func TestStart_BootstrapRefreshDeclined_RunningVM_NoRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasCall("Destroy") || h.VM().HasFastRestoreFromBase() {
 		t.Fatal("declined refresh on running VM must keep VM as-is")
 	}
 }
@@ -141,7 +141,7 @@ func TestStart_VMAgePromptDeclined_ResumesStoppedVM(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasCall("Destroy") || h.VM().HasFastRestoreFromBase() {
 		t.Fatal("declined VM age prompt must resume without recreate")
 	}
 	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
@@ -188,7 +188,7 @@ func TestStart_CombinedPrompt_VMMissing_Option2_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("option 2 with missing VM should fast recreate")
 	}
 }
@@ -210,7 +210,7 @@ func TestStart_NonInteractive_StaleTimers_RunningVM_Resumes(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasCall("Destroy") || h.VM().HasFastRestoreFromBase() {
 		t.Fatal("non-interactive stale timers on running VM must resume silently")
 	}
 }
@@ -232,7 +232,7 @@ func TestStart_NonInteractive_StaleTimers_StoppedVM_Resumes(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("Destroy") || h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasCall("Destroy") || h.VM().HasFastRestoreFromBase() {
 		t.Fatal("non-interactive stale timers on stopped VM must resume silently")
 	}
 	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
@@ -297,7 +297,7 @@ func TestStart_NonInteractive_VMMissing_StaleTimers_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("non-interactive missing VM with valid base should fast restore")
 	}
 }
@@ -320,7 +320,7 @@ func TestStart_CombinedPrompt_Option3_Resume(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") || h.VM().HasCall("Destroy") {
+	if h.VM().HasFastRestoreFromBase() || h.VM().HasCall("Destroy") {
 		t.Fatal("option 3 should resume without recreate")
 	}
 	if got, _ := h.VM().Status(ctx); got != vm.StatusRunning {
@@ -423,7 +423,7 @@ func TestStart_VMAgePromptAccepted_ValidBase_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("accepted VM age with valid base should fast recreate")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -499,7 +499,7 @@ func TestStart_CombinedPrompt_Option2_TerminatesSessions(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("option 2 should fast recreate")
 	}
 	if h.ActiveSessionCount() != 0 {

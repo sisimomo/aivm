@@ -117,23 +117,17 @@ func TestLoadDefaults_AWSCliIsArchAware(t *testing.T) {
 	}
 }
 
-// TestLoadDefaults_T3CodeUsesStateDirTemplate validates that the t3code setup
-// script references the state_dir template variable. This is the host-mounted
-// persistence path; if the reference is removed the bind-mount symlink is
-// never created and state is lost on VM recreation.
-func TestLoadDefaults_T3CodeUsesStateDirTemplate(t *testing.T) {
+func TestLoadDefaults_T3CodeSetupHasNoSymlink(t *testing.T) {
 	defs, err := plugin.LoadDefaults()
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
-
 	t3code, ok := defs["t3code"]
 	if !ok {
 		t.Fatal("t3code plugin not found")
 	}
-
-	if !strings.Contains(t3code.Setup, ".state_dir") {
-		t.Error("t3code setup: does not reference {{ .state_dir }} template variable")
+	if strings.Contains(t3code.Setup, "ln -sfn") {
+		t.Error("t3code setup must not symlink ~/.t3")
 	}
 }
 

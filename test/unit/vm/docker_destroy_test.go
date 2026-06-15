@@ -17,7 +17,7 @@ func TestDockerVM_Destroy_PreservesHostAgeFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d := vm.NewDocker("nosuch-container-"+t.Name(), dir, "ubuntu:24.04")
+	d := vm.NewDocker("nosuch-container-"+t.Name(), dir, "ubuntu:24.04", false)
 	if err := d.Destroy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestDockerVM_DestroyWithImages_PreservesHostAgeFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d := vm.NewDocker("nosuch-container-"+t.Name(), dir, "ubuntu:24.04")
+	d := vm.NewDocker("nosuch-container-"+t.Name(), dir, "ubuntu:24.04", false)
 	d.DestroyWithImages()
 	if _, err := os.Stat(agePath); err != nil {
 		t.Fatalf("vm-created-at should survive DestroyWithImages: %v", err)

@@ -3,7 +3,9 @@ vm:
   memory: "8GB"
   disk: "60GB"
   mounts:
-    - "~/dev:rw"
+    - source: "~/dev"
+      target: "{{ .host_home }}/dev"
+      mode: rw
   name: aivm
   backend: lima
   recreate_prompt_after: "7d"
@@ -24,4 +26,3 @@ plugins:
     - system
 
 log_level: info
-

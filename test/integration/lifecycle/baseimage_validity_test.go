@@ -20,7 +20,7 @@ func TestStart_InvalidConfigHash_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("invalid config hash must not fast restore")
 	}
 	if !h.VM().HasCall("Start") {
@@ -42,7 +42,7 @@ func TestStart_MissingBaseArtifact_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("missing base artifact must not restore")
 	}
 	if !h.VM().HasCall("Destroy") {
@@ -62,7 +62,7 @@ func TestStart_VMTypeMismatchInState_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("vm_type mismatch must invalidate base for restore")
 	}
 	if !h.VM().HasCall("Start") {
@@ -75,7 +75,7 @@ func TestStart_VMTypeMismatchInState_MissingVM_FullBootstrap(t *testing.T) {
 
 func TestStart_BackendMismatch_MissingVM_FullBootstrap(t *testing.T) {
 	t.Parallel()
-	h := harness.New(t)
+	h := harness.New(t, harness.WithBackend("docker"))
 	h.SeedBootstrapped()
 	h.SetVMStatus(vm.StatusNotFound)
 	h.SetBaseImage(true)
@@ -85,14 +85,14 @@ func TestStart_BackendMismatch_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("backend mismatch must not fast restore")
 	}
 	if !h.VM().HasCall("Start") {
-		t.Fatal("expected fresh VM start when base is invalid")
+		t.Fatal("expected fresh VM start when runtime mismatches stored state")
 	}
 	if !h.VM().HasCall("SaveBaseImage") {
-		t.Fatal("expected full bootstrap after invalid base")
+		t.Fatal("expected bootstrap to save base image after runtime mismatch")
 	}
 }
 
@@ -108,7 +108,7 @@ func TestStart_StaleBootstrapVersion_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("stale bootstrap version must not fast restore")
 	}
 	if !h.VM().HasCall("Destroy") {

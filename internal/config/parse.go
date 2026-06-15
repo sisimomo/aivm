@@ -147,6 +147,27 @@ func ValidateAgentsDefine(cfgPath string) error {
 	)
 }
 
+// rejectUnsupportedVMFields rejects vm keys that are not part of the public config surface.
+func rejectUnsupportedVMFields(cfgPath string) error {
+	if cfgPath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil
+	}
+	var raw struct {
+		VM map[string]any `yaml:"vm"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("vm: %w", err)
+	}
+	if _, ok := raw.VM["guest_home"]; ok {
+		return fmt.Errorf("vm.guest_home: not supported — vm home is determined automatically from the VM backend")
+	}
+	return nil
+}
+
 func agentDefineYAMLKeys() map[string]struct{} {
 	var d AgentDefine
 	t := reflect.TypeOf(d)
@@ -162,37 +183,4 @@ func agentDefineYAMLKeys() map[string]struct{} {
 		}
 	}
 	return allowed
-}
-
-// ParseMount parses a mount specification of the form "<host_path>:<mode>"
-// or "<host_path>" (defaults to rw). The host path is expanded (~ → home).
-// Valid modes: "ro" (read-only), "rw" (read-write). Any other mode is an error.
-func ParseMount(spec, home string) (Mount, error) {
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		return Mount{}, fmt.Errorf("empty mount specification")
-	}
-
-	parts := strings.SplitN(spec, ":", 2)
-	rawPath := strings.TrimSpace(parts[0])
-	if rawPath == "" {
-		return Mount{}, fmt.Errorf("invalid mount %q: missing host path", spec)
-	}
-
-	hostPath := expandPath(rawPath, home)
-	writable := true // default is rw
-
-	if len(parts) == 2 {
-		mode := strings.ToLower(strings.TrimSpace(parts[1]))
-		switch mode {
-		case "rw":
-			writable = true
-		case "ro":
-			writable = false
-		default:
-			return Mount{}, fmt.Errorf("invalid mount %q: unknown mode %q — use \"ro\" or \"rw\"", spec, mode)
-		}
-	}
-
-	return Mount{HostPath: hostPath, Writable: writable}, nil
 }

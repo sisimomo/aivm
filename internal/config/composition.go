@@ -59,8 +59,8 @@ type CompositionResult struct {
 	ActiveAgentDef agent.Def
 
 	// EnabledAgentDefs is the effective set of agent definitions for ALL enabled
-	// agents (those listed in agents.enabled). Used by bootstrap and
-	// persist-dir mounting to set up every enabled agent in the VM.
+	// agents (those listed in agents.enabled). Used by bootstrap and agent
+	// mount assembly to set up every enabled agent in the VM.
 	EnabledAgentDefs map[string]agent.Def
 
 	// PluginDefs is the effective set of all plugin definitions after merging

@@ -118,6 +118,10 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 	if err := AssertUnderMount(realCWD, svc.Config); err != nil {
 		return err
 	}
+	guestCWD, err := GuestPathForHost(realCWD, svc.Config)
+	if err != nil {
+		return err
+	}
 
 	sess, err := svc.Sessions.Create(hostCWD)
 	if err != nil {
@@ -136,7 +140,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 		os.Exit(0)
 	}()
 
-	return svc.VM.SSH(ctx, realCWD, svc.Config.VM.ResolvedSessionEnv())
+	return svc.VM.SSH(ctx, guestCWD, svc.Config.VM.ResolvedSessionEnv())
 }
 
 // Logs tails the aivm or idle-monitor log file.
