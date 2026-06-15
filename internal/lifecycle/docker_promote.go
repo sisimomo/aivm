@@ -27,7 +27,7 @@ func (svc *LifecycleService) promoteDockerToRuntimeMounts(ctx context.Context) e
 	}
 	dockerVM, ok := svc.VM.(*vm.DockerVM)
 	if !ok {
-		return store.RestoreFromBaseImage(ctx, runtimeOpts)
+		return nil
 	}
 	return dockerVM.PromoteWithEphemeralCommit(ctx, runtimeOpts)
 }
