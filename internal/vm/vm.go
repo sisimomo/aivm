@@ -53,6 +53,20 @@ type VM interface {
 	// (false for Lima). Callers use this instead of inspecting the backend
 	// config string so the decision stays behind the VM seam.
 	NeedsPortBindingAtBoot() bool
+	// UsesBootstrapOnlyMounts reports whether the initial VM create should attach
+	// only bootstrap mounts (user vm.mounts). Agent and T3 mounts are applied
+	// later via FinalizeAfterBootstrap. True for Docker; false for Lima.
+	UsesBootstrapOnlyMounts() bool
+	// PrepareHostMountDir creates a host directory suitable for bind-mounting into
+	// this backend (e.g. permissive permissions when guest UID differs from host).
+	PrepareHostMountDir(hostPath string) error
+	// AfterBootstrapPlugins runs backend-specific cleanup immediately after plugin
+	// bootstrap completes. Lima closes the SSH control master; Docker is a no-op.
+	AfterBootstrapPlugins(ctx context.Context) error
+	// FinalizeAfterBootstrap transitions from bootstrap to runtime configuration
+	// after plugins succeed on a freshly created VM. Docker recreates the
+	// container with runtimeOpts; Lima saves the base image when enabled.
+	FinalizeAfterBootstrap(ctx context.Context, runtimeOpts StartOptions) error
 	Status(ctx context.Context) (Status, error)
 	Start(ctx context.Context, opts StartOptions) error
 	Stop(ctx context.Context) error
