@@ -16,6 +16,9 @@ func TestDefaultUserHome_Docker(t *testing.T) {
 }
 
 func TestDefaultUserHome_LimaLinux(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("linux-style VM home assertion")
+	}
 	t.Setenv("USER", "simon")
 	got := vm.DefaultUserHome("lima", "/home/simon")
 	if got != "/home/simon" {

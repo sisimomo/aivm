@@ -122,7 +122,10 @@ func TestLoadDefaults_T3CodeSetupHasNoSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDefaults: %v", err)
 	}
-	t3code := defs["t3code"]
+	t3code, ok := defs["t3code"]
+	if !ok {
+		t.Fatal("t3code plugin not found")
+	}
 	if strings.Contains(t3code.Setup, "ln -sfn") {
 		t.Error("t3code setup must not symlink ~/.t3")
 	}

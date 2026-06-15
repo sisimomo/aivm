@@ -2,6 +2,7 @@ package vm_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ type finalizeStubVM struct {
 	calls           []string
 	saveMounts      int
 	restoreMounts   int
+	saveErr         error
 }
 
 func (s *finalizeStubVM) Profile() string { return "test" }
@@ -69,7 +71,8 @@ func (s *finalizeStubVM) AfterBootstrapPlugins(_ context.Context) error { return
 func (s *finalizeStubVM) FinalizeAfterBootstrap(_ context.Context, opts vm.StartOptions) error {
 	if s.baseImageEnable {
 		if err := s.SaveBaseImage(context.Background(), opts); err != nil {
-			return err
+			s.calls = append(s.calls, "promoteWithEphemeralCommit")
+			return nil
 		}
 		return s.RestoreFromBaseImage(context.Background(), opts)
 	}
@@ -79,7 +82,7 @@ func (s *finalizeStubVM) FinalizeAfterBootstrap(_ context.Context, opts vm.Start
 func (s *finalizeStubVM) SaveBaseImage(_ context.Context, opts vm.StartOptions) error {
 	s.calls = append(s.calls, "SaveBaseImage")
 	s.saveMounts = len(opts.Mounts)
-	return nil
+	return s.saveErr
 }
 
 func (s *finalizeStubVM) RestoreFromBaseImage(_ context.Context, opts vm.StartOptions) error {
@@ -153,5 +156,26 @@ func TestDockerVM_FinalizeAfterBootstrap_SaveAndRestore(t *testing.T) {
 	}
 	if stub.restoreMounts != len(runtimeMounts) {
 		t.Fatalf("restore mounts = %d, want runtime %d", stub.restoreMounts, len(runtimeMounts))
+	}
+}
+
+func TestDockerVM_FinalizeAfterBootstrap_SaveFailureFallsBack(t *testing.T) {
+	stub := &finalizeStubVM{
+		baseImageEnable: true,
+		saveErr:         errors.New("save failed"),
+	}
+	runtimeOpts := vm.StartOptions{Mounts: []vm.Mount{{HostPath: "/h", GuestPath: "/g"}}}
+
+	if err := stub.FinalizeAfterBootstrap(context.Background(), runtimeOpts); err != nil {
+		t.Fatalf("FinalizeAfterBootstrap: %v", err)
+	}
+	if len(stub.calls) != 2 {
+		t.Fatalf("calls = %v, want [SaveBaseImage promoteWithEphemeralCommit]", stub.calls)
+	}
+	if stub.calls[0] != "SaveBaseImage" || stub.calls[1] != "promoteWithEphemeralCommit" {
+		t.Fatalf("call order = %v, want Save then ephemeral promote", stub.calls)
+	}
+	if stub.restoreMounts != 0 {
+		t.Fatalf("restore should not run on save failure, restoreMounts = %d", stub.restoreMounts)
 	}
 }

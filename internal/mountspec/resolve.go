@@ -58,7 +58,10 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 }
 
 func renderPath(src string, ctx Context) (string, error) {
-	t, err := template.New("").Funcs(plugin.TemplateFuncMap()).Parse(src)
+	t, err := template.New("").
+		Option("missingkey=error").
+		Funcs(plugin.TemplateFuncMap()).
+		Parse(src)
 	if err != nil {
 		return "", err
 	}

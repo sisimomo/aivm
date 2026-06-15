@@ -107,7 +107,12 @@ func WithMemoryGiB(n int) Option { return func(c *testConfig) { c.Memory = fmt.S
 func WithDiskGiB(n int) Option { return func(c *testConfig) { c.Disk = fmt.Sprintf("%dGB", n) } }
 
 // WithDevRoot sets the dev root directory mounted into the VM.
-func WithDevRoot(p string) Option { return func(c *testConfig) { c.DevRoot = p } }
+func WithDevRoot(p string) Option {
+	return func(c *testConfig) {
+		c.DevRoot = p
+		c.RemappedMountGuest = ""
+	}
+}
 
 // WithRemappedMount sets a read-write mount where host source and guest
 // target differ. source is bound on the host; target is the path

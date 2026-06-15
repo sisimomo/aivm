@@ -142,3 +142,17 @@ func TestResolveMountSpec_MissingField(t *testing.T) {
 		t.Fatal("expected error for missing source")
 	}
 }
+
+func TestResolveMountSpec_UnknownTemplateKey(t *testing.T) {
+	t.Parallel()
+	spec := mountspec.MountSpec{
+		Source: `{{ .guest_home }}/dev`,
+		Target: "/work",
+		Mode:   "rw",
+	}
+	ctx := mountspec.Context{Home: "/h", VMHome: "/g", StateDir: "/s"}
+	_, err := mountspec.Resolve(spec, ctx)
+	if err == nil {
+		t.Fatal("expected error for unknown template key")
+	}
+}

@@ -160,7 +160,10 @@ func ResolvedMountsForRuntime(
 	agentDefs map[string]agent.Def,
 	t3Enabled bool,
 ) ([]vm.Mount, error) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("determining host home: %w", err)
+	}
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
 
 	mounts := resolvedVMMounts(cfg)
@@ -230,19 +233,37 @@ func ResolvedMountsForRuntime(
 func ensureAgentMountDirs(
 	v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def,
 ) error {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("determining host home: %w", err)
+	}
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
-	seen := make(map[string]bool)
-	for name, def := range agentDefs {
-		for _, spec := range def.Mounts {
+
+	seenGuest := make(map[string]bool)
+	for _, m := range cfg.VM.ParsedMounts {
+		seenGuest[m.GuestPath] = true
+	}
+	seenHost := make(map[string]bool)
+
+	agentNames := make([]string, 0, len(agentDefs))
+	for name := range agentDefs {
+		agentNames = append(agentNames, name)
+	}
+	sort.Strings(agentNames)
+	for _, name := range agentNames {
+		for _, spec := range agentDefs[name].Mounts {
 			r, err := mountspec.Resolve(spec, ctx)
 			if err != nil {
 				return fmt.Errorf("agent %q mounts: %w", name, err)
 			}
-			if seen[r.HostPath] {
+			if seenGuest[r.GuestPath] {
 				continue
 			}
-			seen[r.HostPath] = true
+			seenGuest[r.GuestPath] = true
+			if seenHost[r.HostPath] {
+				continue
+			}
+			seenHost[r.HostPath] = true
 			if err := v.PrepareHostMountDir(r.HostPath); err != nil {
 				return err
 			}
@@ -257,8 +278,10 @@ func ensureAgentMountDirs(
 		if err != nil {
 			return fmt.Errorf("t3 mount: %w", err)
 		}
-		if err := v.PrepareHostMountDir(r.HostPath); err != nil {
-			return err
+		if !seenGuest[r.GuestPath] && !seenHost[r.HostPath] {
+			if err := v.PrepareHostMountDir(r.HostPath); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
