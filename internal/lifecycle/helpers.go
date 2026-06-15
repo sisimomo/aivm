@@ -225,27 +225,13 @@ func ResolvedMountsForRuntime(
 	return mounts, nil
 }
 
-// ensureHostMountDir creates a host persistence directory for bind mounts.
-// On Docker, chmod 0777 so the guest user (different UID) can write through
-// the bind mount.
-func ensureHostMountDir(hostPath string, dockerBackend bool) error {
-	if err := os.MkdirAll(hostPath, 0755); err != nil {
-		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
-	}
-	if dockerBackend {
-		if err := os.Chmod(hostPath, 0777); err != nil {
-			return fmt.Errorf("chmod mount dir %q: %w", hostPath, err)
-		}
-	}
-	return nil
-}
-
 // ensureAgentMountDirs creates the host-side directories that are mounted
 // into the VM for persistence.
-func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) error {
+func ensureAgentMountDirs(
+	v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def,
+) error {
 	home, _ := os.UserHomeDir()
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
-	dockerBackend := effectiveBackend(cfg.VM) == "docker"
 	seen := make(map[string]bool)
 	for name, def := range agentDefs {
 		for _, spec := range def.Mounts {
@@ -257,7 +243,7 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) er
 				continue
 			}
 			seen[r.HostPath] = true
-			if err := ensureHostMountDir(r.HostPath, dockerBackend); err != nil {
+			if err := v.PrepareHostMountDir(r.HostPath); err != nil {
 				return err
 			}
 		}
@@ -271,9 +257,20 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) er
 		if err != nil {
 			return fmt.Errorf("t3 mount: %w", err)
 		}
-		if err := ensureHostMountDir(r.HostPath, dockerBackend); err != nil {
+		if err := v.PrepareHostMountDir(r.HostPath); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func finalizeAfterBootstrap(ctx context.Context, svc *LifecycleService) error {
+	runtimeOpts, err := buildRuntimeStartOptions(svc.VM, svc.Config, svc.AgentDefs)
+	if err != nil {
+		return fmt.Errorf("building runtime start options: %w", err)
+	}
+	if err := svc.VM.FinalizeAfterBootstrap(ctx, runtimeOpts); err != nil {
+		return fmt.Errorf("finalize after bootstrap: %w", err)
 	}
 	return nil
 }

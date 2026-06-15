@@ -58,6 +58,16 @@ func (c *captureVM) WaitReady(_ context.Context, _ time.Duration) error { return
 
 func (c *captureVM) GetPublishedPort(_ int) (int, error) { return 0, nil }
 
+func (c *captureVM) UsesBootstrapOnlyMounts() bool { return false }
+
+func (c *captureVM) PrepareHostMountDir(_ string) error { return nil }
+
+func (c *captureVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
+
+func (c *captureVM) FinalizeAfterBootstrap(_ context.Context, _ vm.StartOptions) error {
+	return nil
+}
+
 type failingDestroyVM struct {
 	captureVM
 	destroyCalled bool

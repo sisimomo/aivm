@@ -134,7 +134,7 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 
 	var opts vm.StartOptions
 	var err error
-	if wasCreated && effectiveBackend(cfg.VM) == "docker" {
+	if wasCreated && svc.VM.UsesBootstrapOnlyMounts() {
 		opts, err = buildBootstrapStartOptions(svc.VM, cfg, svc.AgentDefs)
 	} else {
 		opts, err = buildStartOptions(svc.VM, cfg, svc.AgentDefs)
@@ -143,7 +143,7 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 		return fmt.Errorf("building start options: %w", err)
 	}
 
-	if err := ensureAgentMountDirs(cfg, svc.AgentDefs); err != nil {
+	if err := ensureAgentMountDirs(svc.VM, cfg, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
 
@@ -166,9 +166,9 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 		return err
 	}
 
-	if wasCreated && effectiveBackend(cfg.VM) == "docker" {
-		if err := svc.promoteDockerToRuntimeMounts(ctx); err != nil {
-			return fmt.Errorf("promote docker to runtime mounts: %w", err)
+	if wasCreated {
+		if err := finalizeAfterBootstrap(ctx, svc); err != nil {
+			return err
 		}
 	}
 

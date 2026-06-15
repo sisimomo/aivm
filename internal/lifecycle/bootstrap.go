@@ -25,8 +25,8 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	if err := exec.Run(ctx); err != nil {
 		return err
 	}
-	if _, ok := targetVM.(*vm.LimaVM); ok {
-		vm.CloseSSHControlMaster(ctx, targetVM.Profile())
+	if err := targetVM.AfterBootstrapPlugins(ctx); err != nil {
+		return err
 	}
 	svc.logger().Info("Bootstrap complete!")
 	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
@@ -42,13 +42,6 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 	vm.RecordBootstrapAt(svc.Config.StateDir)
 	if err := svc.runIntegrationsFromState(ctx, targetVM); err != nil {
 		return err
-	}
-	if effectiveBackend(svc.Config.VM) != "docker" {
-		opts, err := buildRuntimeStartOptions(svc.VM, svc.Config, svc.AgentDefs)
-		if err != nil {
-			return fmt.Errorf("building start options: %w", err)
-		}
-		_ = svc.SaveBaseImageBestEffort(ctx, opts)
 	}
 	return nil
 }

@@ -18,7 +18,7 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	}
 	var opts vm.StartOptions
 	var err error
-	if effectiveBackend(svc.Config.VM) == "docker" {
+	if svc.VM.UsesBootstrapOnlyMounts() {
 		opts, err = buildBootstrapStartOptions(svc.VM, svc.Config, svc.AgentDefs)
 	} else {
 		opts, err = buildRuntimeStartOptions(svc.VM, svc.Config, svc.AgentDefs)
@@ -26,7 +26,7 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
-	if err := ensureAgentMountDirs(svc.Config, svc.AgentDefs); err != nil {
+	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
 	if err := svc.VM.Start(ctx, opts); err != nil {
@@ -40,10 +40,8 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err := svc.bootstrap(ctx, svc.VM); err != nil {
 		return err
 	}
-	if effectiveBackend(svc.Config.VM) == "docker" {
-		if err := svc.promoteDockerToRuntimeMounts(ctx); err != nil {
-			return fmt.Errorf("promote docker to runtime mounts: %w", err)
-		}
+	if err := finalizeAfterBootstrap(ctx, svc); err != nil {
+		return err
 	}
 	if err := svc.Compose.Up(ctx); err != nil {
 		return fmt.Errorf("compose up: %w", err)
@@ -63,7 +61,7 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
-	if err := ensureAgentMountDirs(svc.Config, svc.AgentDefs); err != nil {
+	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, vm.BaseImageOpTimeout)
