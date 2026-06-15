@@ -3,8 +3,6 @@ package lifecycle
 import (
 	"context"
 	"fmt"
-
-	"github.com/sisimomo/aivm/internal/vm"
 )
 
 func (svc *LifecycleService) promoteDockerToRuntimeMounts(ctx context.Context) error {
@@ -15,21 +13,7 @@ func (svc *LifecycleService) promoteDockerToRuntimeMounts(ctx context.Context) e
 	if err != nil {
 		return fmt.Errorf("building runtime start options: %w", err)
 	}
-	store, ok := vm.AsBaseImageStore(svc.VM)
-	if !ok {
-		return fmt.Errorf("docker VM does not support base images")
-	}
-	if svc.baseImageEnabled() {
-		if err := store.SaveBaseImage(ctx, runtimeOpts); err != nil {
-			svc.logger().Warn(fmt.Sprintf("save base image failed: %v", err))
-		}
-		return store.RestoreFromBaseImage(ctx, runtimeOpts)
-	}
-	dockerVM, ok := svc.VM.(*vm.DockerVM)
-	if !ok {
-		return nil
-	}
-	return dockerVM.PromoteWithEphemeralCommit(ctx, runtimeOpts)
+	return svc.VM.FinalizeAfterBootstrap(ctx, runtimeOpts)
 }
 
 // PromoteDockerToRuntimeMountsForTest exposes promoteDockerToRuntimeMounts for unit tests.

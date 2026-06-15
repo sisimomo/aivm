@@ -59,6 +59,19 @@ func (s *promoteStubVM) WaitReady(_ context.Context, _ time.Duration) error { re
 
 func (s *promoteStubVM) GetPublishedPort(_ int) (int, error) { return 0, nil }
 
+func (s *promoteStubVM) UsesBootstrapOnlyMounts() bool { return true }
+
+func (s *promoteStubVM) PrepareHostMountDir(_ string) error { return nil }
+
+func (s *promoteStubVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
+
+func (s *promoteStubVM) FinalizeAfterBootstrap(_ context.Context, opts vm.StartOptions) error {
+	if err := s.SaveBaseImage(context.Background(), opts); err != nil {
+		return err
+	}
+	return s.RestoreFromBaseImage(context.Background(), opts)
+}
+
 func (s *promoteStubVM) SaveBaseImage(_ context.Context, opts vm.StartOptions) error {
 	s.calls = append(s.calls, "SaveBaseImage")
 	s.saveMounts = len(opts.Mounts)

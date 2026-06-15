@@ -105,7 +105,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		}
 	}
 
-	dockerVM := vm.NewDocker(profile, stateDir, TestImageName)
+	dockerVM := vm.NewDocker(profile, stateDir, TestImageName, false)
 	sessions := session.NewStore(stateDir)
 
 	h := &Harness{

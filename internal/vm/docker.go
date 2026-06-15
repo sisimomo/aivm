@@ -22,29 +22,45 @@ const dockerContainerUser = "user"
 // the vm.VM interface. Scripts execute via docker exec, so bootstrap scripts
 // run in a real Linux environment.
 type DockerVM struct {
-	mu            sync.Mutex
-	profile       string
-	stateDir      string
-	image         string
-	containerName string
-	lastStartOpts StartOptions
+	mu              sync.Mutex
+	profile         string
+	stateDir        string
+	image           string
+	containerName   string
+	lastStartOpts   StartOptions
+	baseImageEnable bool
 }
 
 var _ VM = (*DockerVM)(nil)
 
 // NewDocker returns a DockerVM for the given profile, state directory, and
 // base image. The container is not started — call Start to create or resume it.
-func NewDocker(profile, stateDir, image string) *DockerVM {
+func NewDocker(profile, stateDir, image string, baseImageEnable bool) *DockerVM {
 	return &DockerVM{
-		profile:       profile,
-		stateDir:      stateDir,
-		image:         image,
-		containerName: profile,
+		profile:         profile,
+		stateDir:        stateDir,
+		image:           image,
+		containerName:   profile,
+		baseImageEnable: baseImageEnable,
 	}
 }
 
 func (d *DockerVM) Profile() string              { return d.profile }
 func (d *DockerVM) NeedsPortBindingAtBoot() bool { return true }
+
+func (d *DockerVM) UsesBootstrapOnlyMounts() bool { return true }
+
+func (d *DockerVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
+
+func (d *DockerVM) PrepareHostMountDir(hostPath string) error {
+	if err := os.MkdirAll(hostPath, 0o755); err != nil {
+		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
+	}
+	if err := os.Chmod(hostPath, 0o777); err != nil {
+		return fmt.Errorf("chmod mount dir %q: %w", hostPath, err)
+	}
+	return nil
+}
 
 // Status reports whether the container exists and its current state.
 func (d *DockerVM) Status(ctx context.Context) (Status, error) {

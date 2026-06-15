@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -38,9 +39,21 @@ func (d *DockerVM) DeleteBaseImage(ctx context.Context) error {
 	return err
 }
 
-// PromoteWithEphemeralCommit commits the live container to a temporary image,
+func (d *DockerVM) FinalizeAfterBootstrap(
+	ctx context.Context, runtimeOpts StartOptions,
+) error {
+	if d.baseImageEnable {
+		if err := d.SaveBaseImage(ctx, runtimeOpts); err != nil {
+			slog.Warn(fmt.Sprintf("save base image failed: %v", err))
+		}
+		return d.RestoreFromBaseImage(ctx, runtimeOpts)
+	}
+	return d.promoteWithEphemeralCommit(ctx, runtimeOpts)
+}
+
+// promoteWithEphemeralCommit commits the live container to a temporary image,
 // recreates the container with runtime start options, then removes the image.
-func (d *DockerVM) PromoteWithEphemeralCommit(ctx context.Context, opts StartOptions) error {
+func (d *DockerVM) promoteWithEphemeralCommit(ctx context.Context, opts StartOptions) error {
 	imageID, err := dockerOutput(ctx, "commit", d.containerName)
 	if err != nil {
 		return fmt.Errorf("promote commit: %w", err)

@@ -49,7 +49,7 @@ func (r *ContainerVMRegistry) GetOrCreate(profile, stateDir, image string) *vm.D
 	if d, ok := r.vms[profile]; ok {
 		return d
 	}
-	d := vm.NewDocker(profile, stateDir, image)
+	d := vm.NewDocker(profile, stateDir, image, false)
 	r.vms[profile] = d
 	return d
 }

@@ -38,6 +38,24 @@ func NewLima(profile, stateDir string) *LimaVM {
 func (l *LimaVM) Profile() string              { return l.profile }
 func (l *LimaVM) NeedsPortBindingAtBoot() bool { return false }
 
+func (l *LimaVM) UsesBootstrapOnlyMounts() bool { return false }
+
+func (l *LimaVM) PrepareHostMountDir(hostPath string) error {
+	if err := os.MkdirAll(hostPath, 0o755); err != nil {
+		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
+	}
+	return nil
+}
+
+func (l *LimaVM) AfterBootstrapPlugins(ctx context.Context) error {
+	CloseSSHControlMaster(ctx, l.profile)
+	return nil
+}
+
+func (l *LimaVM) FinalizeAfterBootstrap(_ context.Context, _ StartOptions) error {
+	return nil
+}
+
 // GetPublishedPort returns containerPort unchanged. Lima uses an SSH tunnel so
 // the host port always matches the container port; there is no Docker-style
 // auto-assignment.

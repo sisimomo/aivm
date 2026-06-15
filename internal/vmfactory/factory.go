@@ -15,7 +15,7 @@ func NewFromConfig(cfg *config.VMConfig, stateDir string) (vm.VM, error) {
 	case "", "lima":
 		return vm.NewLima(cfg.Profile(), stateDir), nil
 	case "docker":
-		return vm.NewDocker(cfg.Profile(), stateDir, cfg.DockerImage), nil
+		return vm.NewDocker(cfg.Profile(), stateDir, cfg.DockerImage, cfg.BaseImageEnable), nil
 	default:
 		return nil, fmt.Errorf("unknown vm backend %q", cfg.Backend)
 	}
