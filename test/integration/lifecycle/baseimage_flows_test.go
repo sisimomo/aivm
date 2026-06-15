@@ -26,7 +26,7 @@ func TestFlow_DestroyKeepBase_ThenStart_FastRecreate(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast start after destroy --keep-base")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -54,7 +54,7 @@ func TestFlow_DestroyKeepBase_ThenRecreateFast(t *testing.T) {
 	if err := h.SVC().Recreate(ctx, true, true); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate after destroy --keep-base")
 	}
 }
@@ -76,7 +76,7 @@ func TestFlow_FullDestroy_ThenStart_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("full destroy clears base; start must full bootstrap")
 	}
 	if !h.VM().HasCall("Destroy") {

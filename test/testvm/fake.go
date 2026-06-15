@@ -34,6 +34,7 @@ type FakeVM struct {
 	status          vm.Status
 	stateDir        string
 	baseImageExists bool
+	baseImageEnable bool
 	calls           []Call
 	faults          Faults
 	waitReadyCalls  int
@@ -41,12 +42,12 @@ type FakeVM struct {
 
 // New returns a FakeVM with no state directory. Host age files are never touched.
 func New() *FakeVM {
-	return &FakeVM{status: vm.StatusNotFound}
+	return &FakeVM{status: vm.StatusNotFound, baseImageEnable: true}
 }
 
 // NewWithStateDir returns a FakeVM that records stateDir for test assertions only.
 func NewWithStateDir(stateDir string) *FakeVM {
-	return &FakeVM{status: vm.StatusNotFound, stateDir: stateDir}
+	return &FakeVM{status: vm.StatusNotFound, stateDir: stateDir, baseImageEnable: true}
 }
 
 // StateDir returns the optional state directory passed to NewWithStateDir.
@@ -76,10 +77,22 @@ func (f *FakeVM) AfterBootstrapPlugins(_ context.Context) error {
 	return nil
 }
 
-func (f *FakeVM) FinalizeAfterBootstrap(_ context.Context, _ vm.StartOptions) error {
+func (f *FakeVM) FinalizeAfterBootstrap(ctx context.Context, runtimeOpts vm.StartOptions) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.appendCall("FinalizeAfterBootstrap", "")
+	baseImageEnable := f.baseImageEnable
+	f.mu.Unlock()
+
+	if !baseImageEnable {
+		return nil
+	}
+	if err := f.SaveBaseImage(ctx, runtimeOpts); err != nil {
+		// Best effort — bootstrap still succeeds when base save fails (Lima behavior).
+		return nil
+	}
+	if f.UsesBootstrapOnlyMounts() {
+		return f.restoreFromBaseImage(ctx, runtimeOpts, "finalize")
+	}
 	return nil
 }
 
@@ -213,11 +226,23 @@ func (f *FakeVM) SaveBaseImage(_ context.Context, _ vm.StartOptions) error {
 }
 
 func (f *FakeVM) RestoreFromBaseImage(
-	_ context.Context, _ vm.StartOptions,
+	ctx context.Context, opts vm.StartOptions,
+) error {
+	return f.restoreFromBaseImage(ctx, opts, "recreate")
+}
+
+func (f *FakeVM) restoreFromBaseImage(
+	_ context.Context, _ vm.StartOptions, purpose string,
 ) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.appendCall("RestoreFromBaseImage", "")
+	f.appendCall("RestoreFromBaseImage", purpose)
+	if purpose == "finalize" {
+		if f.baseImageExists {
+			f.status = vm.StatusRunning
+		}
+		return nil
+	}
 	if f.faults.RestoreFromBaseImageErr != nil {
 		return f.faults.RestoreFromBaseImageErr
 	}
@@ -266,6 +291,19 @@ func (f *FakeVM) HasCall(method string) bool {
 	return false
 }
 
+// HasFastRestoreFromBase reports a fast-recreate RestoreFromBaseImage call, not
+// the post-bootstrap finalize promote step.
+func (f *FakeVM) HasFastRestoreFromBase() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if c.Method == "RestoreFromBaseImage" && c.Detail != "finalize" {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *FakeVM) CallCount(method string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -294,6 +332,12 @@ func (f *FakeVM) SetBaseImageExists(exists bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.baseImageExists = exists
+}
+
+func (f *FakeVM) SetBaseImageEnable(enabled bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.baseImageEnable = enabled
 }
 
 func (f *FakeVM) SetFaults(faults Faults) {

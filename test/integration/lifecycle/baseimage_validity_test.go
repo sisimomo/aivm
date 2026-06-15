@@ -20,7 +20,7 @@ func TestStart_InvalidConfigHash_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("invalid config hash must not fast restore")
 	}
 	if !h.VM().HasCall("Start") {
@@ -42,7 +42,7 @@ func TestStart_MissingBaseArtifact_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("missing base artifact must not restore")
 	}
 	if !h.VM().HasCall("Destroy") {
@@ -62,7 +62,7 @@ func TestStart_VMTypeMismatchInState_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("vm_type mismatch must invalidate base for restore")
 	}
 	if !h.VM().HasCall("Start") {
@@ -105,7 +105,7 @@ func TestStart_StaleBootstrapVersion_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("stale bootstrap version must not fast restore")
 	}
 	if !h.VM().HasCall("Destroy") {

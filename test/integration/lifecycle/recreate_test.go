@@ -22,7 +22,7 @@ func TestRecreate_FastWithValidBase_RestoresWithoutFullBootstrap(t *testing.T) {
 	if err := h.SVC().Recreate(ctx, true, true); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate via RestoreFromBaseImage")
 	}
 	if h.BootstrapAtUnix() != bootstrapAt {
@@ -41,7 +41,7 @@ func TestRecreate_FastWithoutBase_FallsBackToFullBootstrap(t *testing.T) {
 	if err := h.SVC().Recreate(ctx, true, true); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected full bootstrap, not restore")
 	}
 	if !h.VM().HasCall("Destroy") {
@@ -82,7 +82,7 @@ func TestRecreate_Default_FullBootstrapDespiteValidBase(t *testing.T) {
 	if err := h.SVC().Recreate(ctx, true, false); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("recreate without --fast must not restore from base")
 	}
 	if !h.VM().HasCall("Destroy") {

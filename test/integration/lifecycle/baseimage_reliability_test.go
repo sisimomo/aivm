@@ -55,7 +55,7 @@ func TestFlow_SaveFailsThenMissingVM_FullBootstrapOnNextStart(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("without base artifact start must not fast restore")
 	}
 	if !h.VM().HasCall("SaveBaseImage") {
@@ -80,7 +80,7 @@ func TestStart_RestoreFailure_MissingVM_FallsBackToFullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate attempt first")
 	}
 	if !h.VM().HasCall("DeleteBaseImage") {
@@ -106,7 +106,7 @@ func TestStart_FastRecreate_WaitReadyFailure_FallsBackToFullBootstrap(t *testing
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !h.VM().HasCall("RestoreFromBaseImage") {
+	if !h.VM().HasFastRestoreFromBase() {
 		t.Fatal("expected fast recreate attempt")
 	}
 	if !h.VM().HasCall("DeleteBaseImage") {
@@ -128,7 +128,7 @@ func TestStart_RunningVM_ValidBase_NoTimers_ResumesWithoutRecreate(t *testing.T)
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h.VM().HasCall("RestoreFromBaseImage") {
+	if h.VM().HasFastRestoreFromBase() {
 		t.Fatal("running VM with fresh timers must not recreate")
 	}
 	if h.VM().HasCall("Destroy") {

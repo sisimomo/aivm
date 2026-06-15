@@ -130,6 +130,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 	}
 
 	fake := testvm.New()
+	fake.SetBaseImageEnable(cfg.baseImageEnable)
 	sessions := session.NewStore(stateDir)
 	composeMgr := noopCompose{}
 	mon := monitor.NewIdleMonitor(
