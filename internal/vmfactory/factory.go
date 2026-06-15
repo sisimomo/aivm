@@ -13,7 +13,7 @@ import (
 func NewFromConfig(cfg *config.VMConfig, stateDir string) (vm.VM, error) {
 	switch cfg.Backend {
 	case "", "lima":
-		return vm.NewLima(cfg.Profile(), stateDir), nil
+		return vm.NewLima(cfg.Profile(), stateDir, cfg.BaseImageEnable), nil
 	case "docker":
 		return vm.NewDocker(cfg.Profile(), stateDir, cfg.DockerImage, cfg.BaseImageEnable), nil
 	default:

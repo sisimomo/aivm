@@ -22,16 +22,18 @@ const stopContainersScript = `command -v docker >/dev/null 2>&1 && \
   docker ps -q 2>/dev/null | xargs -r docker stop --time=10 2>/dev/null || true`
 
 type LimaVM struct {
-	profile  string
-	stateDir string
-	lock     *LifecycleLock
+	profile         string
+	stateDir        string
+	lock            *LifecycleLock
+	baseImageEnable bool
 }
 
-func NewLima(profile, stateDir string) *LimaVM {
+func NewLima(profile, stateDir string, baseImageEnable bool) *LimaVM {
 	return &LimaVM{
-		profile:  profile,
-		stateDir: stateDir,
-		lock:     NewLifecycleLock(stateDir),
+		profile:         profile,
+		stateDir:        stateDir,
+		lock:            NewLifecycleLock(stateDir),
+		baseImageEnable: baseImageEnable,
 	}
 }
 
@@ -52,7 +54,15 @@ func (l *LimaVM) AfterBootstrapPlugins(ctx context.Context) error {
 	return nil
 }
 
-func (l *LimaVM) FinalizeAfterBootstrap(_ context.Context, _ StartOptions) error {
+func (l *LimaVM) FinalizeAfterBootstrap(
+	ctx context.Context, runtimeOpts StartOptions,
+) error {
+	if !l.baseImageEnable {
+		return nil
+	}
+	if err := l.SaveBaseImage(ctx, runtimeOpts); err != nil {
+		slog.Warn(fmt.Sprintf("save base image failed (VM still usable): %v", err))
+	}
 	return nil
 }
 

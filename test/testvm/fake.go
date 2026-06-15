@@ -2,6 +2,7 @@ package testvm
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
@@ -58,6 +59,29 @@ func (f *FakeVM) StateDir() string {
 func (f *FakeVM) Profile() string { return "test" }
 
 func (f *FakeVM) NeedsPortBindingAtBoot() bool { return true }
+
+func (f *FakeVM) UsesBootstrapOnlyMounts() bool { return true }
+
+func (f *FakeVM) PrepareHostMountDir(hostPath string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.appendCall("PrepareHostMountDir", hostPath)
+	return os.MkdirAll(hostPath, 0o755)
+}
+
+func (f *FakeVM) AfterBootstrapPlugins(_ context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.appendCall("AfterBootstrapPlugins", "")
+	return nil
+}
+
+func (f *FakeVM) FinalizeAfterBootstrap(_ context.Context, _ vm.StartOptions) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.appendCall("FinalizeAfterBootstrap", "")
+	return nil
+}
 
 func (f *FakeVM) Status(_ context.Context) (vm.Status, error) {
 	f.mu.Lock()

@@ -17,7 +17,7 @@ func TestLimaVM_Destroy_PreservesHostAgeFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	l := vm.NewLima("nosuch-profile-"+t.Name(), dir)
+	l := vm.NewLima("nosuch-profile-"+t.Name(), dir, false)
 	if err := l.Destroy(context.Background()); err != nil {
 		t.Fatal(err)
 	}
