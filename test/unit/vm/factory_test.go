@@ -4,12 +4,12 @@ import (
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/config"
-	"github.com/sisimomo/aivm/internal/vm"
+	"github.com/sisimomo/aivm/internal/vmfactory"
 )
 
 func TestNewFromConfig_Lima(t *testing.T) {
 	cfg := &config.VMConfig{Backend: "lima", Name: "aivm"}
-	inst, err := vm.NewFromConfig(cfg, "/tmp/state")
+	inst, err := vmfactory.NewFromConfig(cfg, "/tmp/state")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestNewFromConfig_Lima(t *testing.T) {
 
 func TestNewFromConfig_RejectsColima(t *testing.T) {
 	cfg := &config.VMConfig{Backend: "colima", Name: "aivm"}
-	_, err := vm.NewFromConfig(cfg, "/tmp/state")
+	_, err := vmfactory.NewFromConfig(cfg, "/tmp/state")
 	if err == nil {
 		t.Fatal("expected error for colima backend")
 	}

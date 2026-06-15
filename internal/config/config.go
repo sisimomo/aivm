@@ -16,6 +16,7 @@ import (
 	"github.com/sisimomo/aivm/internal/integration"
 	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
+	"github.com/sisimomo/aivm/internal/vm"
 )
 
 //go:embed defaults.yaml
@@ -395,7 +396,7 @@ func (vmCfg *VMConfig) MountContext(stateDir, hostHome string) mountspec.Context
 		if backend == "" {
 			backend = "lima"
 		}
-		vmHome = mountspec.DefaultVMHome(backend, hostHome)
+		vmHome = vm.DefaultUserHome(backend, hostHome)
 	}
 	return MountResolveContext(stateDir, hostHome, vmHome)
 }
@@ -405,7 +406,7 @@ func defaultVMHomeFor(vmCfg *VMConfig, hostHome string) string {
 	if backend == "" {
 		backend = "lima"
 	}
-	return mountspec.DefaultVMHome(backend, hostHome)
+	return vm.DefaultUserHome(backend, hostHome)
 }
 
 func toResolved(mounts []Mount) []mountspec.ResolvedMount {

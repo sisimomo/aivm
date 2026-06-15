@@ -1,4 +1,4 @@
-package mountspec
+package vm
 
 import (
 	"os"
@@ -8,9 +8,9 @@ import (
 
 const dockerVMHome = "/home/user"
 
-// DefaultVMHome returns the VM user home directory used when expanding ~ in
+// DefaultUserHome returns the VM user home directory used when expanding ~ in
 // mount target paths.
-func DefaultVMHome(backend, hostHome string) string {
+func DefaultUserHome(backend, hostHome string) string {
 	switch backend {
 	case "docker":
 		return dockerVMHome
