@@ -53,6 +53,16 @@ func (d *DockerVM) UsesBootstrapOnlyMounts() bool { return true }
 func (d *DockerVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
 
 func (d *DockerVM) PrepareHostMountDir(hostPath string) error {
+	info, err := os.Stat(hostPath)
+	if err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("mount path %q exists and is not a directory", hostPath)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat mount dir %q: %w", hostPath, err)
+	}
 	if err := os.MkdirAll(hostPath, 0o755); err != nil {
 		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
 	}
@@ -316,6 +326,13 @@ func dockerCmd(ctx context.Context, args ...string) error {
 // dockerOutput runs a docker command and returns combined stdout, or an error
 // that includes stderr for debugging.
 func dockerOutput(ctx context.Context, args ...string) (string, error) {
+	if hook := currentDockerExecHook(); hook != nil {
+		return hook(ctx, args...)
+	}
+	return runDockerOutput(ctx, args...)
+}
+
+func runDockerOutput(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

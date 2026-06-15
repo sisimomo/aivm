@@ -3,9 +3,10 @@ package vm_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/sisimomo/aivm/internal/agent"
 	"github.com/sisimomo/aivm/internal/config"
@@ -14,86 +15,39 @@ import (
 	"github.com/sisimomo/aivm/internal/vm"
 )
 
-type finalizeStubVM struct {
-	baseImageEnable bool
-	calls           []string
-	saveMounts      int
-	restoreMounts   int
-	saveErr         error
+type recordingDocker struct {
+	calls            [][]string
+	failTaggedCommit bool
 }
 
-func (s *finalizeStubVM) Profile() string { return "test" }
-
-func (s *finalizeStubVM) NeedsPortBindingAtBoot() bool { return true }
-
-func (s *finalizeStubVM) Status(_ context.Context) (vm.Status, error) {
-	return vm.StatusRunning, nil
-}
-
-func (s *finalizeStubVM) Start(_ context.Context, _ vm.StartOptions) error { return nil }
-
-func (s *finalizeStubVM) Stop(_ context.Context) error { return nil }
-
-func (s *finalizeStubVM) Destroy(_ context.Context) error { return nil }
-
-func (s *finalizeStubVM) Run(_ context.Context, _ string, _ map[string]string) error {
-	return nil
-}
-
-func (s *finalizeStubVM) RunOutput(_ context.Context, _ string, _ map[string]string) (string, error) {
+func (r *recordingDocker) exec(_ context.Context, args ...string) (string, error) {
+	r.calls = append(r.calls, append([]string(nil), args...))
+	if len(args) >= 2 && args[0] == "commit" {
+		if r.failTaggedCommit && len(args) == 3 {
+			return "", errors.New("save failed")
+		}
+		return "sha256:ephemeral", nil
+	}
 	return "", nil
 }
 
-func (s *finalizeStubVM) RunInteractive(_ context.Context, _ string, _ map[string]string) error {
-	return nil
-}
-
-func (s *finalizeStubVM) RunStream(_ context.Context, _ string, _ map[string]string) (int, error) {
-	return 0, nil
-}
-
-func (s *finalizeStubVM) SSH(_ context.Context, _ string, _ map[string]string) error { return nil }
-
-func (s *finalizeStubVM) CopyTo(_ context.Context, _, _ string, _ bool) error { return nil }
-
-func (s *finalizeStubVM) CopyFrom(_ context.Context, _, _ string, _ bool) error { return nil }
-
-func (s *finalizeStubVM) WaitReady(_ context.Context, _ time.Duration) error { return nil }
-
-func (s *finalizeStubVM) GetPublishedPort(_ int) (int, error) { return 0, nil }
-
-func (s *finalizeStubVM) UsesBootstrapOnlyMounts() bool { return true }
-
-func (s *finalizeStubVM) PrepareHostMountDir(_ string) error { return nil }
-
-func (s *finalizeStubVM) AfterBootstrapPlugins(_ context.Context) error { return nil }
-
-func (s *finalizeStubVM) FinalizeAfterBootstrap(_ context.Context, opts vm.StartOptions) error {
-	if s.baseImageEnable {
-		if err := s.SaveBaseImage(context.Background(), opts); err != nil {
-			s.calls = append(s.calls, "promoteWithEphemeralCommit")
-			return nil
-		}
-		return s.RestoreFromBaseImage(context.Background(), opts)
+func dockerArgs(calls [][]string, index int) []string {
+	if index >= len(calls) {
+		return nil
 	}
-	return nil
+	return calls[index]
 }
 
-func (s *finalizeStubVM) SaveBaseImage(_ context.Context, opts vm.StartOptions) error {
-	s.calls = append(s.calls, "SaveBaseImage")
-	s.saveMounts = len(opts.Mounts)
-	return s.saveErr
+func mountCountFromRun(args []string) int {
+	count := 0
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-v" && i+1 < len(args) {
+			count++
+			i++
+		}
+	}
+	return count
 }
-
-func (s *finalizeStubVM) RestoreFromBaseImage(_ context.Context, opts vm.StartOptions) error {
-	s.calls = append(s.calls, "RestoreFromBaseImage")
-	s.restoreMounts = len(opts.Mounts)
-	return nil
-}
-
-func (s *finalizeStubVM) DeleteBaseImage(_ context.Context) error { return nil }
-
-func (s *finalizeStubVM) HasBaseImage(_ context.Context) bool { return true }
 
 func TestDockerVM_FinalizeAfterBootstrap_SaveAndRestore(t *testing.T) {
 	home := "/Users/you"
@@ -135,47 +89,89 @@ func TestDockerVM_FinalizeAfterBootstrap_SaveAndRestore(t *testing.T) {
 			len(runtimeMounts), len(bootstrapMounts))
 	}
 
-	stub := &finalizeStubVM{baseImageEnable: true}
+	rec := &recordingDocker{}
+	restore := vm.SetDockerExecHookForTest(rec.exec)
+	t.Cleanup(restore)
+
+	d := vm.NewDocker("p", state, "img", true)
 	runtimeOpts := vm.StartOptions{Mounts: runtimeMounts}
 
-	if err := stub.FinalizeAfterBootstrap(context.Background(), runtimeOpts); err != nil {
+	if err := d.FinalizeAfterBootstrap(context.Background(), runtimeOpts); err != nil {
 		t.Fatalf("FinalizeAfterBootstrap: %v", err)
 	}
 
-	if len(stub.calls) != 2 {
-		t.Fatalf("calls = %v, want [SaveBaseImage RestoreFromBaseImage]", stub.calls)
+	wantTag := vm.DockerBaseImageTag("p")
+	if len(rec.calls) < 4 {
+		t.Fatalf("calls = %#v, want commit/stop/rm/run sequence", rec.calls)
 	}
-	if stub.calls[0] != "SaveBaseImage" || stub.calls[1] != "RestoreFromBaseImage" {
-		t.Fatalf("call order = %v, want Save before Restore", stub.calls)
+	if got := strings.Join(rec.calls[0], " "); got != fmt.Sprintf("commit p %s", wantTag) {
+		t.Fatalf("first call = %q, want tagged commit", got)
 	}
-	if stub.saveMounts != len(runtimeMounts) {
-		t.Fatalf("save mounts = %d, want runtime %d", stub.saveMounts, len(runtimeMounts))
+	if got := strings.Join(rec.calls[1], " "); got != "stop p" {
+		t.Fatalf("second call = %q, want stop", got)
 	}
-	if stub.restoreMounts <= len(bootstrapMounts) {
-		t.Fatalf("restore mounts = %d, want > bootstrap %d", stub.restoreMounts, len(bootstrapMounts))
+	if got := strings.Join(rec.calls[2], " "); got != "rm -f p" {
+		t.Fatalf("third call = %q, want rm", got)
 	}
-	if stub.restoreMounts != len(runtimeMounts) {
-		t.Fatalf("restore mounts = %d, want runtime %d", stub.restoreMounts, len(runtimeMounts))
+	runArgs := dockerArgs(rec.calls, 3)
+	if runArgs == nil || runArgs[0] != "run" {
+		t.Fatalf("fourth call = %#v, want docker run", runArgs)
+	}
+	if got := mountCountFromRun(runArgs); got != len(runtimeMounts) {
+		t.Fatalf("restore mount count = %d, want runtime %d", got, len(runtimeMounts))
+	}
+	if got := mountCountFromRun(runArgs); got <= len(bootstrapMounts) {
+		t.Fatalf("restore mount count = %d, want > bootstrap %d", got, len(bootstrapMounts))
+	}
+	for _, call := range rec.calls {
+		if call[0] == "commit" && len(call) == 2 {
+			t.Fatalf("unexpected ephemeral commit during save/restore path: %#v", rec.calls)
+		}
 	}
 }
 
 func TestDockerVM_FinalizeAfterBootstrap_SaveFailureFallsBack(t *testing.T) {
-	stub := &finalizeStubVM{
-		baseImageEnable: true,
-		saveErr:         errors.New("save failed"),
-	}
+	rec := &recordingDocker{failTaggedCommit: true}
+	restore := vm.SetDockerExecHookForTest(rec.exec)
+	t.Cleanup(restore)
+
+	d := vm.NewDocker("p", t.TempDir(), "img", true)
 	runtimeOpts := vm.StartOptions{Mounts: []vm.Mount{{HostPath: "/h", GuestPath: "/g"}}}
 
-	if err := stub.FinalizeAfterBootstrap(context.Background(), runtimeOpts); err != nil {
+	if err := d.FinalizeAfterBootstrap(context.Background(), runtimeOpts); err != nil {
 		t.Fatalf("FinalizeAfterBootstrap: %v", err)
 	}
-	if len(stub.calls) != 2 {
-		t.Fatalf("calls = %v, want [SaveBaseImage promoteWithEphemeralCommit]", stub.calls)
+
+	wantTag := vm.DockerBaseImageTag("p")
+	if len(rec.calls) < 5 {
+		t.Fatalf("calls = %#v, want save failure then ephemeral promote", rec.calls)
 	}
-	if stub.calls[0] != "SaveBaseImage" || stub.calls[1] != "promoteWithEphemeralCommit" {
-		t.Fatalf("call order = %v, want Save then ephemeral promote", stub.calls)
+	if got := strings.Join(rec.calls[0], " "); got != fmt.Sprintf("commit p %s", wantTag) {
+		t.Fatalf("first call = %q, want tagged commit", got)
 	}
-	if stub.restoreMounts != 0 {
-		t.Fatalf("restore should not run on save failure, restoreMounts = %d", stub.restoreMounts)
+	if got := strings.Join(rec.calls[1], " "); got != "commit p" {
+		t.Fatalf("second call = %q, want ephemeral commit", got)
+	}
+	if got := strings.Join(rec.calls[2], " "); got != "stop p" {
+		t.Fatalf("third call = %q, want stop", got)
+	}
+	if got := strings.Join(rec.calls[3], " "); got != "rm -f p" {
+		t.Fatalf("fourth call = %q, want rm", got)
+	}
+	runArgs := dockerArgs(rec.calls, 4)
+	if runArgs == nil || runArgs[0] != "run" {
+		t.Fatalf("fifth call = %#v, want docker run", runArgs)
+	}
+	if got := strings.Join(rec.calls[len(rec.calls)-1], " "); got != "rmi -f sha256:ephemeral" {
+		t.Fatalf("last call = %q, want ephemeral image cleanup", strings.Join(rec.calls[len(rec.calls)-1], " "))
+	}
+	for _, call := range rec.calls {
+		if call[0] == "run" && len(call) > 0 {
+			for _, arg := range call {
+				if arg == wantTag {
+					t.Fatalf("restore should not run on save failure, calls = %#v", rec.calls)
+				}
+			}
+		}
 	}
 }

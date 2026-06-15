@@ -85,6 +85,9 @@ func TestStart_BackendMismatch_MissingVM_FullBootstrap(t *testing.T) {
 	if err := h.SVC().Start(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if h.VM().HasFastRestoreFromBase() {
+		t.Fatal("backend mismatch must not fast restore")
+	}
 	if !h.VM().HasCall("Start") {
 		t.Fatal("expected fresh VM start when runtime mismatches stored state")
 	}
