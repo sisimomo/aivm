@@ -15,17 +15,16 @@ import (
 // CLI in the VM without launch_args and requires the '--' separator.
 func TestCLIAgentPassthrough(t *testing.T) {
 	t.Parallel()
-	// opencode keeps its real cli_command so aivm agent -- hits the binary directly.
+	// claude keeps its real cli_command so aivm agent -- hits the binary directly.
 	h := framework.New(t,
-		framework.WithExtraAgents("opencode"),
-		framework.WithPreserveAgentCLI("opencode"),
+		framework.WithPreserveAgentCLI("claude"),
 	)
 
 	h.Scenario("aivm agent -- forwards args to the agent CLI in the VM").
 		Step("Run: aivm start", actions.CLI("start")).
 		Wait("VM is running", conditions.VMStatus(vm.StatusRunning), 5*time.Minute).
-		Step("Run: aivm --agent opencode agent -- --version", actions.CLI("--agent", "opencode", "agent", "--", "--version")).
-		Assert("OpenCode version in CLI output", assertions.OutputContains("opencode")).
+		Step("Run: aivm agent -- --version", actions.CLI("agent", "--", "--version")).
+		Assert("Claude version in CLI output", assertions.OutputContains("Claude")).
 		Step("Run: aivm agent without -- (expect error)", cliExpectError("agent", "-p", "noop")).
 		Step("Run: aivm stop", actions.CLI("stop")).
 		Run()

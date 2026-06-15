@@ -225,11 +225,27 @@ func ResolvedMountsForRuntime(
 	return mounts, nil
 }
 
+// ensureHostMountDir creates a host persistence directory for bind mounts.
+// On Docker, chmod 0777 so the guest user (different UID) can write through
+// the bind mount.
+func ensureHostMountDir(hostPath string, dockerBackend bool) error {
+	if err := os.MkdirAll(hostPath, 0755); err != nil {
+		return fmt.Errorf("creating mount dir %q: %w", hostPath, err)
+	}
+	if dockerBackend {
+		if err := os.Chmod(hostPath, 0777); err != nil {
+			return fmt.Errorf("chmod mount dir %q: %w", hostPath, err)
+		}
+	}
+	return nil
+}
+
 // ensureAgentMountDirs creates the host-side directories that are mounted
 // into the VM for persistence.
 func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) error {
 	home, _ := os.UserHomeDir()
 	ctx := cfg.VM.MountContext(cfg.StateDir, home)
+	dockerBackend := effectiveBackend(cfg.VM) == "docker"
 	seen := make(map[string]bool)
 	for name, def := range agentDefs {
 		for _, spec := range def.Mounts {
@@ -241,8 +257,8 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) er
 				continue
 			}
 			seen[r.HostPath] = true
-			if err := os.MkdirAll(r.HostPath, 0755); err != nil {
-				return fmt.Errorf("creating mount dir %q: %w", r.HostPath, err)
+			if err := ensureHostMountDir(r.HostPath, dockerBackend); err != nil {
+				return err
 			}
 		}
 	}
@@ -255,8 +271,8 @@ func ensureAgentMountDirs(cfg *config.Config, agentDefs map[string]agent.Def) er
 		if err != nil {
 			return fmt.Errorf("t3 mount: %w", err)
 		}
-		if err := os.MkdirAll(r.HostPath, 0755); err != nil {
-			return fmt.Errorf("creating t3 mount dir %q: %w", r.HostPath, err)
+		if err := ensureHostMountDir(r.HostPath, dockerBackend); err != nil {
+			return err
 		}
 	}
 	return nil

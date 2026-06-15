@@ -22,15 +22,18 @@ var (
 
 // bootstrapDockerfileTemplate is the structural skeleton of the test base image.
 // All shell scripting is injected at build time from plugin definitions:
-//   - system-setup.sh  — sourced from the "system" plugin in defaults.yaml
-//   - mise-setup.sh    — sourced from the "mise" plugin in defaults.yaml
+//   - system-setup.sh — sourced from the "system" plugin in defaults.yaml
+//   - mise-setup.sh   — sourced from the "mise" plugin in defaults.yaml
 //
 // The only exception is the mise-node step: "mise-node" is a dynamic plugin
 // synthesised by Go code in mise_plugin.go and has no YAML entry. Its setup
 // for the default config (version=latest, no extras) is the single line
 // `mise use --global node@latest`, derived directly from misePlugin.Setup().
 //
-// Minimal non-YAML prerequisites (sudo, python3) are kept here because:
+// Agent CLIs (claude, opencode, etc.) are installed during bootstrap, not baked
+// into the base image, so setup scripts stay the single source of truth.
+//
+// Minimal non-YAML prerequisites (sudo, python3) are kept in the Dockerfile because:
 //   - sudo   — the system plugin's own setup script calls "sudo apt-get"
 //   - python3 — expected by some bootstrap scripts but absent from the system plugin
 const bootstrapDockerfileTemplate = `FROM ubuntu:24.04

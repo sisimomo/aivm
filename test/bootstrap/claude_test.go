@@ -9,9 +9,6 @@ import "testing"
 func TestAgent_Claude(t *testing.T) {
 	t.Parallel()
 	h := newBootstrapHarness(t)
-	h.Install("claude", nil) // installs nodejs first (dependency)
-	h.AssertCommand(`
-		export PATH="$HOME/.claude/local/bin:$HOME/.local/bin:$PATH"
-		claude --version
-	`, "")
+	h.Install("claude", nil) // installs mise-claude (mise + system)
+	h.AssertCommand("claude --version", "")
 }

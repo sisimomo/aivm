@@ -1,9 +1,7 @@
 claude:
   description: "Claude Code (Anthropic)"
   dependencies:
-    - mise-node
-  path_entries:
-    - "$HOME/.claude/local/bin"
+    - mise-claude
   mounts:
     - source: "{{ .state_dir }}/.claude/projects"
       target: "~/.claude/projects"
@@ -13,19 +11,17 @@ claude:
       mode: rw
   cli_command: claude
   launch_args: --dangerously-skip-permissions
-  setup: |
-    curl -fsSL https://claude.ai/install.sh | bash
 
 copilot:
   description: "GitHub Copilot CLI (copilot cli)"
+  dependencies:
+    - mise-copilot
   mounts:
     - source: "{{ .state_dir }}/.copilot/session-state"
       target: "~/.copilot/session-state"
       mode: rw
   cli_command: copilot
   launch_args: --yolo
-  setup: |
-    curl -fsSL https://gh.io/copilot-install | bash
 
 cursor:
   description: "Cursor Agent CLI"
@@ -45,14 +41,9 @@ cursor:
 opencode:
   description: "OpenCode CLI"
   dependencies:
-    - system
-  path_entries:
-    - "$HOME/.opencode/bin"
+    - mise-opencode
   cli_command: opencode
   setup: |
-    set -euo pipefail
-    curl -fsSL https://opencode.ai/install | bash
-    opencode --version >/dev/null
     config_file="$HOME/.config/opencode/opencode.json"
     mkdir -p "$(dirname "$config_file")"
     echo '{}' | jq '

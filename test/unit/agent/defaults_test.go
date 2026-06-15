@@ -2,11 +2,21 @@ package agent_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"text/template"
 
 	"github.com/sisimomo/aivm/internal/agent"
 )
+
+func hasMiseToolDep(deps []string) bool {
+	for _, dep := range deps {
+		if strings.HasPrefix(dep, "mise-") && dep != "mise" {
+			return true
+		}
+	}
+	return false
+}
 
 // TestLoadDefs_ParsesWithoutError ensures the embedded defaults.yaml is valid YAML
 // and maps cleanly onto the Def struct.
@@ -44,8 +54,8 @@ func TestLoadDefs_AllAgentsPresent(t *testing.T) {
 		if def.Description == "" {
 			t.Errorf("agent %q: empty description", tc.name)
 		}
-		if def.Setup == "" {
-			t.Errorf("agent %q: empty setup", tc.name)
+		if def.Setup == "" && !hasMiseToolDep(def.Dependencies) {
+			t.Errorf("agent %q: empty setup and no mise-<tool> dependency", tc.name)
 		}
 		if def.CLICommand == "" {
 			t.Errorf("agent %q: empty cli_command", tc.name)
@@ -77,6 +87,12 @@ func TestLoadDefs_ClaudeMounts(t *testing.T) {
 		t.Fatalf("LoadDefs: %v", err)
 	}
 	claude := defs["claude"]
+	if len(claude.Dependencies) != 1 || claude.Dependencies[0] != "mise-claude" {
+		t.Fatalf("claude dependencies = %v, want [mise-claude]", claude.Dependencies)
+	}
+	if claude.Setup != "" {
+		t.Fatalf("claude setup = %q, want empty (install via mise-claude)", claude.Setup)
+	}
 	if len(claude.Mounts) != 2 {
 		t.Fatalf("claude mounts len = %d, want 2", len(claude.Mounts))
 	}
