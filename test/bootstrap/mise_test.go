@@ -22,8 +22,7 @@ func TestPlugin_Mise(t *testing.T) {
 	}{
 		{
 			// Installs mise itself (the runtime manager) in isolation.
-			// Validates that the binary works and that the bashrc activation
-			// line is written.
+			// Validates that the binary works.
 			name:       "mise-standalone",
 			plugin:     "mise",
 			checkCmd:   "mise --version",
@@ -32,7 +31,7 @@ func TestPlugin_Mise(t *testing.T) {
 				cmd        string
 				wantSubstr string
 			}{
-				{"grep 'mise activate' ~/.bashrc", "mise activate"},
+				{"grep -q 'mise/shims' /etc/profile.d/aivm-path.sh && echo path-ok", "path-ok"},
 			},
 		},
 		{

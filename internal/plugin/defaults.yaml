@@ -16,7 +16,6 @@ mise:
     - "$HOME/.local/share/mise/shims"
   setup: |
     curl https://mise.run | sh
-    grep -q 'mise activate' ~/.bashrc || echo 'eval "$(mise activate bash)"' >> ~/.bashrc
 
 awscli:
   description: "AWS CLI v2"
