@@ -467,7 +467,7 @@ func resolveSocketBridgePath(raw, home string) (string, error) {
 	if !filepath.IsAbs(expanded) {
 		return "", fmt.Errorf("path %q must be absolute after expansion (got %q)", raw, expanded)
 	}
-	return expanded, nil
+	return filepath.Clean(expanded), nil
 }
 
 func parseSocketBridges(bridges []SocketBridge, home string, mountSources []string) ([]SocketBridge, error) {

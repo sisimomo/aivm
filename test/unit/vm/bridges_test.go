@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/vm"
@@ -30,6 +31,23 @@ func TestValidateSocketBridgesForStart_DockerRequiresSocket(t *testing.T) {
 	}}, nil)
 	if err == nil {
 		t.Fatal("expected error for missing host socket")
+	}
+}
+
+func TestValidateSocketBridgesForStart_DockerRejectsNonSocket(t *testing.T) {
+	dir := t.TempDir()
+	regularFile := filepath.Join(dir, "not-a-socket")
+	if err := os.WriteFile(regularFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := vm.ValidateSocketBridgesForStart("docker", []vm.SocketBridge{{
+		HostPath: regularFile, GuestPath: "/run/aivm/sockets/x.sock",
+	}}, nil)
+	if err == nil {
+		t.Fatal("expected error for non-socket host path")
+	}
+	if !strings.Contains(err.Error(), "Unix socket") {
+		t.Fatalf("expected Unix socket error, got: %v", err)
 	}
 }
 
