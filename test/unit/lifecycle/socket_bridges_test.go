@@ -22,7 +22,7 @@ func TestBuildRuntimeStartOptions_IncludesSocketBridges(t *testing.T) {
 			Backend:      "docker",
 			ParsedVMHome: "/home/user",
 		},
-		ParsedSocketBridges: []config.SocketBridge{{
+		SocketBridges: []config.SocketBridge{{
 			HostPath: "/tmp/host.sock", GuestPath: "/run/aivm/sockets/host.sock",
 		}},
 	}
@@ -41,7 +41,7 @@ func TestBuildRuntimeStartOptions_IncludesSocketBridges(t *testing.T) {
 
 func TestBuildBootstrapStartOptions_ExcludesSocketBridges(t *testing.T) {
 	cfg := &config.Config{
-		ParsedSocketBridges: []config.SocketBridge{{
+		SocketBridges: []config.SocketBridge{{
 			HostPath: "/tmp/host.sock", GuestPath: "/run/aivm/sockets/host.sock",
 		}},
 	}
@@ -89,7 +89,7 @@ func TestValidateSocketBridgesForStart_UsesRuntimeMounts(t *testing.T) {
 				Writable:  true,
 			}},
 		},
-		ParsedSocketBridges: []config.SocketBridge{{
+		SocketBridges: []config.SocketBridge{{
 			HostPath:  sock,
 			GuestPath: agentGuest,
 		}},

@@ -127,7 +127,7 @@ func (svc *LifecycleService) currentConfigHash() string {
 		svc.Config.VM.Type,
 		svc.Config.VM.Mounts,
 		svc.VM.Profile(),
-		svc.Config.ParsedSocketBridges,
+		svc.Config.SocketBridges,
 	)
 }
 

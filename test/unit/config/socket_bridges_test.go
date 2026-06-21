@@ -40,16 +40,13 @@ socket_bridges:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(cfg.ParsedSocketBridges) != 1 {
-		t.Fatalf("len = %d", len(cfg.ParsedSocketBridges))
+	if len(cfg.SocketBridges) != 1 {
+		t.Fatalf("len = %d", len(cfg.SocketBridges))
 	}
 	wantHost := filepath.Join(sockDir, "service.sock")
-	b := cfg.ParsedSocketBridges[0]
+	b := cfg.SocketBridges[0]
 	if b.HostPath != wantHost || b.GuestPath != "/run/aivm/sockets/service.sock" {
 		t.Fatalf("got %+v, want host %q guest /run/aivm/sockets/service.sock", b, wantHost)
-	}
-	if got := cfg.ResolvedSocketBridges(); len(got) != 1 || got[0].HostPath != wantHost {
-		t.Fatalf("ResolvedSocketBridges = %+v", got)
 	}
 }
 
@@ -67,8 +64,8 @@ socket_bridges:
 		t.Fatalf("Load: %v", err)
 	}
 	want := filepath.Join(home, ".config/foo/service.sock")
-	if cfg.ParsedSocketBridges[0].HostPath != want {
-		t.Fatalf("HostPath = %q, want %q", cfg.ParsedSocketBridges[0].HostPath, want)
+	if cfg.SocketBridges[0].HostPath != want {
+		t.Fatalf("HostPath = %q, want %q", cfg.SocketBridges[0].HostPath, want)
 	}
 }
 
@@ -126,7 +123,7 @@ func TestLoad_SocketBridge_EmptyListValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(cfg.ParsedSocketBridges) != 0 {
-		t.Fatalf("expected no bridges, got %+v", cfg.ParsedSocketBridges)
+	if len(cfg.SocketBridges) != 0 {
+		t.Fatalf("expected no bridges, got %+v", cfg.SocketBridges)
 	}
 }

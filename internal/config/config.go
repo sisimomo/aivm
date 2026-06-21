@@ -36,8 +36,9 @@ type Config struct {
 	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
 	LogLevel     string                       `mapstructure:"log_level"`
 
-	SocketBridges       []SocketBridge `mapstructure:"socket_bridges"`
-	ParsedSocketBridges []SocketBridge `mapstructure:"-"`
+	// SocketBridges maps host Unix sockets to guest paths. host_path is expanded
+	// (~ and ${VAR}) during config load, like compose_file.
+	SocketBridges []SocketBridge `mapstructure:"socket_bridges"`
 
 	StateDir string `mapstructure:"-"`
 }
@@ -177,11 +178,6 @@ func (c *Config) ActiveAgents() []string {
 
 func (c *Config) DefaultAgent() string {
 	return c.Agents.Default
-}
-
-// ResolvedSocketBridges returns bridges with host_path expanded (~ and ${VAR}).
-func (c *Config) ResolvedSocketBridges() []SocketBridge {
-	return c.ParsedSocketBridges
 }
 
 // ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references
@@ -399,7 +395,7 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	if err != nil {
 		return err
 	}
-	cfg.ParsedSocketBridges = parsedBridges
+	cfg.SocketBridges = parsedBridges
 
 	return nil
 }

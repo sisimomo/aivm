@@ -348,11 +348,11 @@ func buildRuntimeStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]
 }
 
 func socketBridgesFromConfig(cfg *config.Config) []vm.SocketBridge {
-	if len(cfg.ParsedSocketBridges) == 0 {
+	if len(cfg.SocketBridges) == 0 {
 		return nil
 	}
-	out := make([]vm.SocketBridge, len(cfg.ParsedSocketBridges))
-	for i, b := range cfg.ParsedSocketBridges {
+	out := make([]vm.SocketBridge, len(cfg.SocketBridges))
+	for i, b := range cfg.SocketBridges {
 		out[i] = vm.SocketBridge{HostPath: b.HostPath, GuestPath: b.GuestPath}
 	}
 	return out
