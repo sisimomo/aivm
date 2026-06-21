@@ -187,3 +187,16 @@ idle:
 # and torn down with `docker compose down`. Named volumes are never deleted.
 # The project name is set to the VM profile name.
 # compose_file: ./docker-compose.yml
+
+# Unix socket bridges — expose host sockets inside the VM at stable guest paths.
+# Conceptually similar to vm.mounts (host resource at guest path) but
+# implemented as socket forwarding, not directory binds. Set vm.env yourself if an app needs
+# a path variable (e.g. HERDR_SOCKET_PATH).
+#
+# Docker: host_path must exist and be a Unix socket before VM create.
+# Lima (macOS): host_path parent directory must be accessible; see README.
+# socket_bridges:
+#   - host_path: "${XDG_CONFIG_HOME}/herdr/service.sock"
+#     guest_path: /run/aivm/sockets/herdr.sock
+#   - host_path: "~/.config/foo/service.sock"
+#     guest_path: /run/aivm/sockets/foo.sock

@@ -218,6 +218,41 @@ the VM. `aivm ssh` and `aivm` (agent launch) translate your host current working
 directory to the matching VM path automatically. `aivm cp vm:/path` is
 unchanged — VM paths stay explicit via the `vm:` prefix.
 
+### Socket bridges
+
+Top-level `socket_bridges` forwards a host Unix domain socket into the VM at a
+stable guest path. Use this when a guest process needs to talk to a host daemon
+(for example a local API server) without TCP port forwarding.
+
+Each entry has two required fields:
+
+| Field | Description |
+| --- | --- |
+| `host_path` | Host path to the Unix socket (supports `~` and `${VAR}` expansion) |
+| `guest_path` | Absolute path inside the VM where the socket appears |
+
+```yaml
+socket_bridges:
+  - host_path: "${XDG_CONFIG_HOME}/herdr/service.sock"
+    guest_path: /run/aivm/sockets/herdr.sock
+```
+
+**Docker backend:** `host_path` must exist and be a Unix socket before the VM
+is created. Start the host daemon first, then run `aivm`.
+
+**Lima backend (macOS):** bridges are implemented as Lima `portForwards` with
+`reverse: true`. The parent directory of `host_path` must be accessible at VM
+create time; the socket itself may appear later. Lima socket forwarding has
+known limitations — see
+[lima-vm/lima#1724](https://github.com/lima-vm/lima/issues/1724).
+
+Changing `socket_bridges` changes the config hash and requires a VM recreate,
+the same as remapping `vm.mounts`.
+
+**Security:** a socket bridge is equivalent to granting VM processes access to
+whatever API the host daemon exposes on that socket. Only bridge trusted host
+services.
+
 ### Session host environment
 
 `vm.session_env` maps environment variable names to values, using the same
