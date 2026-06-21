@@ -30,20 +30,26 @@ type Mount struct {
 	Writable  bool
 }
 
+type SocketBridge struct {
+	HostPath  string
+	GuestPath string
+}
+
 type PortMapping struct {
 	HostPort      int // 0 means "let Docker auto-assign"
 	ContainerPort int
 }
 
 type StartOptions struct {
-	CPUs         int
-	MemoryBytes  int64
-	DiskBytes    int64
-	VMType       string
-	Mounts       []Mount
-	SSHAgent     bool
-	PortMappings []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
-	Privileged   bool          // Docker only: run the container in privileged mode
+	CPUs          int
+	MemoryBytes   int64
+	DiskBytes     int64
+	VMType        string
+	Mounts        []Mount
+	SocketBridges []SocketBridge
+	SSHAgent      bool
+	PortMappings  []PortMapping // explicit host:container port mappings (used when host port auto-assignment is needed)
+	Privileged    bool          // Docker only: run the container in privileged mode
 }
 
 type VM interface {

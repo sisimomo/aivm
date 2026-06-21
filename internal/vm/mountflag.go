@@ -38,3 +38,27 @@ func DockerVolumeFlag(m Mount) string {
 	}
 	return fmt.Sprintf("%s:%s:%s", m.HostPath, m.GuestPath, mode)
 }
+
+func DockerSocketVolumeFlag(b SocketBridge) string {
+	return fmt.Sprintf("%s:%s:ro", b.HostPath, b.GuestPath)
+}
+
+func LimaPortForwardYAML(b SocketBridge) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "- guestSocket: %q\n", b.GuestPath)
+	fmt.Fprintf(&sb, "  hostSocket: %q\n", b.HostPath)
+	sb.WriteString("  reverse: true\n")
+	return sb.String()
+}
+
+func LimaPortForwardsYAML(bridges []SocketBridge) string {
+	if len(bridges) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("portForwards:\n")
+	for _, b := range bridges {
+		sb.WriteString(LimaPortForwardYAML(b))
+	}
+	return sb.String()
+}
