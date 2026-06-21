@@ -143,6 +143,10 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 		return fmt.Errorf("building start options: %w", err)
 	}
 
+	if err := validateAndPrepareSocketBridges(cfg, svc.AgentDefs); err != nil {
+		return fmt.Errorf("socket bridges: %w", err)
+	}
+
 	if err := ensureAgentMountDirs(svc.VM, cfg, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
@@ -160,6 +164,11 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 			return err
 		}
 		svc.Sessions.ClearVMStoppedAt()
+		if !svc.VM.UsesBootstrapOnlyMounts() {
+			if err := prepareSocketBridgeGuestDirs(ctx, svc.VM, opts.SocketBridges); err != nil {
+				return fmt.Errorf("socket bridge guest dirs: %w", err)
+			}
+		}
 	}
 
 	if err := svc.ensureBootstrapped(ctx, wasCreated); err != nil {

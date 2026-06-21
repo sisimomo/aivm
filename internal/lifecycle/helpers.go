@@ -295,6 +295,9 @@ func finalizeAfterBootstrap(ctx context.Context, svc *LifecycleService) error {
 	if err := svc.VM.FinalizeAfterBootstrap(ctx, runtimeOpts); err != nil {
 		return fmt.Errorf("finalize after bootstrap: %w", err)
 	}
+	if err := prepareSocketBridgeGuestDirs(ctx, svc.VM, runtimeOpts.SocketBridges); err != nil {
+		return fmt.Errorf("socket bridge guest dirs: %w", err)
+	}
 	return nil
 }
 
@@ -334,13 +337,75 @@ func buildRuntimeStartOptions(v vm.VM, cfg *config.Config, agentDefs map[string]
 	}
 
 	return vm.StartOptions{
-		CPUs:         cfg.VM.CPUs,
-		MemoryBytes:  cfg.VM.MemoryBytes,
-		DiskBytes:    cfg.VM.DiskBytes,
-		VMType:       cfg.VM.Type,
-		Mounts:       mounts,
-		PortMappings: portMappings,
+		CPUs:          cfg.VM.CPUs,
+		MemoryBytes:   cfg.VM.MemoryBytes,
+		DiskBytes:     cfg.VM.DiskBytes,
+		VMType:        cfg.VM.Type,
+		Mounts:        mounts,
+		PortMappings:  portMappings,
+		SocketBridges: socketBridgesFromConfig(cfg),
 	}, nil
+}
+
+func socketBridgesFromConfig(cfg *config.Config) []vm.SocketBridge {
+	if len(cfg.ParsedSocketBridges) == 0 {
+		return nil
+	}
+	out := make([]vm.SocketBridge, len(cfg.ParsedSocketBridges))
+	for i, b := range cfg.ParsedSocketBridges {
+		out[i] = vm.SocketBridge{HostPath: b.HostPath, GuestPath: b.GuestPath}
+	}
+	return out
+}
+
+func validateAndPrepareSocketBridges(cfg *config.Config, agentDefs map[string]agent.Def) error {
+	bridges := socketBridgesFromConfig(cfg)
+	if len(bridges) == 0 {
+		return nil
+	}
+	mounts, err := ResolvedMountsForRuntime(cfg, agentDefs, cfg.T3Code.Enable)
+	if err != nil {
+		return err
+	}
+	backend := effectiveBackend(cfg.VM)
+	return vm.ValidateSocketBridgesForStart(backend, bridges, mounts)
+}
+
+func prepareSocketBridgeGuestDirs(ctx context.Context, v vm.VM, bridges []vm.SocketBridge) error {
+	if len(bridges) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var parents []string
+	for _, b := range bridges {
+		parent := filepath.Dir(b.GuestPath)
+		if seen[parent] {
+			continue
+		}
+		seen[parent] = true
+		parents = append(parents, parent)
+	}
+	sort.Strings(parents)
+	script := "set -e\n"
+	for _, p := range parents {
+		script += fmt.Sprintf("sudo mkdir -p %s\n", vm.ShellEscape(p))
+	}
+	return v.Run(ctx, script, nil)
+}
+
+// BuildRuntimeStartOptionsForTest exposes buildRuntimeStartOptions for unit tests.
+func BuildRuntimeStartOptionsForTest(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	return buildRuntimeStartOptions(v, cfg, agentDefs)
+}
+
+// BuildBootstrapStartOptionsForTest exposes buildBootstrapStartOptions for unit tests.
+func BuildBootstrapStartOptionsForTest(v vm.VM, cfg *config.Config, agentDefs map[string]agent.Def) (vm.StartOptions, error) {
+	return buildBootstrapStartOptions(v, cfg, agentDefs)
+}
+
+// ValidateSocketBridgesForTest exposes validateAndPrepareSocketBridges for unit tests.
+func ValidateSocketBridgesForTest(cfg *config.Config, agentDefs map[string]agent.Def) error {
+	return validateAndPrepareSocketBridges(cfg, agentDefs)
 }
 
 // buildStartOptions constructs consistent vm.StartOptions from config.

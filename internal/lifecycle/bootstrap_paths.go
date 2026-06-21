@@ -26,6 +26,9 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
+	if err := validateAndPrepareSocketBridges(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("socket bridges: %w", err)
+	}
 	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
@@ -60,6 +63,9 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 	opts, err := buildStartOptions(svc.VM, svc.Config, svc.AgentDefs)
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
+	}
+	if err := validateAndPrepareSocketBridges(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("socket bridges: %w", err)
 	}
 	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
