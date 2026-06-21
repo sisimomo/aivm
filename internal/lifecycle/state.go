@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/sisimomo/aivm/internal/agent"
+	"github.com/sisimomo/aivm/internal/config"
 	"github.com/sisimomo/aivm/internal/integration"
 	"github.com/sisimomo/aivm/internal/mountspec"
 	"github.com/sisimomo/aivm/internal/plugin"
@@ -126,6 +127,7 @@ func (svc *LifecycleService) currentConfigHash() string {
 		svc.Config.VM.Type,
 		svc.Config.VM.Mounts,
 		svc.VM.Profile(),
+		svc.Config.ParsedSocketBridges,
 	)
 }
 
@@ -154,6 +156,7 @@ func ComputeConfigHash(
 	vmType string,
 	vmMounts []mountspec.MountSpec,
 	vmProfile string,
+	socketBridges []config.SocketBridge,
 ) string {
 	sorted := append([]string(nil), enabledPlugins...)
 	sort.Strings(sorted)
@@ -173,6 +176,9 @@ func ComputeConfigHash(
 	if pluginConfig == nil {
 		pluginConfig = map[string]map[string]any{}
 	}
+	if socketBridges == nil {
+		socketBridges = []config.SocketBridge{}
+	}
 
 	type hashInput struct {
 		Provider       string
@@ -187,6 +193,7 @@ func ComputeConfigHash(
 		PluginDefs     map[string]plugin.PluginDef
 		PluginConfig   map[string]map[string]any
 		Integrations   []integration.IntegrationDef
+		SocketBridges  []config.SocketBridge `json:"socket_bridges"`
 	}
 	data, _ := json.Marshal(hashInput{
 		Provider:       provider,
@@ -201,6 +208,7 @@ func ComputeConfigHash(
 		PluginDefs:     pluginDefs,
 		PluginConfig:   pluginConfig,
 		Integrations:   integrations,
+		SocketBridges:  socketBridges,
 	})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
