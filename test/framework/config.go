@@ -78,6 +78,9 @@ type testConfig struct {
 	// ComposeContent, when non-empty, is written to <stateDir>/docker-compose.yml
 	// and referenced as compose_file in aivm.yaml.
 	ComposeContent string
+
+	// SocketBridges maps host Unix sockets to guest paths (socket_bridges in YAML).
+	SocketBridges []struct{ Host, Guest string }
 }
 
 func defaultTestConfig() testConfig {
@@ -230,6 +233,14 @@ func WithComposeContent(content string) Option {
 	return func(c *testConfig) { c.ComposeContent = content }
 }
 
+// WithSocketBridge adds a Unix socket bridge (host_path → guest_path) to the
+// generated aivm.yaml. The host socket must exist before VM create.
+func WithSocketBridge(hostPath, guestPath string) Option {
+	return func(c *testConfig) {
+		c.SocketBridges = append(c.SocketBridges, struct{ Host, Guest string }{hostPath, guestPath})
+	}
+}
+
 // WithLaunchCommand overrides cli_command and launch_args for the active provider
 // in the generated aivm.yaml. Use "sleep 30" for session idle tests.
 func WithLaunchCommand(cmd string) Option {
@@ -320,6 +331,13 @@ func buildTestYAML(profile, stateDir string, tc testConfig) string {
 		fmt.Fprintf(&sb, "  session_env:\n")
 		for _, k := range keys {
 			fmt.Fprintf(&sb, "    %s: %q\n", k, tc.SessionEnv[k])
+		}
+	}
+	if len(tc.SocketBridges) > 0 {
+		fmt.Fprintf(&sb, "socket_bridges:\n")
+		for _, b := range tc.SocketBridges {
+			fmt.Fprintf(&sb, "  - host_path: %q\n", b.Host)
+			fmt.Fprintf(&sb, "    guest_path: %q\n", b.Guest)
 		}
 	}
 
