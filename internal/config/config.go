@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,7 +36,16 @@ type Config struct {
 	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
 	LogLevel     string                       `mapstructure:"log_level"`
 
+	SocketBridges       []SocketBridge `mapstructure:"socket_bridges"`
+	ParsedSocketBridges []SocketBridge `mapstructure:"-"`
+
 	StateDir string `mapstructure:"-"`
+}
+
+// SocketBridge maps a host Unix socket to a guest path in the VM.
+type SocketBridge struct {
+	HostPath  string `mapstructure:"host_path"`
+	GuestPath string `mapstructure:"guest_path"`
 }
 
 // Mount represents a single host directory mounted into the VM.
@@ -167,6 +177,11 @@ func (c *Config) ActiveAgents() []string {
 
 func (c *Config) DefaultAgent() string {
 	return c.Agents.Default
+}
+
+// ResolvedSocketBridges returns bridges with host_path expanded (~ and ${VAR}).
+func (c *Config) ResolvedSocketBridges() []SocketBridge {
+	return c.ParsedSocketBridges
 }
 
 // ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references
@@ -376,6 +391,16 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	}
 	vm.ParsedMounts = parsed
 
+	mountSources := make([]string, len(vm.ParsedMounts))
+	for i, m := range vm.ParsedMounts {
+		mountSources[i] = m.HostPath
+	}
+	parsedBridges, err := parseSocketBridges(cfg.SocketBridges, home, mountSources)
+	if err != nil {
+		return err
+	}
+	cfg.ParsedSocketBridges = parsedBridges
+
 	return nil
 }
 
@@ -431,6 +456,61 @@ func expandPath(path, home string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func resolveSocketBridgePath(raw, home string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	expanded := os.ExpandEnv(raw)
+	expanded = expandPath(expanded, home)
+	if !filepath.IsAbs(expanded) {
+		return "", fmt.Errorf("path %q must be absolute after expansion (got %q)", raw, expanded)
+	}
+	return expanded, nil
+}
+
+func parseSocketBridges(bridges []SocketBridge, home string, mountSources []string) ([]SocketBridge, error) {
+	if len(bridges) == 0 {
+		return nil, nil
+	}
+	parsed := make([]SocketBridge, 0, len(bridges))
+	seenGuest := make(map[string]int)
+	seenHost := make(map[string]int)
+	mountSet := make(map[string]bool, len(mountSources))
+	for _, s := range mountSources {
+		mountSet[s] = true
+	}
+	for i, b := range bridges {
+		if strings.TrimSpace(b.HostPath) == "" {
+			return nil, fmt.Errorf("socket_bridges[%d]: host_path is required", i)
+		}
+		if strings.TrimSpace(b.GuestPath) == "" {
+			return nil, fmt.Errorf("socket_bridges[%d]: guest_path is required", i)
+		}
+		host, err := resolveSocketBridgePath(b.HostPath, home)
+		if err != nil {
+			return nil, fmt.Errorf("socket_bridges[%d].host_path: %w", i, err)
+		}
+		guest := filepath.Clean(b.GuestPath)
+		if !filepath.IsAbs(guest) {
+			return nil, fmt.Errorf("socket_bridges[%d].guest_path: must be absolute (got %q)", i, b.GuestPath)
+		}
+		if prev, ok := seenGuest[guest]; ok {
+			return nil, fmt.Errorf("socket_bridges: duplicate guest_path %q (entries %d and %d)", guest, prev, i)
+		}
+		seenGuest[guest] = i
+		if prev, ok := seenHost[host]; ok {
+			return nil, fmt.Errorf("socket_bridges: duplicate host_path %q (entries %d and %d)", host, prev, i)
+		}
+		seenHost[host] = i
+		if mountSet[host] {
+			slog.Warn("socket_bridges: host_path matches a vm.mounts source — unlikely to work as a socket bridge",
+				"index", i, "host_path", host)
+		}
+		parsed = append(parsed, SocketBridge{HostPath: host, GuestPath: guest})
+	}
+	return parsed, nil
 }
 
 // setDefaultsFromYAML parses the given YAML bytes and registers each leaf value
