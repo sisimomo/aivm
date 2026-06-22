@@ -226,13 +226,13 @@ TCP port forwarding.
 
 | Field | Description |
 | --- | --- |
-| `host_path` | Host socket path (`~` and `${VAR}` expansion supported) |
-| `guest_path` | Absolute path inside the VM |
+| `host_path` | Host socket path (`{{ .host_home }}`, `{{ .state_dir }}`, `~`, and `${VAR}` expansion supported) |
+| `guest_path` | Absolute path inside the VM (`{{ .host_home }}`, `{{ .state_dir }}`, and `~` expansion supported) |
 
 ```yaml
 socket_bridges:
-  - host_path: "${XDG_CONFIG_HOME}/herdr/service.sock"
-    guest_path: /run/aivm/sockets/herdr.sock
+  - host_path: "~/.config/herdr/herdr.sock"
+    guest_path: "{{ .host_home }}/.config/herdr/herdr.sock"
 ```
 
 **Backends:** Docker requires `host_path` to exist before VM create. On Lima/macOS,

@@ -24,11 +24,11 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 		return ResolvedMount{}, fmt.Errorf("vm home is required for mount resolution")
 	}
 
-	source, err := renderPath(spec.Source, ctx)
+	source, err := ResolveHostPath(spec.Source, ctx)
 	if err != nil {
 		return ResolvedMount{}, fmt.Errorf("source: %w", err)
 	}
-	target, err := renderPath(spec.Target, ctx)
+	target, err := ResolveGuestPath(spec.Target, ctx)
 	if err != nil {
 		return ResolvedMount{}, fmt.Errorf("target: %w", err)
 	}
@@ -38,26 +38,42 @@ func Resolve(spec MountSpec, ctx Context) (ResolvedMount, error) {
 		return ResolvedMount{}, err
 	}
 
-	source = expandTilde(source, ctx.Home)
-	target = expandTilde(target, ctx.VMHome)
-
-	if !filepath.IsAbs(source) {
-		return ResolvedMount{}, fmt.Errorf(
-			"source %q must be absolute after expansion", source)
-	}
-	if !filepath.IsAbs(target) {
-		return ResolvedMount{}, fmt.Errorf(
-			"target %q must be absolute after expansion", target)
-	}
-
 	return ResolvedMount{
-		HostPath:  filepath.Clean(source),
-		GuestPath: filepath.Clean(target),
+		HostPath:  source,
+		GuestPath: target,
 		Writable:  writable,
 	}, nil
 }
 
-func renderPath(src string, ctx Context) (string, error) {
+// ResolveHostPath renders templates, expands ~ to the host home directory, and
+// requires an absolute path.
+func ResolveHostPath(raw string, ctx Context) (string, error) {
+	return resolvePath(raw, ctx, ctx.Home)
+}
+
+// ResolveGuestPath renders templates, expands ~ to the VM home directory, and
+// requires an absolute path.
+func ResolveGuestPath(raw string, ctx Context) (string, error) {
+	return resolvePath(raw, ctx, ctx.VMHome)
+}
+
+func resolvePath(raw string, ctx Context, tildeHome string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	rendered, err := RenderPath(raw, ctx)
+	if err != nil {
+		return "", err
+	}
+	expanded := ExpandTilde(rendered, tildeHome)
+	if !filepath.IsAbs(expanded) {
+		return "", fmt.Errorf("path %q must be absolute after expansion (got %q)", raw, expanded)
+	}
+	return filepath.Clean(expanded), nil
+}
+
+// RenderPath expands {{ .host_home }} and {{ .state_dir }} templates in raw.
+func RenderPath(src string, ctx Context) (string, error) {
 	t, err := template.New("").
 		Option("missingkey=error").
 		Funcs(plugin.TemplateFuncMap()).
@@ -76,7 +92,8 @@ func renderPath(src string, ctx Context) (string, error) {
 	return strings.TrimSpace(buf.String()), nil
 }
 
-func expandTilde(path, home string) string {
+// ExpandTilde replaces a leading ~ with home.
+func ExpandTilde(path, home string) string {
 	if path == "~" {
 		return home
 	}

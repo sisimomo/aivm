@@ -36,8 +36,9 @@ type Config struct {
 	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
 	LogLevel     string                       `mapstructure:"log_level"`
 
-	// SocketBridges maps host Unix sockets to guest paths. host_path is expanded
-	// (~ and ${VAR}) during config load, like compose_file.
+	// SocketBridges maps host Unix sockets to guest paths. Paths support
+	// {{ .host_home }}, {{ .state_dir }}, ~, and ${VAR} (host_path only) during
+	// config load, like vm.mounts.
 	SocketBridges []SocketBridge `mapstructure:"socket_bridges"`
 
 	StateDir string `mapstructure:"-"`
@@ -391,7 +392,7 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	for i, m := range vm.ParsedMounts {
 		mountSources[i] = m.HostPath
 	}
-	parsedBridges, err := parseSocketBridges(cfg.SocketBridges, home, mountSources)
+	parsedBridges, err := parseSocketBridges(cfg.SocketBridges, ctx, mountSources)
 	if err != nil {
 		return err
 	}
@@ -454,19 +455,23 @@ func expandPath(path, home string) string {
 	return path
 }
 
-func resolveSocketBridgePath(raw, home string) (string, error) {
+func resolveSocketBridgeHostPath(raw string, ctx mountspec.Context) (string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", fmt.Errorf("path must not be empty")
 	}
-	expanded := os.ExpandEnv(raw)
-	expanded = expandPath(expanded, home)
+	rendered, err := mountspec.RenderPath(raw, ctx)
+	if err != nil {
+		return "", err
+	}
+	expanded := os.ExpandEnv(rendered)
+	expanded = mountspec.ExpandTilde(expanded, ctx.Home)
 	if !filepath.IsAbs(expanded) {
 		return "", fmt.Errorf("path %q must be absolute after expansion (got %q)", raw, expanded)
 	}
 	return filepath.Clean(expanded), nil
 }
 
-func parseSocketBridges(bridges []SocketBridge, home string, mountSources []string) ([]SocketBridge, error) {
+func parseSocketBridges(bridges []SocketBridge, ctx mountspec.Context, mountSources []string) ([]SocketBridge, error) {
 	if len(bridges) == 0 {
 		return nil, nil
 	}
@@ -484,13 +489,13 @@ func parseSocketBridges(bridges []SocketBridge, home string, mountSources []stri
 		if strings.TrimSpace(b.GuestPath) == "" {
 			return nil, fmt.Errorf("socket_bridges[%d]: guest_path is required", i)
 		}
-		host, err := resolveSocketBridgePath(b.HostPath, home)
+		host, err := resolveSocketBridgeHostPath(b.HostPath, ctx)
 		if err != nil {
 			return nil, fmt.Errorf("socket_bridges[%d].host_path: %w", i, err)
 		}
-		guest := filepath.Clean(b.GuestPath)
-		if !filepath.IsAbs(guest) {
-			return nil, fmt.Errorf("socket_bridges[%d].guest_path: must be absolute (got %q)", i, b.GuestPath)
+		guest, err := mountspec.ResolveGuestPath(b.GuestPath, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("socket_bridges[%d].guest_path: %w", i, err)
 		}
 		if prev, ok := seenGuest[guest]; ok {
 			return nil, fmt.Errorf("socket_bridges: duplicate guest_path %q (entries %d and %d)", guest, prev, i)

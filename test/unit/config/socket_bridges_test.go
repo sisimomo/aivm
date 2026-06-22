@@ -69,6 +69,46 @@ socket_bridges:
 	}
 }
 
+func TestLoad_SocketBridge_TemplateGuestPath(t *testing.T) {
+	t.Parallel()
+	home, _ := os.UserHomeDir()
+	dir := t.TempDir()
+	path := writeConfig(t, dir, minimalVMHeader()+`
+socket_bridges:
+  - host_path: "~/.config/herdr/herdr.sock"
+    guest_path: "{{ .host_home }}/.config/herdr/herdr.sock"
+`)
+	cfg, err := config.Load(path, config.Defaults{StateDir: "~/.aivm"})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := filepath.Join(home, ".config/herdr/herdr.sock")
+	b := cfg.SocketBridges[0]
+	if b.HostPath != want || b.GuestPath != want {
+		t.Fatalf("got host=%q guest=%q, want both %q", b.HostPath, b.GuestPath, want)
+	}
+}
+
+func TestLoad_SocketBridge_TemplateHostPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "state")
+	path := writeConfig(t, dir, minimalVMHeader()+`
+socket_bridges:
+  - host_path: "{{ .state_dir }}/service.sock"
+    guest_path: /run/aivm/sockets/service.sock
+`)
+	cfg, err := config.Load(path, config.Defaults{StateDir: stateDir})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantHost := filepath.Join(stateDir, "service.sock")
+	b := cfg.SocketBridges[0]
+	if b.HostPath != wantHost || b.GuestPath != "/run/aivm/sockets/service.sock" {
+		t.Fatalf("got %+v, want host %q", b, wantHost)
+	}
+}
+
 func TestLoad_SocketBridge_RejectsRelativeGuestPath(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

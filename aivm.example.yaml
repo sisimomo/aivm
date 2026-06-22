@@ -193,10 +193,13 @@ idle:
 # implemented as socket forwarding, not directory binds. Set vm.env yourself if an app needs
 # a path variable (e.g. HERDR_SOCKET_PATH).
 #
+# Paths support {{ .host_home }}, {{ .state_dir }}, and ~ (same as vm.mounts).
+# host_path also supports ${VAR} expansion.
+#
 # Docker: host_path must exist and be a Unix socket before VM create.
 # Lima (macOS): host_path parent directory must be accessible; see README.
 # socket_bridges:
 #   - host_path: "${XDG_CONFIG_HOME}/herdr/service.sock"
 #     guest_path: /run/aivm/sockets/herdr.sock
 #   - host_path: "~/.config/foo/service.sock"
-#     guest_path: /run/aivm/sockets/foo.sock
+#     guest_path: "{{ .host_home }}/.config/foo/service.sock"
