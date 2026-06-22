@@ -143,8 +143,10 @@ func (svc *LifecycleService) resumeOrStartVM(ctx context.Context, status vm.Stat
 		return fmt.Errorf("building start options: %w", err)
 	}
 
-	if err := validateAndPrepareSocketBridges(cfg, svc.AgentDefs); err != nil {
-		return fmt.Errorf("socket bridges: %w", err)
+	if needsStart {
+		if err := validateAndPrepareSocketBridges(cfg, svc.AgentDefs); err != nil {
+			return fmt.Errorf("socket bridges: %w", err)
+		}
 	}
 
 	if err := ensureAgentMountDirs(svc.VM, cfg, svc.AgentDefs); err != nil {
