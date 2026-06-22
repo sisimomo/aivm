@@ -85,7 +85,7 @@ func (svc *LifecycleService) recordBootstrapState() error {
 // vm.env values. It is tracked separately from configHash so that env changes
 // can be applied as a lightweight in-place update without recreating the VM.
 func (svc *LifecycleService) currentEnvHash() string {
-	env := svc.Config.VM.ResolvedEnv()
+	env := svc.Config.ResolvedEnv()
 	keys := make([]string, 0, len(env))
 	for k := range env {
 		keys = append(keys, k)

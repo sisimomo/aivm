@@ -181,29 +181,37 @@ func (c *Config) DefaultAgent() string {
 	return c.Agents.Default
 }
 
-// ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references
-// expanded from the host environment. Use this whenever env values are
-// applied to the VM or hashed for change detection.
-func (vm *VMConfig) ResolvedEnv() map[string]string {
-	if len(vm.Env) == 0 {
-		return nil
-	}
-	resolved := make(map[string]string, len(vm.Env))
-	for k, v := range vm.Env {
-		resolved[k] = os.ExpandEnv(v)
-	}
-	return resolved
+// ResolvedEnv returns vm.env with {{ .host_home }}, {{ .state_dir }}, ~, and
+// ${HOST_VAR} expansion. Templates and ~ use the same rules as socket bridge
+// guest paths; host variables are resolved from the host when env is applied.
+func (c *Config) ResolvedEnv() map[string]string {
+	return c.resolveVMEnvValues(c.VM.Env, "vm.env")
 }
 
-// ResolvedSessionEnv returns vm.session_env with all ${HOST_VAR} and $HOST_VAR
-// references expanded from the host environment at session start.
-func (vm *VMConfig) ResolvedSessionEnv() map[string]string {
-	if len(vm.SessionEnv) == 0 {
+// ResolvedSessionEnv returns vm.session_env with {{ .host_home }}, {{ .state_dir }},
+// ~, and ${HOST_VAR} expansion. Templates and ~ use the same rules as socket
+// bridge guest paths; host variables are resolved from the invoking host at
+// session start.
+func (c *Config) ResolvedSessionEnv() map[string]string {
+	return c.resolveVMEnvValues(c.VM.SessionEnv, "vm.session_env")
+}
+
+func (c *Config) resolveVMEnvValues(values map[string]string, logPrefix string) map[string]string {
+	if len(values) == 0 {
 		return nil
 	}
-	resolved := make(map[string]string, len(vm.SessionEnv))
-	for k, v := range vm.SessionEnv {
-		resolved[k] = os.ExpandEnv(v)
+	home, _ := os.UserHomeDir()
+	ctx := c.VM.MountContext(c.StateDir, home)
+	resolved := make(map[string]string, len(values))
+	for k, v := range values {
+		expanded, err := resolveVMEnvValue(v, ctx)
+		if err != nil {
+			slog.Warn(logPrefix+": failed to resolve value",
+				"key", k, "error", err)
+			resolved[k] = v
+			continue
+		}
+		resolved[k] = expanded
 	}
 	return resolved
 }
@@ -366,8 +374,20 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	// --- vm home (derived from backend; not user-configurable) ---
 	vm.ParsedVMHome = defaultVMHomeFor(vm, home)
 
-	// --- mounts ---
 	ctx := MountResolveContext(cfg.StateDir, home, vm.ParsedVMHome)
+
+	for name, value := range vm.Env {
+		if _, err := resolveVMEnvValue(value, ctx); err != nil {
+			return fmt.Errorf("vm.env[%q]: %w", name, err)
+		}
+	}
+	for name, value := range vm.SessionEnv {
+		if _, err := resolveVMEnvValue(value, ctx); err != nil {
+			return fmt.Errorf("vm.session_env[%q]: %w", name, err)
+		}
+	}
+
+	// --- mounts ---
 	parsed := make([]Mount, 0, len(vm.Mounts))
 	for i, spec := range vm.Mounts {
 		resolved, err := mountspec.Resolve(spec, ctx)
@@ -453,6 +473,15 @@ func expandPath(path, home string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func resolveVMEnvValue(raw string, ctx mountspec.Context) (string, error) {
+	rendered, err := mountspec.RenderPath(raw, ctx)
+	if err != nil {
+		return "", err
+	}
+	expanded := os.ExpandEnv(rendered)
+	return mountspec.ExpandTilde(expanded, ctx.VMHome), nil
 }
 
 func resolveSocketBridgeHostPath(raw string, ctx mountspec.Context) (string, error) {

@@ -293,7 +293,7 @@ func (svc *LifecycleService) Launch(ctx context.Context, agentOverride string) e
 		WorkDir:    s.vmDir,
 		CLICommand: s.provDef.CLICommand,
 		LaunchArgs: s.provDef.LaunchArgs,
-		Env:        cfg.VM.ResolvedSessionEnv(),
+		Env:        cfg.ResolvedSessionEnv(),
 	}
 
 	resp, err := s.prov.Launch(s.ctx, env)
@@ -319,7 +319,7 @@ func (svc *LifecycleService) AgentRun(ctx context.Context, agentOverride string,
 		WorkDir:    s.vmDir,
 		CLICommand: s.provDef.CLICommand,
 		Args:       args,
-		Env:        cfg.VM.ResolvedSessionEnv(),
+		Env:        cfg.ResolvedSessionEnv(),
 	}
 
 	resp, err := s.prov.Run(s.ctx, env)

@@ -388,7 +388,12 @@ func prepareSocketBridgeGuestDirs(ctx context.Context, v vm.VM, bridges []vm.Soc
 	sort.Strings(parents)
 	script := "set -e\n"
 	for _, p := range parents {
-		script += fmt.Sprintf("sudo mkdir -p %s\n", vm.ShellEscape(p))
+		// Lima reverse socket forwards create the guest socket as the SSH user;
+		// root-owned parents (mkdir via sudo) block that unless we chown.
+		script += fmt.Sprintf(
+			"sudo mkdir -p %s && sudo chown \"$(whoami):$(whoami)\" %s\n",
+			vm.ShellEscape(p), vm.ShellEscape(p),
+		)
 	}
 	return v.Run(ctx, script, nil)
 }

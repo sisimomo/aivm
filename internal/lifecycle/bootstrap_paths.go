@@ -93,7 +93,7 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 }
 
 func applyPostRestore(ctx context.Context, svc *LifecycleService) error {
-	if err := applyVMEnv(ctx, svc.VM, svc.Config.VM.ResolvedEnv()); err != nil {
+	if err := applyVMEnv(ctx, svc.VM, svc.Config.ResolvedEnv()); err != nil {
 		return err
 	}
 	name, email := readHostGitIdentity()
