@@ -218,10 +218,35 @@ the VM. `aivm ssh` and `aivm` (agent launch) translate your host current working
 directory to the matching VM path automatically. `aivm cp vm:/path` is
 unchanged — VM paths stay explicit via the `vm:` prefix.
 
+### Socket bridges
+
+Top-level `socket_bridges` forwards a host Unix domain socket into the VM at a
+stable guest path — useful when a guest process must reach a host daemon without
+TCP port forwarding.
+
+| Field | Description |
+| --- | --- |
+| `host_path` | Host socket path (`{{ .host_home }}`, `{{ .state_dir }}`, `~`, and `${VAR}` expansion supported) |
+| `guest_path` | Absolute path inside the VM (`{{ .host_home }}`, `{{ .state_dir }}`, and `~` expansion supported) |
+
+```yaml
+socket_bridges:
+  - host_path: "~/.config/herdr/herdr.sock"
+    guest_path: "{{ .host_home }}/.config/herdr/herdr.sock"
+```
+
+**Backends:** Docker requires `host_path` to exist before VM create. On Lima/macOS,
+the parent directory of `host_path` must exist at create time; the socket may
+appear later ([lima-vm/lima#1724](https://github.com/lima-vm/lima/issues/1724)).
+
+Changes require VM recreate (same as remapping `vm.mounts`). Only bridge trusted
+host services — guest processes gain access to whatever the host daemon exposes.
+
 ### Session host environment
 
-`vm.session_env` maps environment variable names to values, using the same
-`${HOST_VAR}` expansion as `vm.env`. On each agent or shell session (`aivm`,
+`vm.session_env` maps environment variable names to values. Values support
+`{{ .host_home }}`, `{{ .state_dir }}`, `~` (expanded to the VM user home), and
+the same `${HOST_VAR}` expansion as `vm.env`. On each agent or shell session (`aivm`,
 `aivm agent -- …`, or `aivm ssh`), values are resolved from the invoking host
 process and exported inside the VM for that session only.
 
@@ -236,6 +261,7 @@ the VM.
 ```yaml
 vm:
   session_env:
+    HERDR_SOCKET_PATH: "{{ .host_home }}/.config/herdr/herdr.sock"
     MY_TOOL_SESSION_ID: "${MY_TOOL_SESSION_ID}"
     CI_JOB_ID: "${CI_JOB_ID}"
 ```
@@ -246,13 +272,15 @@ expand to empty strings.
 ### Persistent VM environment
 
 `vm.env` injects environment variables into the VM on bootstrap and on config
-sync. Values support `${HOST_VAR}` expansion from the host shell. Unlike
+sync. Values support `{{ .host_home }}`, `{{ .state_dir }}`, `~` (expanded to
+the VM user home), and `${HOST_VAR}` expansion from the host shell. Unlike
 `vm.session_env`, these are persisted in the VM and shared by every shell
 session.
 
 ```yaml
 vm:
   env:
+    HERDR_SOCKET_PATH: "{{ .host_home }}/.config/herdr/herdr.sock"
     CONTEXT7_API_KEY: "${CONTEXT7_API_KEY}"
     MY_API_TOKEN: "${MY_API_TOKEN}"
 ```

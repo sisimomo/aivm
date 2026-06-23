@@ -59,3 +59,31 @@ func TestDockerVolumeFlag_Remapped(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestDockerSocketVolumeFlag_ReadOnly(t *testing.T) {
+	b := vm.SocketBridge{HostPath: "/host/sock", GuestPath: "/run/aivm/sockets/sock"}
+	got := vm.DockerSocketVolumeFlag(b)
+	want := "/host/sock:/run/aivm/sockets/sock:ro"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestLimaPortForwardsYAML_ReverseSocket(t *testing.T) {
+	got := vm.LimaPortForwardsYAML([]vm.SocketBridge{{
+		HostPath:  "/Users/you/.config/foo/service.sock",
+		GuestPath: "/run/aivm/sockets/foo.sock",
+	}})
+	if !strings.HasPrefix(got, "portForwards:\n") {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.Contains(got, `guestSocket: "/run/aivm/sockets/foo.sock"`) {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.Contains(got, `hostSocket: "/Users/you/.config/foo/service.sock"`) {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.Contains(got, "reverse: true") {
+		t.Fatal("want reverse: true")
+	}
+}

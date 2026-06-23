@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strconv"
@@ -123,6 +124,11 @@ func (d *DockerVM) startFromImage(ctx context.Context, image string, opts StartO
 	}
 	for _, m := range opts.Mounts {
 		args = append(args, "-v", DockerVolumeFlag(m))
+	}
+	for _, b := range opts.SocketBridges {
+		slog.Info(fmt.Sprintf("socket bridge %s ← %s (docker bind)", b.GuestPath, b.HostPath))
+		slog.Debug(fmt.Sprintf("socket bridge resolved: guest=%s host=%s", b.GuestPath, b.HostPath))
+		args = append(args, "-v", DockerSocketVolumeFlag(b))
 	}
 	args = append(args, image)
 	return dockerCmd(ctx, args...)

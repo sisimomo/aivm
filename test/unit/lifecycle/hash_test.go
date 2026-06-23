@@ -126,6 +126,7 @@ func TestComputeConfigHash_StableAcrossSimulatedRuns(t *testing.T) {
 		provider,
 		agentDefs1,
 		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		nil,
 	)
 
 	// Simulate run 2: load ALL inputs completely from scratch again.
@@ -138,6 +139,7 @@ func TestComputeConfigHash_StableAcrossSimulatedRuns(t *testing.T) {
 		provider,
 		agentDefs2,
 		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		nil,
 	)
 
 	if h1 != h2 {
@@ -156,11 +158,11 @@ func TestComputeConfigHash_SameInputsSameHash(t *testing.T) {
 
 	h1 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm", nil)
 
 	h2 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm", nil)
 
 	if h1 != h2 {
 		t.Errorf("same inputs produced different hashes: %s vs %s", h1, h2)
@@ -175,11 +177,11 @@ func TestComputeConfigHash_EnabledPluginsOrderIndependent(t *testing.T) {
 
 	h1 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"system", "claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm", nil)
 
 	h2 := lifecycle.ComputeConfigHash(pluginDefs, nil, integs,
 		[]string{"claude", "system"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", defaultVMMounts(), "aivm")
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm", nil)
 
 	if h1 != h2 {
 		t.Errorf("hash should be order-independent for enabledPlugins: %s vs %s", h1, h2)
@@ -219,6 +221,7 @@ func TestComputeConfigHash_MultiAgentStableAcrossRuns(t *testing.T) {
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		"claude", agentDefs1,
 		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		nil,
 	)
 
 	pluginDefs2, agentDefs2, integs2 := buildMultiInputs()
@@ -227,6 +230,7 @@ func TestComputeConfigHash_MultiAgentStableAcrossRuns(t *testing.T) {
 		[]string{"system", "mise-node", "mise-python", "mise-uv", "claude"},
 		"claude", agentDefs2,
 		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		nil,
 	)
 
 	if h1 != h2 {
@@ -249,10 +253,10 @@ func TestComputeConfigHash_NilVsEmptySlicesAreNormalised(t *testing.T) {
 	// VMMounts: nil vs empty
 	hNilMounts := lifecycle.ComputeConfigHash(pluginDefs, nil, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", nil, "aivm")
+		4, "8GB", "60GB", "", nil, "aivm", nil)
 	hEmptyMounts := lifecycle.ComputeConfigHash(pluginDefs, nil, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", []mountspec.MountSpec{}, "aivm")
+		4, "8GB", "60GB", "", []mountspec.MountSpec{}, "aivm", nil)
 	if hNilMounts != hEmptyMounts {
 		t.Errorf("nil VMMounts and empty VMMounts must produce the same hash:\n  nil   = %s\n  empty = %s",
 			hNilMounts, hEmptyMounts)
@@ -261,10 +265,10 @@ func TestComputeConfigHash_NilVsEmptySlicesAreNormalised(t *testing.T) {
 	// Integrations: nil vs empty
 	hNilInteg := lifecycle.ComputeConfigHash(pluginDefs, nil, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", nil, "aivm")
+		4, "8GB", "60GB", "", nil, "aivm", nil)
 	hEmptyInteg := lifecycle.ComputeConfigHash(pluginDefs, nil, []integration.IntegrationDef{},
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", nil, "aivm")
+		4, "8GB", "60GB", "", nil, "aivm", nil)
 	if hNilInteg != hEmptyInteg {
 		t.Errorf("nil Integrations and empty Integrations must produce the same hash:\n  nil   = %s\n  empty = %s",
 			hNilInteg, hEmptyInteg)
@@ -273,12 +277,30 @@ func TestComputeConfigHash_NilVsEmptySlicesAreNormalised(t *testing.T) {
 	// PluginConfig: nil vs empty map
 	hNilCfg := lifecycle.ComputeConfigHash(pluginDefs, nil, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", nil, "aivm")
+		4, "8GB", "60GB", "", nil, "aivm", nil)
 	hEmptyCfg := lifecycle.ComputeConfigHash(pluginDefs, map[string]map[string]any{}, nil,
 		[]string{"claude"}, "claude", agentDefs,
-		4, "8GB", "60GB", "", nil, "aivm")
+		4, "8GB", "60GB", "", nil, "aivm", nil)
 	if hNilCfg != hEmptyCfg {
 		t.Errorf("nil PluginConfig and empty PluginConfig must produce the same hash:\n  nil   = %s\n  empty = %s",
 			hNilCfg, hEmptyCfg)
+	}
+}
+
+func TestComputeConfigHash_SocketBridgesChangeHash(t *testing.T) {
+	pluginDefs, agentDefs, _ := buildHashInputsFromCompose(t, "claude")
+
+	base := lifecycle.ComputeConfigHash(
+		pluginDefs, nil, nil, []string{"mise"}, "claude", agentDefs,
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		nil,
+	)
+	withBridge := lifecycle.ComputeConfigHash(
+		pluginDefs, nil, nil, []string{"mise"}, "claude", agentDefs,
+		4, "8GB", "60GB", "", defaultVMMounts(), "aivm",
+		[]config.SocketBridge{{HostPath: "/tmp/a.sock", GuestPath: "/run/aivm/sockets/a.sock"}},
+	)
+	if base == withBridge {
+		t.Fatal("hash must change when socket_bridges added")
 	}
 }

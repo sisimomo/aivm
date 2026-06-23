@@ -52,15 +52,19 @@ vm:
     #   target: "/secrets"
     #   mode: ro
   # Arbitrary environment variables injected into every VM session.
-  # Values support ${HOST_VAR} expansion from the host shell environment.
+  # Persistent env (bootstrap/sync). Supports {{ .host_home }}, {{ .state_dir }},
+  # ~, and ${HOST_VAR} (same path rules as socket bridge guest paths).
   # Changes are applied in-place the next time you run aivm — no VM recreation needed.
   # env:
+  #   HERDR_SOCKET_PATH: "{{ .host_home }}/.config/herdr/herdr.sock"
   #   MY_API_TOKEN: "${MY_API_TOKEN}"
   #   CUSTOM_SETTING: "some-value"
   #
-  # Session-scoped env (aivm and aivm ssh). Same ${HOST_VAR} syntax as vm.env above.
+  # Session-scoped env (aivm and aivm ssh). Supports {{ .host_home }},
+  # {{ .state_dir }}, ~, and ${HOST_VAR} (same path rules as socket bridge guest paths).
   # Resolved from the host each session; not persisted in the VM.
   # session_env:
+  #   HERDR_SOCKET_PATH: "{{ .host_home }}/.config/herdr/herdr.sock"
   #   MY_TOOL_SESSION_ID: "${MY_TOOL_SESSION_ID}"
   #   CI_JOB_ID: "${CI_JOB_ID}"
 
@@ -187,3 +191,19 @@ idle:
 # and torn down with `docker compose down`. Named volumes are never deleted.
 # The project name is set to the VM profile name.
 # compose_file: ./docker-compose.yml
+
+# Unix socket bridges — expose host sockets inside the VM at stable guest paths.
+# Conceptually similar to vm.mounts (host resource at guest path) but
+# implemented as socket forwarding, not directory binds. Set vm.env yourself if an app needs
+# a path variable (e.g. HERDR_SOCKET_PATH).
+#
+# Paths support {{ .host_home }}, {{ .state_dir }}, and ~ (same as vm.mounts).
+# host_path also supports ${VAR} expansion.
+#
+# Docker: host_path must exist and be a Unix socket before VM create.
+# Lima (macOS): host_path parent directory must be accessible; see README.
+# socket_bridges:
+#   - host_path: "${XDG_CONFIG_HOME}/herdr/service.sock"
+#     guest_path: /run/aivm/sockets/herdr.sock
+#   - host_path: "~/.config/foo/service.sock"
+#     guest_path: "{{ .host_home }}/.config/foo/service.sock"

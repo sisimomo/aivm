@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sisimomo/aivm/internal/config"
@@ -64,29 +65,40 @@ func TestValidateEnvVarName_Invalid(t *testing.T) {
 
 // --- ResolvedEnv ---
 
+func testConfigWithEnv(env map[string]string) *config.Config {
+	home, _ := os.UserHomeDir()
+	return &config.Config{
+		StateDir: filepath.Join(home, ".aivm"),
+		VM: config.VMConfig{
+			Name: "testvm",
+			Env:  env,
+		},
+	}
+}
+
 func TestResolvedEnv_Nil(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{}
-	if got := vm.ResolvedEnv(); got != nil {
+	cfg := &config.Config{VM: config.VMConfig{}}
+	if got := cfg.ResolvedEnv(); got != nil {
 		t.Errorf("ResolvedEnv() with nil Env: got %v, want nil", got)
 	}
 }
 
 func TestResolvedEnv_Empty(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{Env: map[string]string{}}
-	if got := vm.ResolvedEnv(); got != nil {
+	cfg := &config.Config{VM: config.VMConfig{Env: map[string]string{}}}
+	if got := cfg.ResolvedEnv(); got != nil {
 		t.Errorf("ResolvedEnv() with empty Env: got %v, want nil", got)
 	}
 }
 
 func TestResolvedEnv_LiteralValues(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{Env: map[string]string{
+	cfg := testConfigWithEnv(map[string]string{
 		"FOO": "bar",
 		"BAZ": "qux",
-	}}
-	got := vm.ResolvedEnv()
+	})
+	got := cfg.ResolvedEnv()
 	if got["FOO"] != "bar" {
 		t.Errorf("FOO: got %q, want %q", got["FOO"], "bar")
 	}
@@ -97,10 +109,10 @@ func TestResolvedEnv_LiteralValues(t *testing.T) {
 
 func TestResolvedEnv_ExpandsHostVar(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_HOST", "expanded_value")
-	vm := &config.VMConfig{Env: map[string]string{
+	cfg := testConfigWithEnv(map[string]string{
 		"MY_VAR": "${AIVM_UNIT_TEST_HOST}",
-	}}
-	got := vm.ResolvedEnv()
+	})
+	got := cfg.ResolvedEnv()
 	if got["MY_VAR"] != "expanded_value" {
 		t.Errorf("MY_VAR: got %q, want %q", got["MY_VAR"], "expanded_value")
 	}
@@ -108,20 +120,33 @@ func TestResolvedEnv_ExpandsHostVar(t *testing.T) {
 
 func TestResolvedEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
 	os.Unsetenv("AIVM_UNIT_TEST_MISSING")
-	vm := &config.VMConfig{Env: map[string]string{
+	cfg := testConfigWithEnv(map[string]string{
 		"MY_VAR": "${AIVM_UNIT_TEST_MISSING}",
-	}}
-	got := vm.ResolvedEnv()
+	})
+	got := cfg.ResolvedEnv()
 	if got["MY_VAR"] != "" {
 		t.Errorf("MY_VAR with missing host var: got %q, want empty string", got["MY_VAR"])
+	}
+}
+
+func TestResolvedEnv_ExpandsHostHomeTemplate(t *testing.T) {
+	t.Parallel()
+	home, _ := os.UserHomeDir()
+	cfg := testConfigWithEnv(map[string]string{
+		"HERDR_SOCKET_PATH": `{{ .host_home }}/.config/herdr/herdr.sock`,
+	})
+	got := cfg.ResolvedEnv()
+	want := filepath.Join(home, ".config/herdr/herdr.sock")
+	if got["HERDR_SOCKET_PATH"] != want {
+		t.Errorf("HERDR_SOCKET_PATH: got %q, want %q", got["HERDR_SOCKET_PATH"], want)
 	}
 }
 
 func TestResolvedEnv_OriginalMapUnmodified(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_ORIG", "resolved")
 	original := map[string]string{"V": "${AIVM_UNIT_TEST_ORIG}"}
-	vm := &config.VMConfig{Env: original}
-	vm.ResolvedEnv()
+	cfg := testConfigWithEnv(original)
+	cfg.ResolvedEnv()
 	if original["V"] != "${AIVM_UNIT_TEST_ORIG}" {
 		t.Errorf("original map was mutated: got %q", original["V"])
 	}
@@ -129,28 +154,39 @@ func TestResolvedEnv_OriginalMapUnmodified(t *testing.T) {
 
 // --- ResolvedSessionEnv ---
 
+func testConfigWithSessionEnv(sessionEnv map[string]string) *config.Config {
+	home, _ := os.UserHomeDir()
+	return &config.Config{
+		StateDir: filepath.Join(home, ".aivm"),
+		VM: config.VMConfig{
+			Name:       "testvm",
+			SessionEnv: sessionEnv,
+		},
+	}
+}
+
 func TestResolvedSessionEnv_Nil(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{}
-	if got := vm.ResolvedSessionEnv(); got != nil {
+	cfg := &config.Config{VM: config.VMConfig{}}
+	if got := cfg.ResolvedSessionEnv(); got != nil {
 		t.Errorf("ResolvedSessionEnv() with nil SessionEnv: got %v, want nil", got)
 	}
 }
 
 func TestResolvedSessionEnv_Empty(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{SessionEnv: map[string]string{}}
-	if got := vm.ResolvedSessionEnv(); got != nil {
+	cfg := &config.Config{VM: config.VMConfig{SessionEnv: map[string]string{}}}
+	if got := cfg.ResolvedSessionEnv(); got != nil {
 		t.Errorf("ResolvedSessionEnv() with empty SessionEnv: got %v, want nil", got)
 	}
 }
 
 func TestResolvedSessionEnv_ExpandsHostVar(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_SESSION_HOST", "sess-42")
-	vm := &config.VMConfig{SessionEnv: map[string]string{
+	cfg := testConfigWithSessionEnv(map[string]string{
 		"MY_TOOL_SESSION_ID": "${AIVM_UNIT_TEST_SESSION_HOST}",
-	}}
-	got := vm.ResolvedSessionEnv()
+	})
+	got := cfg.ResolvedSessionEnv()
 	if got["MY_TOOL_SESSION_ID"] != "sess-42" {
 		t.Errorf("MY_TOOL_SESSION_ID: got %q, want %q", got["MY_TOOL_SESSION_ID"], "sess-42")
 	}
@@ -167,10 +203,10 @@ func TestResolvedSessionEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
 			_ = os.Unsetenv(hostVar)
 		}
 	})
-	vm := &config.VMConfig{SessionEnv: map[string]string{
+	cfg := testConfigWithSessionEnv(map[string]string{
 		"CI_JOB_ID": "${" + hostVar + "}",
-	}}
-	got := vm.ResolvedSessionEnv()
+	})
+	got := cfg.ResolvedSessionEnv()
 	if got["CI_JOB_ID"] != "" {
 		t.Errorf("CI_JOB_ID with missing host var: got %q, want empty string", got["CI_JOB_ID"])
 	}
@@ -178,20 +214,33 @@ func TestResolvedSessionEnv_MissingHostVarExpandsToEmpty(t *testing.T) {
 
 func TestResolvedSessionEnv_LiteralValue(t *testing.T) {
 	t.Parallel()
-	vm := &config.VMConfig{SessionEnv: map[string]string{
+	cfg := testConfigWithSessionEnv(map[string]string{
 		"FIXED_FLAG": "always-on",
-	}}
-	got := vm.ResolvedSessionEnv()
+	})
+	got := cfg.ResolvedSessionEnv()
 	if got["FIXED_FLAG"] != "always-on" {
 		t.Errorf("FIXED_FLAG: got %q, want %q", got["FIXED_FLAG"], "always-on")
+	}
+}
+
+func TestResolvedSessionEnv_ExpandsHostHomeTemplate(t *testing.T) {
+	t.Parallel()
+	home, _ := os.UserHomeDir()
+	cfg := testConfigWithSessionEnv(map[string]string{
+		"HERDR_SOCKET_PATH": `{{ .host_home }}/.config/herdr/herdr.sock`,
+	})
+	got := cfg.ResolvedSessionEnv()
+	want := filepath.Join(home, ".config/herdr/herdr.sock")
+	if got["HERDR_SOCKET_PATH"] != want {
+		t.Errorf("HERDR_SOCKET_PATH: got %q, want %q", got["HERDR_SOCKET_PATH"], want)
 	}
 }
 
 func TestResolvedSessionEnv_OriginalMapUnmodified(t *testing.T) {
 	t.Setenv("AIVM_UNIT_TEST_SESSION_ORIG", "resolved")
 	original := map[string]string{"V": "${AIVM_UNIT_TEST_SESSION_ORIG}"}
-	vm := &config.VMConfig{SessionEnv: original}
-	vm.ResolvedSessionEnv()
+	cfg := testConfigWithSessionEnv(original)
+	cfg.ResolvedSessionEnv()
 	if original["V"] != "${AIVM_UNIT_TEST_SESSION_ORIG}" {
 		t.Errorf("original map was mutated: got %q", original["V"])
 	}

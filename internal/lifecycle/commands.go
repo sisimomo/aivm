@@ -140,7 +140,7 @@ func (svc *LifecycleService) SSH(ctx context.Context) error {
 		os.Exit(0)
 	}()
 
-	return svc.VM.SSH(ctx, guestCWD, svc.Config.VM.ResolvedSessionEnv())
+	return svc.VM.SSH(ctx, guestCWD, svc.Config.ResolvedSessionEnv())
 }
 
 // Logs tails the aivm or idle-monitor log file.

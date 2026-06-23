@@ -106,11 +106,16 @@ func (l *LimaVM) Start(ctx context.Context, opts StartOptions) error {
 		slog.Debug(fmt.Sprintf("CPU=%d Memory=%dGiB Disk=%dGiB Type=%s",
 			opts.CPUs, opts.MemoryBytes>>30, opts.DiskBytes>>30, opts.VMType))
 
-		templatePath, err := LimaTemplatePath(opts.Mounts)
+		templatePath, err := LimaTemplatePath(opts.Mounts, opts.SocketBridges)
 		if err != nil {
 			return err
 		}
 		defer os.Remove(templatePath)
+
+		for _, b := range opts.SocketBridges {
+			slog.Info(fmt.Sprintf("socket bridge %s ← %s (lima portForward)", b.GuestPath, b.HostPath))
+			slog.Debug(fmt.Sprintf("socket bridge resolved: guest=%s host=%s", b.GuestPath, b.HostPath))
+		}
 
 		args := []string{
 			"create", templatePath,

@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,7 +36,18 @@ type Config struct {
 	Integrations []integration.IntegrationDef `mapstructure:"integrations"`
 	LogLevel     string                       `mapstructure:"log_level"`
 
+	// SocketBridges maps host Unix sockets to guest paths. Paths support
+	// {{ .host_home }}, {{ .state_dir }}, ~, and ${VAR} (host_path only) during
+	// config load, like vm.mounts.
+	SocketBridges []SocketBridge `mapstructure:"socket_bridges"`
+
 	StateDir string `mapstructure:"-"`
+}
+
+// SocketBridge maps a host Unix socket to a guest path in the VM.
+type SocketBridge struct {
+	HostPath  string `mapstructure:"host_path"`
+	GuestPath string `mapstructure:"guest_path"`
 }
 
 // Mount represents a single host directory mounted into the VM.
@@ -169,29 +181,37 @@ func (c *Config) DefaultAgent() string {
 	return c.Agents.Default
 }
 
-// ResolvedEnv returns vm.env with all ${HOST_VAR} and $HOST_VAR references
-// expanded from the host environment. Use this whenever env values are
-// applied to the VM or hashed for change detection.
-func (vm *VMConfig) ResolvedEnv() map[string]string {
-	if len(vm.Env) == 0 {
-		return nil
-	}
-	resolved := make(map[string]string, len(vm.Env))
-	for k, v := range vm.Env {
-		resolved[k] = os.ExpandEnv(v)
-	}
-	return resolved
+// ResolvedEnv returns vm.env with {{ .host_home }}, {{ .state_dir }}, ~, and
+// ${HOST_VAR} expansion. Templates and ~ use the same rules as socket bridge
+// guest paths; host variables are resolved from the host when env is applied.
+func (c *Config) ResolvedEnv() map[string]string {
+	return c.resolveVMEnvValues(c.VM.Env, "vm.env")
 }
 
-// ResolvedSessionEnv returns vm.session_env with all ${HOST_VAR} and $HOST_VAR
-// references expanded from the host environment at session start.
-func (vm *VMConfig) ResolvedSessionEnv() map[string]string {
-	if len(vm.SessionEnv) == 0 {
+// ResolvedSessionEnv returns vm.session_env with {{ .host_home }}, {{ .state_dir }},
+// ~, and ${HOST_VAR} expansion. Templates and ~ use the same rules as socket
+// bridge guest paths; host variables are resolved from the invoking host at
+// session start.
+func (c *Config) ResolvedSessionEnv() map[string]string {
+	return c.resolveVMEnvValues(c.VM.SessionEnv, "vm.session_env")
+}
+
+func (c *Config) resolveVMEnvValues(values map[string]string, logPrefix string) map[string]string {
+	if len(values) == 0 {
 		return nil
 	}
-	resolved := make(map[string]string, len(vm.SessionEnv))
-	for k, v := range vm.SessionEnv {
-		resolved[k] = os.ExpandEnv(v)
+	home, _ := os.UserHomeDir()
+	ctx := c.VM.MountContext(c.StateDir, home)
+	resolved := make(map[string]string, len(values))
+	for k, v := range values {
+		expanded, err := resolveVMEnvValue(v, ctx)
+		if err != nil {
+			slog.Warn(logPrefix+": failed to resolve value",
+				"key", k, "error", err)
+			resolved[k] = v
+			continue
+		}
+		resolved[k] = expanded
 	}
 	return resolved
 }
@@ -354,8 +374,20 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 	// --- vm home (derived from backend; not user-configurable) ---
 	vm.ParsedVMHome = defaultVMHomeFor(vm, home)
 
-	// --- mounts ---
 	ctx := MountResolveContext(cfg.StateDir, home, vm.ParsedVMHome)
+
+	for name, value := range vm.Env {
+		if _, err := resolveVMEnvValue(value, ctx); err != nil {
+			return fmt.Errorf("vm.env[%q]: %w", name, err)
+		}
+	}
+	for name, value := range vm.SessionEnv {
+		if _, err := resolveVMEnvValue(value, ctx); err != nil {
+			return fmt.Errorf("vm.session_env[%q]: %w", name, err)
+		}
+	}
+
+	// --- mounts ---
 	parsed := make([]Mount, 0, len(vm.Mounts))
 	for i, spec := range vm.Mounts {
 		resolved, err := mountspec.Resolve(spec, ctx)
@@ -375,6 +407,16 @@ func validateAndParse(cfg *Config, home, cfgPath string) error {
 		return fmt.Errorf("vm.mounts: %w", err)
 	}
 	vm.ParsedMounts = parsed
+
+	mountSources := make([]string, len(vm.ParsedMounts))
+	for i, m := range vm.ParsedMounts {
+		mountSources[i] = m.HostPath
+	}
+	parsedBridges, err := parseSocketBridges(cfg.SocketBridges, ctx, mountSources)
+	if err != nil {
+		return err
+	}
+	cfg.SocketBridges = parsedBridges
 
 	return nil
 }
@@ -431,6 +473,74 @@ func expandPath(path, home string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func resolveVMEnvValue(raw string, ctx mountspec.Context) (string, error) {
+	rendered, err := mountspec.RenderPath(raw, ctx)
+	if err != nil {
+		return "", err
+	}
+	expanded := os.ExpandEnv(rendered)
+	return mountspec.ExpandTilde(expanded, ctx.VMHome), nil
+}
+
+func resolveSocketBridgeHostPath(raw string, ctx mountspec.Context) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	rendered, err := mountspec.RenderPath(raw, ctx)
+	if err != nil {
+		return "", err
+	}
+	expanded := os.ExpandEnv(rendered)
+	expanded = mountspec.ExpandTilde(expanded, ctx.Home)
+	if !filepath.IsAbs(expanded) {
+		return "", fmt.Errorf("path %q must be absolute after expansion (got %q)", raw, expanded)
+	}
+	return filepath.Clean(expanded), nil
+}
+
+func parseSocketBridges(bridges []SocketBridge, ctx mountspec.Context, mountSources []string) ([]SocketBridge, error) {
+	if len(bridges) == 0 {
+		return nil, nil
+	}
+	parsed := make([]SocketBridge, 0, len(bridges))
+	seenGuest := make(map[string]int)
+	seenHost := make(map[string]int)
+	mountSet := make(map[string]bool, len(mountSources))
+	for _, s := range mountSources {
+		mountSet[s] = true
+	}
+	for i, b := range bridges {
+		if strings.TrimSpace(b.HostPath) == "" {
+			return nil, fmt.Errorf("socket_bridges[%d]: host_path is required", i)
+		}
+		if strings.TrimSpace(b.GuestPath) == "" {
+			return nil, fmt.Errorf("socket_bridges[%d]: guest_path is required", i)
+		}
+		host, err := resolveSocketBridgeHostPath(b.HostPath, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("socket_bridges[%d].host_path: %w", i, err)
+		}
+		guest, err := mountspec.ResolveGuestPath(b.GuestPath, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("socket_bridges[%d].guest_path: %w", i, err)
+		}
+		if prev, ok := seenGuest[guest]; ok {
+			return nil, fmt.Errorf("socket_bridges: duplicate guest_path %q (entries %d and %d)", guest, prev, i)
+		}
+		seenGuest[guest] = i
+		if prev, ok := seenHost[host]; ok {
+			return nil, fmt.Errorf("socket_bridges: duplicate host_path %q (entries %d and %d)", host, prev, i)
+		}
+		seenHost[host] = i
+		if mountSet[host] {
+			slog.Warn("socket_bridges: host_path matches a vm.mounts source — unlikely to work as a socket bridge",
+				"index", i, "host_path", host)
+		}
+		parsed = append(parsed, SocketBridge{HostPath: host, GuestPath: guest})
+	}
+	return parsed, nil
 }
 
 // setDefaultsFromYAML parses the given YAML bytes and registers each leaf value

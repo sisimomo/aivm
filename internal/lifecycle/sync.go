@@ -79,7 +79,7 @@ func (s *envChangedStep) applicable(ss *syncState, svc *LifecycleService) bool {
 
 func (s *envChangedStep) run(ctx context.Context, _ *syncState, svc *LifecycleService) error {
 	svc.logger().Info("VM env changed — re-applying environment variables")
-	if err := applyVMEnv(ctx, svc.VM, svc.Config.VM.ResolvedEnv()); err != nil {
+	if err := applyVMEnv(ctx, svc.VM, svc.Config.ResolvedEnv()); err != nil {
 		return err
 	}
 	state, _ := loadBootstrapState(svc.Config.StateDir)

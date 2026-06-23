@@ -26,6 +26,9 @@ func (svc *LifecycleService) fullBootstrap(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
+	if err := validateAndPrepareSocketBridges(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("socket bridges: %w", err)
+	}
 	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
@@ -61,6 +64,9 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("building start options: %w", err)
 	}
+	if err := validateAndPrepareSocketBridges(svc.Config, svc.AgentDefs); err != nil {
+		return fmt.Errorf("socket bridges: %w", err)
+	}
 	if err := ensureAgentMountDirs(svc.VM, svc.Config, svc.AgentDefs); err != nil {
 		return fmt.Errorf("agent mount dirs: %w", err)
 	}
@@ -87,7 +93,7 @@ func (svc *LifecycleService) fastRecreate(ctx context.Context) error {
 }
 
 func applyPostRestore(ctx context.Context, svc *LifecycleService) error {
-	if err := applyVMEnv(ctx, svc.VM, svc.Config.VM.ResolvedEnv()); err != nil {
+	if err := applyVMEnv(ctx, svc.VM, svc.Config.ResolvedEnv()); err != nil {
 		return err
 	}
 	name, email := readHostGitIdentity()

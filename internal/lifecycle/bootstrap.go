@@ -29,7 +29,7 @@ func (svc *LifecycleService) bootstrap(ctx context.Context, targetVM vm.VM) erro
 		return err
 	}
 	svc.logger().Info("Bootstrap complete!")
-	if err := applyVMEnv(ctx, targetVM, svc.Config.VM.ResolvedEnv()); err != nil {
+	if err := applyVMEnv(ctx, targetVM, svc.Config.ResolvedEnv()); err != nil {
 		return fmt.Errorf("applying vm.env: %w", err)
 	}
 	gitName, gitEmail := readHostGitIdentity()
